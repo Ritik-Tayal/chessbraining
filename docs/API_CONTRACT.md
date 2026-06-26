@@ -240,19 +240,30 @@ Endpoint:
 /ws
 ```
 
-Suggested subscription:
+Implemented subscription:
 
 ```text
 /topic/matches/{matchId}
 ```
 
-Suggested command destination:
+Server payload:
 
-```text
-/app/matches/{matchId}/commands
+```json
+{
+  "type": "match.state",
+  "match": {
+    "matchId": "match_123",
+    "phase": "CHESS_PHASE",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+  }
+}
 ```
 
+The current client sends commands over REST and listens over WebSocket. A future backend can move commands to `/app/matches/{matchId}/commands` when reconnect/idempotency rules are stronger.
+
 ## Client Commands
+
+Planned STOMP command shape:
 
 ### Submit Chess Move
 

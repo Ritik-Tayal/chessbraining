@@ -1,0 +1,149 @@
+class MatchModel {
+  const MatchModel({
+    required this.matchId,
+    required this.inviteCode,
+    required this.status,
+    required this.phase,
+    required this.fen,
+    required this.sideToMove,
+    required this.plyCount,
+    required this.brainRoundIntervalMoves,
+    required this.brainRoundCount,
+    required this.white,
+    required this.black,
+    required this.winnerPlayerId,
+    required this.resultReason,
+    required this.moves,
+  });
+
+  final String matchId;
+  final String inviteCode;
+  final String status;
+  final String phase;
+  final String fen;
+  final String sideToMove;
+  final int plyCount;
+  final int brainRoundIntervalMoves;
+  final int brainRoundCount;
+  final PlayerModel white;
+  final PlayerModel? black;
+  final String? winnerPlayerId;
+  final String? resultReason;
+  final List<MoveModel> moves;
+
+  bool get isWaiting => phase == 'WAITING_FOR_OPPONENT';
+  bool get isChessPhase => phase == 'CHESS_PHASE';
+  bool get isBrainRound => phase == 'BRAIN_ROUND';
+  bool get isCompleted => phase == 'COMPLETED';
+
+  PlayerModel? playerById(String playerId) {
+    if (white.playerId == playerId) {
+      return white;
+    }
+    if (black?.playerId == playerId) {
+      return black;
+    }
+    return null;
+  }
+
+  factory MatchModel.fromJson(Map<String, dynamic> json) {
+    return MatchModel(
+      matchId: json['matchId'] as String,
+      inviteCode: json['inviteCode'] as String,
+      status: json['status'] as String,
+      phase: json['phase'] as String,
+      fen: json['fen'] as String,
+      sideToMove: json['sideToMove'] as String,
+      plyCount: json['plyCount'] as int,
+      brainRoundIntervalMoves: json['brainRoundIntervalMoves'] as int,
+      brainRoundCount: json['brainRoundCount'] as int,
+      white: PlayerModel.fromJson(json['white'] as Map<String, dynamic>),
+      black: json['black'] == null
+          ? null
+          : PlayerModel.fromJson(json['black'] as Map<String, dynamic>),
+      winnerPlayerId: json['winnerPlayerId'] as String?,
+      resultReason: json['resultReason'] as String?,
+      moves: (json['moves'] as List<dynamic>)
+          .map((item) => MoveModel.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class PlayerModel {
+  const PlayerModel({
+    required this.playerId,
+    required this.playerName,
+    required this.side,
+    required this.brainPoints,
+    required this.clockMs,
+  });
+
+  final String playerId;
+  final String playerName;
+  final String side;
+  final int brainPoints;
+  final int clockMs;
+
+  factory PlayerModel.fromJson(Map<String, dynamic> json) {
+    return PlayerModel(
+      playerId: json['playerId'] as String,
+      playerName: json['playerName'] as String,
+      side: json['side'] as String,
+      brainPoints: json['brainPoints'] as int,
+      clockMs: json['clockMs'] as int,
+    );
+  }
+}
+
+class MoveModel {
+  const MoveModel({
+    required this.plyNumber,
+    required this.playerId,
+    required this.side,
+    required this.from,
+    required this.to,
+    required this.promotion,
+    required this.fenAfter,
+  });
+
+  final int plyNumber;
+  final String playerId;
+  final String side;
+  final String from;
+  final String to;
+  final String? promotion;
+  final String fenAfter;
+
+  factory MoveModel.fromJson(Map<String, dynamic> json) {
+    return MoveModel(
+      plyNumber: json['plyNumber'] as int,
+      playerId: json['playerId'] as String,
+      side: json['side'] as String,
+      from: json['from'] as String,
+      to: json['to'] as String,
+      promotion: json['promotion'] as String?,
+      fenAfter: json['fenAfter'] as String,
+    );
+  }
+}
+
+class LegalMoveModel {
+  const LegalMoveModel({
+    required this.from,
+    required this.to,
+    required this.promotion,
+  });
+
+  final String from;
+  final String to;
+  final String? promotion;
+
+  factory LegalMoveModel.fromJson(Map<String, dynamic> json) {
+    return LegalMoveModel(
+      from: json['from'] as String,
+      to: json['to'] as String,
+      promotion: json['promotion'] as String?,
+    );
+  }
+}

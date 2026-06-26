@@ -47,9 +47,18 @@ Tests use an in-memory H2 database through the `test` Spring profile.
 
 ## Run Locally
 
+With the shared PostgreSQL database:
+
 ```powershell
 cd services/api/chessbraining-api
 .\mvnw.cmd spring-boot:run
+```
+
+With a disposable in-memory H2 database:
+
+```powershell
+cd services/api/chessbraining-api
+.\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
 ```
 
 ## REST Endpoints
