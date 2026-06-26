@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Power-Up Reward | CHESS BRAINING</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&amp;family=Inter:wght@400;500;600&amp;family=Geist:wght@500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-panel {
+            background: rgba(10, 10, 12, 0.7);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .emerald-glow {
+            filter: drop-shadow(0 0 15px rgba(0, 227, 139, 0.6));
+        }
+        @keyframes float {
+            0% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(5deg); }
+            100% { transform: translateY(0px) rotate(0deg); }
+        }
+        .animate-float {
+            animation: float 6s ease-in-out infinite;
+        }
+        @keyframes pulse-glow {
+            0% { opacity: 0.4; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.05); }
+            100% { opacity: 0.4; transform: scale(1); }
+        }
+        .glow-pulse {
+            animation: pulse-glow 3s ease-in-out infinite;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "tertiary-container": "#00ee92",
+                        "on-secondary-container": "#fff6fc",
+                        "on-background": "#e5e1e4",
+                        "on-secondary-fixed-variant": "#74009f",
+                        "surface-container-low": "#1c1b1d",
+                        "primary-container": "#00e5ff",
+                        "surface-dim": "#131315",
+                        "surface-tint": "#00daf3",
+                        "on-tertiary": "#00391f",
+                        "surface-container-highest": "#353437",
+                        "on-error-container": "#ffdad6",
+                        "tertiary-fixed": "#56ffa8",
+                        "on-tertiary-container": "#00673c",
+                        "on-tertiary-fixed": "#002110",
+                        "secondary-fixed-dim": "#ebb2ff",
+                        "on-primary-fixed": "#001f24",
+                        "surface-container-lowest": "#0e0e10",
+                        "inverse-primary": "#006875",
+                        "on-tertiary-fixed-variant": "#00522f",
+                        "tertiary": "#aaffc8",
+                        "on-surface-variant": "#bac9cc",
+                        "primary": "#c3f5ff",
+                        "on-primary": "#00363d",
+                        "background": "#131315",
+                        "inverse-surface": "#e5e1e4",
+                        "secondary": "#ebb2ff",
+                        "primary-fixed": "#9cf0ff",
+                        "on-surface": "#e5e1e4",
+                        "outline": "#849396",
+                        "surface-bright": "#39393b",
+                        "inverse-on-surface": "#313032",
+                        "secondary-fixed": "#f8d8ff",
+                        "surface-container-high": "#2a2a2c",
+                        "on-secondary": "#520072",
+                        "primary-fixed-dim": "#00daf3",
+                        "secondary-container": "#b600f8",
+                        "tertiary-fixed-dim": "#00e38b",
+                        "error": "#ffb4ab",
+                        "error-container": "#93000a",
+                        "surface-variant": "#353437",
+                        "on-primary-container": "#00626e",
+                        "on-error": "#690005",
+                        "outline-variant": "#3b494c",
+                        "on-secondary-fixed": "#320047",
+                        "surface-container": "#201f21",
+                        "on-primary-fixed-variant": "#004f58",
+                        "surface": "#131315"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.125rem",
+                        "lg": "0.25rem",
+                        "xl": "0.5rem",
+                        "full": "0.75rem"
+                    },
+                    "spacing": {
+                        "xl": "48px",
+                        "container-margin": "20px",
+                        "sm": "16px",
+                        "xs": "8px",
+                        "md": "24px",
+                        "gutter": "12px",
+                        "base": "4px",
+                        "lg": "32px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "label-caps": ["Geist"],
+                        "mono-ui": ["Geist"],
+                        "display-mobile": ["Montserrat"],
+                        "headline-md": ["Montserrat"],
+                        "body-lg": ["Inter"],
+                        "display-lg": ["Montserrat"]
+                    },
+                    "fontSize": {
+                        "body-md": ["16px", {"lineHeight": "24px", "fontWeight": "400"}],
+                        "label-caps": ["12px", {"lineHeight": "16px", "letterSpacing": "0.1em", "fontWeight": "600"}],
+                        "mono-ui": ["14px", {"lineHeight": "20px", "fontWeight": "500"}],
+                        "display-mobile": ["32px", {"lineHeight": "36px", "letterSpacing": "-0.01em", "fontWeight": "800"}],
+                        "headline-md": ["24px", {"lineHeight": "32px", "letterSpacing": "0.02em", "fontWeight": "700"}],
+                        "body-lg": ["18px", {"lineHeight": "28px", "fontWeight": "400"}],
+                        "display-lg": ["48px", {"lineHeight": "52px", "letterSpacing": "-0.02em", "fontWeight": "800"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-background text-on-background min-h-screen flex flex-col overflow-hidden">
+<!-- Atmospheric Background Shader -->
+
+<!-- Background Elements -->
+<div class="fixed inset-0 pointer-events-none">
+<!-- Emerald Glow Orbs -->
+<div class="absolute top-1/4 left-1/4 w-96 h-96 bg-tertiary-fixed-dim/20 rounded-full blur-[120px] glow-pulse"></div>
+<div class="absolute bottom-1/4 right-1/4 w-96 h-96 bg-primary-fixed-dim/10 rounded-full blur-[120px] glow-pulse" style="animation-delay: 1.5s"></div>
+</div>
+<!-- Top Navigation (Shell Injected) -->
+<header class="fixed top-0 w-full flex justify-between items-center px-container-margin h-16 z-50 bg-surface/80 backdrop-blur-xl border-b border-outline-variant/10">
+<div class="flex items-center gap-xs">
+<span class="material-symbols-outlined text-primary" data-icon="leaderboard">leaderboard</span>
+<h1 class="font-display-mobile text-display-mobile uppercase tracking-tighter text-primary-fixed-dim drop-shadow-[0_0_8px_rgba(0,218,243,0.5)]">CHESS BRAINING</h1>
+</div>
+<button class="material-symbols-outlined text-on-surface-variant hover:opacity-80 transition-opacity active:scale-95" data-icon="settings">settings</button>
+</header>
+<!-- Main Canvas -->
+<main class="flex-grow flex flex-col items-center justify-center relative px-container-margin pt-16 pb-24 z-10">
+<!-- Reward Container -->
+<div class="w-full max-w-md flex flex-col items-center text-center">
+<!-- Brain Mode Indicator -->
+<div class="mb-lg px-sm py-base bg-tertiary-container/20 border border-tertiary-container/30 rounded-full flex items-center gap-xs animate-pulse">
+<span class="material-symbols-outlined text-tertiary-fixed-dim text-sm" data-icon="bolt" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span class="font-label-caps text-label-caps text-tertiary-fixed-dim uppercase">Brain Round Victory</span>
+</div>
+<!-- Reward Visual Anchor -->
+<div class="relative w-48 h-48 mb-lg">
+<!-- Floating Card -->
+<div class="absolute inset-0 glass-panel rounded-xl flex items-center justify-center animate-float shadow-[0_0_50px_rgba(0,227,139,0.2)] border-tertiary-container/40">
+<span class="material-symbols-outlined text-tertiary-fixed-dim text-[80px] emerald-glow" data-icon="auto_awesome_motion" style="font-variation-settings: 'FILL' 1;">auto_awesome_motion</span>
+</div>
+<!-- Particles Effect (Handled via Shader, but adding CSS hints) -->
+<div class="absolute -inset-4 border border-tertiary-container/20 rounded-full animate-ping opacity-20"></div>
+</div>
+<!-- Reward Text -->
+<h2 class="font-headline-md text-headline-md text-tertiary-fixed-dim mb-xs uppercase tracking-widest drop-shadow-[0_0_12px_rgba(0,227,139,0.5)]">EXTRA MOVE</h2>
+<p class="font-body-lg text-body-lg text-on-surface-variant mb-xl max-w-[280px]">Take an immediate second turn. Shatter your opponent's defense instantly.</p>
+<!-- Action Button -->
+<button class="w-full h-16 bg-tertiary-fixed-dim text-on-tertiary font-headline-md text-headline-md flex items-center justify-center gap-sm rounded-lg active:scale-95 transition-transform shadow-[0_10px_30px_rgba(0,227,139,0.3)] hover:brightness-110">
+<span>CLAIM AND RESUME</span>
+<span class="material-symbols-outlined" data-icon="play_arrow" style="font-variation-settings: 'FILL' 1;">play_arrow</span>
+</button>
+<!-- Reward Stats -->
+<div class="mt-xl w-full grid grid-cols-2 gap-gutter">
+<div class="glass-panel p-md rounded-xl flex flex-col items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-base">Current Level</span>
+<span class="font-mono-ui text-headline-md text-primary-fixed-dim">LVL 14</span>
+</div>
+<div class="glass-panel p-md rounded-xl flex flex-col items-center">
+<span class="font-label-caps text-label-caps text-on-surface-variant/60 uppercase mb-base">Brain XP</span>
+<span class="font-mono-ui text-headline-md text-tertiary-fixed-dim">+850</span>
+</div>
+</div>
+</div>
+</main>
+<!-- Navigation Shell (BottomNavBar) -->
+<nav class="fixed bottom-0 left-0 w-full z-50 flex justify-around items-center pt-base pb-safe px-md bg-surface-container-lowest/90 backdrop-blur-2xl border-t border-primary/20 shadow-[0_-4px_20px_rgba(0,0,0,0.5)] rounded-t-full">
+<!-- Home -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant opacity-60 hover:text-tertiary-fixed transition-colors active:scale-90 transition-all duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-label-caps text-label-caps">Home</span>
+</a>
+<!-- Play -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant opacity-60 hover:text-tertiary-fixed transition-colors active:scale-90 transition-all duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="sports_esports">sports_esports</span>
+<span class="font-label-caps text-label-caps">Play</span>
+</a>
+<!-- Power-ups (ACTIVE) -->
+<a class="flex flex-col items-center justify-center text-primary-fixed-dim font-bold drop-shadow-[0_0_5px_rgba(0,227,139,0.4)] active:scale-90 transition-all duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="bolt" style="font-variation-settings: 'FILL' 1;">bolt</span>
+<span class="font-label-caps text-label-caps">Power-ups</span>
+</a>
+<!-- Profile -->
+<a class="flex flex-col items-center justify-center text-on-surface-variant opacity-60 hover:text-tertiary-fixed transition-colors active:scale-90 transition-all duration-150" href="#">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-label-caps text-label-caps">Profile</span>
+</a>
+</nav>
+<!-- Subtle Particle Script -->
+<canvas class="fixed inset-0 pointer-events-none opacity-50" id="particleCanvas"></canvas>
+<script>
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+
+        class Particle {
+            constructor() {
+                this.reset();
+            }
+            reset() {
+                this.x = Math.random() * canvas.width;
+                this.y = canvas.height + 10;
+                this.size = Math.random() * 2 + 1;
+                this.speed = Math.random() * 2 + 0.5;
+                this.opacity = Math.random() * 0.5 + 0.2;
+                this.color = Math.random() > 0.5 ? '#00e38b' : '#00daf3';
+            }
+            update() {
+                this.y -= this.speed;
+                if (this.y < -10) this.reset();
+            }
+            draw() {
+                ctx.globalAlpha = this.opacity;
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function init() {
+            resize();
+            for (let i = 0; i < 50; i++) {
+                particles.push(new Particle());
+            }
+            animate();
+        }
+
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.update();
+                p.draw();
+            });
+            requestAnimationFrame(animate);
+        }
+
+        window.addEventListener('resize', resize);
+        init();
+    </script>
+</body></html>
