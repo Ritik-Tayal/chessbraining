@@ -2,6 +2,7 @@ package com.chessbraining.api;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -9,6 +10,11 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.ActiveProfiles;
+
+import com.chessbraining.api.match.BrainRoundEntity;
+import com.chessbraining.api.match.BrainRoundRepository;
+import com.chessbraining.api.match.MatchEntity;
+import com.chessbraining.api.match.MatchRepository;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -26,6 +32,12 @@ class ChessbrainingApiApplicationTests {
 
 	@Autowired
 	private ObjectMapper objectMapper;
+
+	@Autowired
+	private BrainRoundRepository brainRoundRepository;
+
+	@Autowired
+	private MatchRepository matchRepository;
 
 	@Test
 	void contextLoads() {
@@ -137,7 +149,15 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("ACTIVE"))
 				.andExpect(jsonPath("$.puzzles").isArray())
-				.andExpect(jsonPath("$.totalQuestions").value(10));
+				.andExpect(jsonPath("$.totalQuestions").value(10))
+				.andExpect(jsonPath("$.expiresAt").isNotEmpty());
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("BRAIN_ROUND_STILL_ACTIVE"));
+
+		answerEveryQuestion(matchId, "white-player");
+		answerEveryQuestion(matchId, "black-player");
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
 				.andExpect(status().isOk())
@@ -175,8 +195,11 @@ class ChessbrainingApiApplicationTests {
 									""".formatted(i)))
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.correct").isBoolean())
+					.andExpect(jsonPath("$.correctAnswer").doesNotExist())
 					.andExpect(jsonPath("$.totalQuestions").value(10));
 		}
+
+		answerEveryQuestion(matchId, "black-player");
 
 		JsonNode completed = objectMapper.readTree(
 				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
@@ -188,7 +211,58 @@ class ChessbrainingApiApplicationTests {
 		int whiteCorrect = completed.get("whiteCorrectCount").asInt();
 		int blackCorrect = completed.get("blackCorrectCount").asInt();
 		org.junit.jupiter.api.Assertions.assertTrue(whiteCorrect >= 0);
-		org.junit.jupiter.api.Assertions.assertEquals(0, blackCorrect);
+		org.junit.jupiter.api.Assertions.assertTrue(blackCorrect >= 0);
+	}
+
+	@Test
+	void brainRoundRejectsDuplicateAnswers() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "questionIndex": 0,
+								  "answer": 0
+								}
+								"""))
+				.andExpect(status().isOk());
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "questionIndex": 0,
+								  "answer": 0
+								}
+								"""))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("QUESTION_ALREADY_ANSWERED"));
+	}
+
+	@Test
+	void expiredBrainRoundCanCompleteByServerDeadline() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+
+		BrainRoundEntity round = brainRoundRepository
+				.findFirstByMatchIdAndStatusOrderByRoundNumberDesc(matchId, "ACTIVE")
+				.orElseThrow();
+		round.setExpiresAt(Instant.now().minusSeconds(1));
+		brainRoundRepository.save(round);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("COMPLETED"));
 	}
 
 	@Test
@@ -238,6 +312,9 @@ class ChessbrainingApiApplicationTests {
 		submitMove(matchId, "white-player", "e2", "e4");
 		submitMove(matchId, "black-player", "e7", "e5");
 
+		answerEveryQuestion(matchId, "white-player");
+		answerEveryQuestion(matchId, "black-player");
+
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("COMPLETED"));
@@ -246,6 +323,70 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
 				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
+	}
+
+	@Test
+	void moveSubmittedAfterClockDeadlineCompletesMatchWithoutApplyingMove() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+		match.setClockDeadlineAt(Instant.now().minusSeconds(1));
+		matchRepository.save(match);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/moves", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "from": "e2",
+								  "to": "e4"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("COMPLETED"))
+				.andExpect(jsonPath("$.resultReason").value("TIMEOUT"))
+				.andExpect(jsonPath("$.winnerPlayerId").value("black-player"))
+				.andExpect(jsonPath("$.moves").isEmpty());
+	}
+
+	@Test
+	void clockBoostPowerupSpendsBrainPointAndAddsTime() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+		match.setWhiteBrainPoints(1);
+		matchRepository.save(match);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "type": "CLOCK_BOOST_30"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.white.brainPoints").value(0))
+				.andExpect(jsonPath("$.white.clockMs").value(330000));
+	}
+
+	@Test
+	void powerupRequiresEnoughBrainPoints() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "type": "CLOCK_BOOST_30"
+								}
+								"""))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("INSUFFICIENT_BRAIN_POINTS"));
 	}
 
 	@Test
@@ -340,5 +481,28 @@ class ChessbrainingApiApplicationTests {
 								}
 								""".formatted(playerId, from, to)))
 				.andExpect(status().isOk());
+	}
+
+	private void answerEveryQuestion(String matchId, String playerId) throws Exception {
+		JsonNode round = objectMapper.readTree(
+				mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
+						.andExpect(status().isOk())
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
+		int totalQuestions = round.get("totalQuestions").asInt();
+
+		for (int i = 0; i < totalQuestions; i++) {
+			mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{
+									  "playerId": "%s",
+									  "questionIndex": %d,
+									  "answer": 0
+									}
+									""".formatted(playerId, i)))
+					.andExpect(status().isOk());
+		}
 	}
 }

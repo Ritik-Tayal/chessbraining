@@ -198,7 +198,25 @@ Response is the full match state.
 GET /api/v1/matches/{matchId}/brain-rounds/current
 ```
 
-Returns the active server-generated math puzzle set for the current brain round.
+Returns the active server-generated math puzzle set for the current brain round. `expiresAt` is the server deadline; answers submitted after that time are rejected and the round can be completed.
+
+Response:
+
+```json
+{
+  "roundId": "round_123",
+  "roundNumber": 1,
+  "status": "ACTIVE",
+  "puzzles": ["7 + 12", "4 x 9"],
+  "totalQuestions": 10,
+  "whiteCorrectCount": 0,
+  "blackCorrectCount": 0,
+  "winnerPlayerId": null,
+  "startedAt": "2026-06-27T08:00:00Z",
+  "expiresAt": "2026-06-27T08:00:30Z",
+  "completedAt": null
+}
+```
 
 ```http
 POST /api/v1/matches/{matchId}/brain-rounds/current/answers
@@ -214,13 +232,46 @@ Request:
 }
 ```
 
-Returns whether the answer was correct and the player's current correct count.
+Returns whether the answer was correct and the player's current correct count. The correct answer is intentionally not returned while the round is active.
+
+Response:
+
+```json
+{
+  "correct": true,
+  "playerCorrectCount": 1,
+  "totalQuestions": 10
+}
+```
 
 ```http
 POST /api/v1/matches/{matchId}/brain-rounds/current/complete
 ```
 
-Completes the active round, awards Brain Points server-side, resumes the chess clock, and returns the completed brain-round result.
+Completes the active round, awards Brain Points server-side, resumes the chess clock, and returns the completed brain-round result. Completion is accepted only after the server deadline or after both players have answered every question.
+
+### Apply Power-Up
+
+```http
+POST /api/v1/matches/{matchId}/powerups
+```
+
+Request:
+
+```json
+{
+  "playerId": "user_1",
+  "type": "CLOCK_BOOST_30"
+}
+```
+
+Currently implemented powerups:
+
+| Type | Cost | Effect |
+| --- | ---: | --- |
+| `CLOCK_BOOST_30` | 1 Brain Point | Adds 30 seconds to that player's clock. If it is their active turn, the live clock deadline is extended too. |
+
+Response is the full match state.
 
 ### Resign
 

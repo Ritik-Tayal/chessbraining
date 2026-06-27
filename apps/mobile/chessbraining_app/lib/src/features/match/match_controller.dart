@@ -38,6 +38,14 @@ class MatchController extends ChangeNotifier {
   PlayerModel? get me => match?.playerById(playerId);
   bool get isMyTurn => me != null && match?.sideToMove == me!.side;
   bool get canMove => match?.isChessPhase == true && isMyTurn;
+  bool get canUseClockBoost {
+    final current = match;
+    final currentPlayer = me;
+    return current != null &&
+        current.isChessPhase &&
+        currentPlayer != null &&
+        currentPlayer.brainPoints >= 1;
+  }
 
   void updateApiBaseUrl(String value) {
     apiBaseUrl = value.trim();
@@ -185,6 +193,20 @@ class MatchController extends ChangeNotifier {
       _setMatch(await _api.resign(
         matchId: current.matchId,
         playerId: playerId,
+      ));
+    });
+  }
+
+  Future<void> applyClockBoost() {
+    final current = match;
+    if (current == null || !canUseClockBoost) {
+      return Future.value();
+    }
+    return _run(() async {
+      _setMatch(await _api.applyPowerup(
+        matchId: current.matchId,
+        playerId: playerId,
+        type: 'CLOCK_BOOST_30',
       ));
     });
   }

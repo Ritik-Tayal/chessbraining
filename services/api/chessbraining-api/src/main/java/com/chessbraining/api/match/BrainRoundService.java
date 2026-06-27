@@ -38,9 +38,12 @@ public class BrainRoundService {
 		this.objectMapper = objectMapper;
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public BrainRoundResponse getCurrentRound(String matchId) {
 		BrainRoundEntity round = loadActiveRound(matchId);
+		if (isExpired(round)) {
+			return completeActiveRound(round, loadMatch(matchId));
+		}
 		List<String> puzzles = parseExpressions(round.getPuzzleExpressions());
 		return toResponse(round, puzzles);
 	}
@@ -54,6 +57,14 @@ public class BrainRoundService {
 		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatch(matchId);
 		List<Integer> answers = parseAnswers(round.getPuzzleAnswers());
+		if (match.getPhase() != MatchPhase.BRAIN_ROUND) {
+			throw new ApiException(HttpStatus.CONFLICT, "NOT_IN_BRAIN_ROUND", "Match is not in a brain round.");
+		}
+		if (isExpired(round)) {
+			completeActiveRound(round, match);
+			throw new ApiException(HttpStatus.CONFLICT, "BRAIN_ROUND_EXPIRED",
+					"Brain round deadline has passed.");
+		}
 
 		if (request.questionIndex() < 0 || request.questionIndex() >= answers.size()) {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_QUESTION_INDEX",
@@ -63,11 +74,22 @@ public class BrainRoundService {
 		boolean correct = mathPuzzleService.validateAnswer(answers, request.questionIndex(), request.answer());
 
 		boolean isWhite = requirePlayerInMatch(match, request.playerId()).equals("WHITE");
+		int questionMask = 1 << request.questionIndex();
 		if (isWhite) {
+			if ((round.getWhiteAnsweredMask() & questionMask) != 0) {
+				throw new ApiException(HttpStatus.CONFLICT, "QUESTION_ALREADY_ANSWERED",
+						"This question was already answered by this player.");
+			}
+			round.setWhiteAnsweredMask(round.getWhiteAnsweredMask() | questionMask);
 			if (correct) {
 				round.setWhiteCorrectCount(round.getWhiteCorrectCount() + 1);
 			}
 		} else {
+			if ((round.getBlackAnsweredMask() & questionMask) != 0) {
+				throw new ApiException(HttpStatus.CONFLICT, "QUESTION_ALREADY_ANSWERED",
+						"This question was already answered by this player.");
+			}
+			round.setBlackAnsweredMask(round.getBlackAnsweredMask() | questionMask);
 			if (correct) {
 				round.setBlackCorrectCount(round.getBlackCorrectCount() + 1);
 			}
@@ -77,7 +99,6 @@ public class BrainRoundService {
 		int playerCorrectCount = isWhite ? round.getWhiteCorrectCount() : round.getBlackCorrectCount();
 		return new AnswerResultResponse(
 				correct,
-				answers.get(request.questionIndex()),
 				playerCorrectCount,
 				round.getTotalQuestions());
 	}
@@ -89,7 +110,15 @@ public class BrainRoundService {
 		if (match.getPhase() != MatchPhase.BRAIN_ROUND) {
 			throw new ApiException(HttpStatus.CONFLICT, "NOT_IN_BRAIN_ROUND", "Match is not in a brain round.");
 		}
+		if (!isExpired(round) && !bothPlayersAnsweredAll(round)) {
+			throw new ApiException(HttpStatus.CONFLICT, "BRAIN_ROUND_STILL_ACTIVE",
+					"Brain round can only complete after the deadline or after both players answer all questions.");
+		}
 
+		return completeActiveRound(round, match);
+	}
+
+	private BrainRoundResponse completeActiveRound(BrainRoundEntity round, MatchEntity match) {
 		int whiteScore = round.getWhiteCorrectCount();
 		int blackScore = round.getBlackCorrectCount();
 
@@ -142,6 +171,16 @@ public class BrainRoundService {
 		throw new ApiException(HttpStatus.FORBIDDEN, "PLAYER_NOT_IN_MATCH", "Player is not part of this match.");
 	}
 
+	private boolean isExpired(BrainRoundEntity round) {
+		return round.getExpiresAt() != null && !Instant.now().isBefore(round.getExpiresAt());
+	}
+
+	private boolean bothPlayersAnsweredAll(BrainRoundEntity round) {
+		int allAnsweredMask = (1 << round.getTotalQuestions()) - 1;
+		return (round.getWhiteAnsweredMask() & allAnsweredMask) == allAnsweredMask &&
+				(round.getBlackAnsweredMask() & allAnsweredMask) == allAnsweredMask;
+	}
+
 	private List<String> parseExpressions(String json) {
 		try {
 			return Arrays.asList(objectMapper.readValue(json, String[].class));
@@ -171,6 +210,7 @@ public class BrainRoundService {
 				round.getBlackCorrectCount(),
 				round.getWinnerPlayerId(),
 				round.getStartedAt(),
+				round.getExpiresAt(),
 				round.getCompletedAt());
 	}
 }

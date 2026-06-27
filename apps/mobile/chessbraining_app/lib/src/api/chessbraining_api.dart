@@ -130,6 +130,17 @@ class ChessbrainingApi {
     return getMatch(matchId);
   }
 
+  Future<MatchModel> applyPowerup({
+    required String matchId,
+    required String playerId,
+    required String type,
+  }) {
+    return _postMatch('/matches/$matchId/powerups', {
+      'playerId': playerId,
+      'type': type,
+    });
+  }
+
   Future<MatchModel> resign({
     required String matchId,
     required String playerId,

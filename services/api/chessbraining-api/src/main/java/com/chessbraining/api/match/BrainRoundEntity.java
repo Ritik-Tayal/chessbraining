@@ -50,8 +50,17 @@ public class BrainRoundEntity {
 	@Column(nullable = false)
 	private int blackCorrectCount;
 
+	@Column
+	private int whiteAnsweredMask;
+
+	@Column
+	private int blackAnsweredMask;
+
 	@Column(nullable = false)
 	private Instant startedAt;
+
+	@Column
+	private Instant expiresAt;
 
 	private Instant completedAt;
 
@@ -60,7 +69,9 @@ public class BrainRoundEntity {
 		if (id == null) {
 			id = UUID.randomUUID().toString();
 		}
-		startedAt = Instant.now();
+		if (startedAt == null) {
+			startedAt = Instant.now();
+		}
 	}
 
 	public String getId() {
@@ -159,12 +170,39 @@ public class BrainRoundEntity {
 		this.blackCorrectCount = blackCorrectCount;
 	}
 
+	public int getWhiteAnsweredMask() {
+		return whiteAnsweredMask;
+	}
+
+	public void setWhiteAnsweredMask(int whiteAnsweredMask) {
+		this.whiteAnsweredMask = whiteAnsweredMask;
+	}
+
+	public int getBlackAnsweredMask() {
+		return blackAnsweredMask;
+	}
+
+	public void setBlackAnsweredMask(int blackAnsweredMask) {
+		this.blackAnsweredMask = blackAnsweredMask;
+	}
+
 	public Instant getStartedAt() {
 		return startedAt;
 	}
 
 	public void setStartedAt(Instant startedAt) {
 		this.startedAt = startedAt;
+	}
+
+	public Instant getExpiresAt() {
+		if (expiresAt == null && startedAt != null) {
+			return startedAt.plusSeconds(30);
+		}
+		return expiresAt;
+	}
+
+	public void setExpiresAt(Instant expiresAt) {
+		this.expiresAt = expiresAt;
 	}
 
 	public Instant getCompletedAt() {

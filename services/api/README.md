@@ -81,6 +81,7 @@ Implemented endpoints:
 - `GET /matches/{matchId}/brain-rounds/current`
 - `POST /matches/{matchId}/brain-rounds/current/answers`
 - `POST /matches/{matchId}/brain-rounds/current/complete`
+- `POST /matches/{matchId}/powerups`
 - `POST /matches/{matchId}/resign`
 
 ## Notes

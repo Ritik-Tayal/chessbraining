@@ -13,5 +13,6 @@ public record BrainRoundResponse(
 		int blackCorrectCount,
 		String winnerPlayerId,
 		Instant startedAt,
+		Instant expiresAt,
 		Instant completedAt) {
 }

@@ -20,6 +20,7 @@ public class MatchService {
 
 	private static final int DEFAULT_TIME_CONTROL_SECONDS = 300;
 	private static final int DEFAULT_BRAIN_ROUND_INTERVAL_MOVES = 5;
+	private static final int DEFAULT_BRAIN_ROUND_SECONDS = 30;
 	private static final String BRAIN_ROUND_ACTIVE = "ACTIVE";
 	private static final String INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 	private static final SecureRandom RANDOM = new SecureRandom();
@@ -89,19 +90,16 @@ public class MatchService {
 	@Transactional
 	public MatchResponse getMatch(String matchId) {
 		MatchEntity match = loadMatch(matchId);
-		if (match.getStatus() == MatchStatus.ACTIVE && match.getPhase() == MatchPhase.CHESS_PHASE) {
-			String timedOutWinner = clockService.checkTimeout(match);
-			if (timedOutWinner != null) {
-				completeMatch(match, timedOutWinner, "TIMEOUT");
-				matchRepository.save(match);
-			}
-		}
+		completeOnTimeoutIfNeeded(match);
 		return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public List<LegalMoveResponse> legalMoves(String matchId, String playerId) {
 		MatchEntity match = loadMatch(matchId);
+		if (completeOnTimeoutIfNeeded(match)) {
+			throw new ApiException(HttpStatus.CONFLICT, "MATCH_TIMED_OUT", "The active player has timed out.");
+		}
 		requireActiveChessPhase(match);
 		requirePlayerTurn(match, playerId);
 		return chessService.legalMoves(match.getFen());
@@ -114,6 +112,9 @@ public class MatchService {
 		}
 
 		MatchEntity match = loadMatch(matchId);
+		if (completeOnTimeoutIfNeeded(match)) {
+			return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
+		}
 		requireActiveChessPhase(match);
 		String side = requirePlayerTurn(match, request.playerId());
 		String fenBefore = match.getFen();
@@ -237,11 +238,14 @@ public class MatchService {
 		match.setBrainRoundCount(match.getBrainRoundCount() + 1);
 
 		MathPuzzleService.PuzzleSet puzzleSet = mathPuzzleService.generatePuzzles();
+		Instant now = Instant.now();
 
 		BrainRoundEntity round = new BrainRoundEntity();
 		round.setMatchId(match.getId());
 		round.setRoundNumber(match.getBrainRoundCount());
 		round.setStatus(BRAIN_ROUND_ACTIVE);
+		round.setStartedAt(now);
+		round.setExpiresAt(now.plusSeconds(DEFAULT_BRAIN_ROUND_SECONDS));
 		try {
 			round.setPuzzleExpressions(objectMapper.writeValueAsString(puzzleSet.expressions()));
 			round.setPuzzleAnswers(objectMapper.writeValueAsString(puzzleSet.answers()));
@@ -252,6 +256,8 @@ public class MatchService {
 		round.setTotalQuestions(puzzleSet.expressions().size());
 		round.setWhiteCorrectCount(0);
 		round.setBlackCorrectCount(0);
+		round.setWhiteAnsweredMask(0);
+		round.setBlackAnsweredMask(0);
 		brainRoundRepository.save(round);
 	}
 
@@ -261,6 +267,19 @@ public class MatchService {
 		match.setWinnerPlayerId(winnerPlayerId);
 		match.setResultReason(reason);
 		match.setCompletedAt(Instant.now());
+	}
+
+	private boolean completeOnTimeoutIfNeeded(MatchEntity match) {
+		if (match.getStatus() != MatchStatus.ACTIVE || match.getPhase() != MatchPhase.CHESS_PHASE) {
+			return false;
+		}
+		String timedOutWinner = clockService.checkTimeout(match);
+		if (timedOutWinner == null) {
+			return false;
+		}
+		completeMatch(match, timedOutWinner, "TIMEOUT");
+		matchRepository.save(match);
+		return true;
 	}
 
 	private MatchResponse toResponse(MatchEntity match, List<MatchMoveEntity> moves) {

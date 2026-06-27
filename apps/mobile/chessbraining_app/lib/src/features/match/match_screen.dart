@@ -697,7 +697,8 @@ class _PowerToolbar extends StatelessWidget {
                 _PowerButton(
                   label: '+30 SEC',
                   icon: Icons.more_time,
-                  enabled: (controller.me?.brainPoints ?? 0) >= 1,
+                  enabled: controller.canUseClockBoost,
+                  onPressed: controller.applyClockBoost,
                 ),
                 _PowerButton(
                   label: match?.isBrainRound == true ? 'BRAIN' : 'ANALYZE',
@@ -718,12 +719,14 @@ class _PowerButton extends StatelessWidget {
     required this.label,
     required this.icon,
     required this.enabled,
+    this.onPressed,
     this.primary = false,
   });
 
   final String label;
   final IconData icon;
   final bool enabled;
+  final VoidCallback? onPressed;
   final bool primary;
 
   @override
@@ -737,28 +740,32 @@ class _PowerButton extends StatelessWidget {
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 120),
       opacity: enabled ? 1 : 0.42,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: background,
-          border: Border.all(color: primary && enabled ? AppColors.primary : AppColors.border),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: foreground),
-            const SizedBox(height: 3),
-            Text(
-              label,
-              style: TextStyle(
-                color: foreground,
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.6,
+      child: InkWell(
+        onTap: enabled ? onPressed : null,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: background,
+            border: Border.all(color: primary && enabled ? AppColors.primary : AppColors.border),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, color: foreground),
+              const SizedBox(height: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.6,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

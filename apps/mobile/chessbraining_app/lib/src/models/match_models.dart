@@ -158,6 +158,8 @@ class BrainRoundModel {
     required this.whiteCorrectCount,
     required this.blackCorrectCount,
     required this.winnerPlayerId,
+    required this.startedAt,
+    required this.expiresAt,
   });
 
   final String roundId;
@@ -168,6 +170,8 @@ class BrainRoundModel {
   final int whiteCorrectCount;
   final int blackCorrectCount;
   final String? winnerPlayerId;
+  final DateTime startedAt;
+  final DateTime expiresAt;
 
   factory BrainRoundModel.fromJson(Map<String, dynamic> json) {
     return BrainRoundModel(
@@ -181,6 +185,8 @@ class BrainRoundModel {
       whiteCorrectCount: json['whiteCorrectCount'] as int,
       blackCorrectCount: json['blackCorrectCount'] as int,
       winnerPlayerId: json['winnerPlayerId'] as String?,
+      startedAt: DateTime.parse(json['startedAt'] as String),
+      expiresAt: DateTime.parse(json['expiresAt'] as String),
     );
   }
 }
@@ -188,20 +194,17 @@ class BrainRoundModel {
 class AnswerResultModel {
   const AnswerResultModel({
     required this.correct,
-    required this.correctAnswer,
     required this.playerCorrectCount,
     required this.totalQuestions,
   });
 
   final bool correct;
-  final int correctAnswer;
   final int playerCorrectCount;
   final int totalQuestions;
 
   factory AnswerResultModel.fromJson(Map<String, dynamic> json) {
     return AnswerResultModel(
       correct: json['correct'] as bool,
-      correctAnswer: json['correctAnswer'] as int,
       playerCorrectCount: json['playerCorrectCount'] as int,
       totalQuestions: json['totalQuestions'] as int,
     );

@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 
+import '../../models/match_models.dart';
 import 'match_controller.dart';
 
 class BrainRoundOverlay extends StatefulWidget {
@@ -18,17 +19,13 @@ class BrainRoundOverlay extends StatefulWidget {
 }
 
 class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
-  static const totalSeconds = 20;
-
   Timer? timer;
   String answer = '';
-  int secondsLeft = totalSeconds;
   int questionIndex = 0;
   int score = 0;
   bool finished = false;
   bool wrong = false;
   bool submitting = false;
-  int? lastCorrectAnswer;
 
   @override
   void initState() {
@@ -38,13 +35,13 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       if (!mounted) {
         return;
       }
-      setState(() {
-        secondsLeft = max(0, secondsLeft - 1);
-        if (secondsLeft == 0) {
-          finished = true;
-          timer?.cancel();
-        }
-      });
+      final round = widget.controller.brainRound;
+      if (round != null && _remainingSeconds(round) == 0) {
+        setState(() => finished = true);
+        timer?.cancel();
+        return;
+      }
+      setState(() {});
     });
   }
 
@@ -56,16 +53,19 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    final progress = secondsLeft / totalSeconds;
     final match = widget.controller.match!;
     final round = widget.controller.brainRound;
     final puzzles = round?.puzzles ?? const <String>[];
     final safeIndex = puzzles.isEmpty ? 0 : min(questionIndex, puzzles.length - 1);
     final currentPuzzle = puzzles.isEmpty ? 'Loading puzzle...' : puzzles[safeIndex];
+    final secondsLeft = round == null ? 30 : _remainingSeconds(round);
+    final totalSeconds = round == null ? 30 : _durationSeconds(round);
+    final progress = totalSeconds == 0 ? 0.0 : secondsLeft / totalSeconds;
     final serverScore = match.white.playerId == widget.controller.playerId
         ? round?.whiteCorrectCount ?? 0
         : round?.blackCorrectCount ?? 0;
     final displayedScore = max(score, serverScore);
+    final deadlinePassed = round != null && secondsLeft == 0;
 
     return Positioned.fill(
       child: Material(
@@ -200,11 +200,11 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                               ),
                             ),
                           ),
-                          if (lastCorrectAnswer != null && wrong) ...[
+                          if (wrong) ...[
                             const SizedBox(height: 14),
-                            Text(
-                              'Correct answer: $lastCorrectAnswer',
-                              style: const TextStyle(
+                            const Text(
+                              'Not scored',
+                              style: TextStyle(
                                 color: Color(0xffffb4ab),
                                 fontWeight: FontWeight.w800,
                               ),
@@ -245,10 +245,10 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                         _StatPill(label: 'BLACK BP', value: '${match.black?.brainPoints ?? 0}'),
                         const Spacer(),
                         FilledButton(
-                          onPressed: submitting || (displayedScore == 0 && !finished)
+                          onPressed: submitting || !deadlinePassed
                               ? null
                               : () => widget.controller.completeBrainRound(),
-                          child: Text(finished ? 'Complete Round' : 'Complete $displayedScore'),
+                          child: Text(deadlinePassed ? 'Complete Round' : 'Locked ${secondsLeft}s'),
                         ),
                       ],
                     ),
@@ -262,7 +262,26 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     );
   }
 
-  bool get _inputEnabled => !finished && !submitting && widget.controller.brainRound != null;
+  bool get _inputEnabled {
+    final round = widget.controller.brainRound;
+    return round != null && !finished && !submitting && _remainingSeconds(round) > 0;
+  }
+
+  int _remainingSeconds(BrainRoundModel round) {
+    final remainingMs = round.expiresAt.difference(DateTime.now().toUtc()).inMilliseconds;
+    if (remainingMs <= 0) {
+      return 0;
+    }
+    return (remainingMs + 999) ~/ 1000;
+  }
+
+  int _durationSeconds(BrainRoundModel round) {
+    final durationMs = round.expiresAt.difference(round.startedAt).inMilliseconds;
+    if (durationMs <= 0) {
+      return 0;
+    }
+    return (durationMs + 999) ~/ 1000;
+  }
 
   void _append(String value) {
     if (answer.length >= 5) {
@@ -304,11 +323,9 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       submitting = false;
       wrong = !result.correct;
       score = result.playerCorrectCount;
-      lastCorrectAnswer = result.correct ? null : result.correctAnswer;
       questionIndex = min(nextIndex, max(0, result.totalQuestions - 1));
       if (nextIndex >= result.totalQuestions) {
         finished = true;
-        timer?.cancel();
       }
     });
     Future<void>.delayed(const Duration(milliseconds: 350), () {
