@@ -148,6 +148,113 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(jsonPath("$.black.brainPoints").value(0));
 	}
 
+	@Test
+	void clockDeadlineIsSetWhenMatchStarts() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty())
+				.andExpect(jsonPath("$.white.clockMs").value(300000))
+				.andExpect(jsonPath("$.black.clockMs").value(300000));
+	}
+
+	@Test
+	void clockTicksDownAfterMove() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.white.clockMs").value(org.hamcrest.Matchers.lessThan(300000)))
+				.andExpect(jsonPath("$.black.clockMs").value(300000));
+	}
+
+	@Test
+	void clockPausesDuringBrainRound() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.phase").value("BRAIN_ROUND"))
+				.andExpect(jsonPath("$.clockDeadlineAt").isEmpty());
+	}
+
+	@Test
+	void clockResumesAfterBrainRound() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/complete", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "winnerPlayerId": "white-player",
+								  "whiteScore": 5,
+								  "blackScore": 3
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"));
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
+	}
+
+	@Test
+	void timeoutEndsMatch() throws Exception {
+		String created = mockMvc.perform(post("/api/v1/matches")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "playerName": "White",
+								  "timeControlSeconds": 30,
+								  "brainRoundIntervalMoves": 20
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+		JsonNode createdNode = objectMapper.readTree(created);
+
+		String joinedResponse = mockMvc.perform(post("/api/v1/matches/join")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "inviteCode": "%s",
+								  "playerId": "black-player",
+								  "playerName": "Black"
+								}
+								""".formatted(createdNode.get("inviteCode").asText())))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+		JsonNode joined = objectMapper.readTree(joinedResponse);
+		String matchId = joined.get("matchId").asText();
+
+		Thread.sleep(31000);
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("COMPLETED"))
+				.andExpect(jsonPath("$.resultReason").value("TIMEOUT"))
+				.andExpect(jsonPath("$.winnerPlayerId").value("black-player"));
+	}
+
 	private JsonNode createJoinedMatch(int brainRoundIntervalMoves) throws Exception {
 		JsonNode created = createMatch("white-player", "Ritik", brainRoundIntervalMoves);
 		String joined = mockMvc.perform(post("/api/v1/matches/join")

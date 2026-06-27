@@ -18,6 +18,7 @@ public record MatchResponse(
 		String winnerPlayerId,
 		String resultReason,
 		List<MoveResponse> moves,
+		Instant clockDeadlineAt,
 		Instant createdAt,
 		Instant updatedAt) {
 }
