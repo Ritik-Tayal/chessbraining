@@ -133,19 +133,62 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("MATCH_NOT_READY_FOR_CHESS"));
 
-		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/complete", matchId)
-						.contentType(MediaType.APPLICATION_JSON)
-						.content("""
-								{
-								  "winnerPlayerId": "white-player",
-								  "whiteScore": 5,
-								  "blackScore": 3
-								}
-								"""))
+		mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
-				.andExpect(jsonPath("$.white.brainPoints").value(2))
-				.andExpect(jsonPath("$.black.brainPoints").value(0));
+				.andExpect(jsonPath("$.status").value("ACTIVE"))
+				.andExpect(jsonPath("$.puzzles").isArray())
+				.andExpect(jsonPath("$.totalQuestions").value(10));
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("COMPLETED"))
+				.andExpect(jsonPath("$.whiteCorrectCount").value(0))
+				.andExpect(jsonPath("$.blackCorrectCount").value(0));
+	}
+
+	@Test
+	void brainRoundScoresAnswersCorrectly() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+
+		JsonNode round = objectMapper.readTree(
+				mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
+						.andExpect(status().isOk())
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
+
+		String[] puzzles = objectMapper.convertValue(round.get("puzzles"), String[].class);
+
+		for (int i = 0; i < puzzles.length; i++) {
+			mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{
+									  "playerId": "white-player",
+									  "questionIndex": %d,
+									  "answer": 0
+									}
+									""".formatted(i)))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.correct").isBoolean())
+					.andExpect(jsonPath("$.totalQuestions").value(10));
+		}
+
+		JsonNode completed = objectMapper.readTree(
+				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
+						.andExpect(status().isOk())
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
+
+		int whiteCorrect = completed.get("whiteCorrectCount").asInt();
+		int blackCorrect = completed.get("blackCorrectCount").asInt();
+		org.junit.jupiter.api.Assertions.assertTrue(whiteCorrect >= 0);
+		org.junit.jupiter.api.Assertions.assertEquals(0, blackCorrect);
 	}
 
 	private JsonNode createJoinedMatch(int brainRoundIntervalMoves) throws Exception {

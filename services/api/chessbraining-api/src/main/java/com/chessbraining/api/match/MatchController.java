@@ -67,15 +67,6 @@ public class MatchController {
 		return response;
 	}
 
-	@PostMapping("/{matchId}/brain-rounds/complete")
-	public MatchResponse completeBrainRound(
-			@PathVariable String matchId,
-			@RequestBody(required = false) CompleteBrainRoundRequest request) {
-		MatchResponse response = matchService.completeBrainRound(matchId, request);
-		realtimeService.publishMatchState(response);
-		return response;
-	}
-
 	@PostMapping("/{matchId}/resign")
 	public MatchResponse resign(
 			@PathVariable String matchId,

@@ -6,6 +6,7 @@ import java.util.UUID;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
+import jakarta.persistence.Lob;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 
@@ -31,6 +32,23 @@ public class BrainRoundEntity {
 
 	private Integer whiteScore;
 	private Integer blackScore;
+
+	@Lob
+	@Column(nullable = false)
+	private String puzzleExpressions;
+
+	@Lob
+	@Column(nullable = false)
+	private String puzzleAnswers;
+
+	@Column(nullable = false)
+	private int totalQuestions;
+
+	@Column(nullable = false)
+	private int whiteCorrectCount;
+
+	@Column(nullable = false)
+	private int blackCorrectCount;
 
 	@Column(nullable = false)
 	private Instant startedAt;
@@ -99,6 +117,46 @@ public class BrainRoundEntity {
 
 	public void setBlackScore(Integer blackScore) {
 		this.blackScore = blackScore;
+	}
+
+	public String getPuzzleExpressions() {
+		return puzzleExpressions;
+	}
+
+	public void setPuzzleExpressions(String puzzleExpressions) {
+		this.puzzleExpressions = puzzleExpressions;
+	}
+
+	public String getPuzzleAnswers() {
+		return puzzleAnswers;
+	}
+
+	public void setPuzzleAnswers(String puzzleAnswers) {
+		this.puzzleAnswers = puzzleAnswers;
+	}
+
+	public int getTotalQuestions() {
+		return totalQuestions;
+	}
+
+	public void setTotalQuestions(int totalQuestions) {
+		this.totalQuestions = totalQuestions;
+	}
+
+	public int getWhiteCorrectCount() {
+		return whiteCorrectCount;
+	}
+
+	public void setWhiteCorrectCount(int whiteCorrectCount) {
+		this.whiteCorrectCount = whiteCorrectCount;
+	}
+
+	public int getBlackCorrectCount() {
+		return blackCorrectCount;
+	}
+
+	public void setBlackCorrectCount(int blackCorrectCount) {
+		this.blackCorrectCount = blackCorrectCount;
 	}
 
 	public Instant getStartedAt() {
