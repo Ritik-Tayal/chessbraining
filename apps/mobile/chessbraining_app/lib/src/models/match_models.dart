@@ -147,3 +147,63 @@ class LegalMoveModel {
     );
   }
 }
+
+class BrainRoundModel {
+  const BrainRoundModel({
+    required this.roundId,
+    required this.roundNumber,
+    required this.status,
+    required this.puzzles,
+    required this.totalQuestions,
+    required this.whiteCorrectCount,
+    required this.blackCorrectCount,
+    required this.winnerPlayerId,
+  });
+
+  final String roundId;
+  final int roundNumber;
+  final String status;
+  final List<String> puzzles;
+  final int totalQuestions;
+  final int whiteCorrectCount;
+  final int blackCorrectCount;
+  final String? winnerPlayerId;
+
+  factory BrainRoundModel.fromJson(Map<String, dynamic> json) {
+    return BrainRoundModel(
+      roundId: json['roundId'] as String,
+      roundNumber: json['roundNumber'] as int,
+      status: json['status'] as String,
+      puzzles: (json['puzzles'] as List<dynamic>)
+          .map((item) => item.toString())
+          .toList(),
+      totalQuestions: json['totalQuestions'] as int,
+      whiteCorrectCount: json['whiteCorrectCount'] as int,
+      blackCorrectCount: json['blackCorrectCount'] as int,
+      winnerPlayerId: json['winnerPlayerId'] as String?,
+    );
+  }
+}
+
+class AnswerResultModel {
+  const AnswerResultModel({
+    required this.correct,
+    required this.correctAnswer,
+    required this.playerCorrectCount,
+    required this.totalQuestions,
+  });
+
+  final bool correct;
+  final int correctAnswer;
+  final int playerCorrectCount;
+  final int totalQuestions;
+
+  factory AnswerResultModel.fromJson(Map<String, dynamic> json) {
+    return AnswerResultModel(
+      correct: json['correct'] as bool,
+      correctAnswer: json['correctAnswer'] as int,
+      playerCorrectCount: json['playerCorrectCount'] as int,
+      totalQuestions: json['totalQuestions'] as int,
+    );
+  }
+}

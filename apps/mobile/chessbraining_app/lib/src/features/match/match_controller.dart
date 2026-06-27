@@ -27,10 +27,12 @@ class MatchController extends ChangeNotifier {
   late final String playerId = 'player_${DateTime.now().microsecondsSinceEpoch}';
 
   MatchModel? match;
+  BrainRoundModel? brainRound;
   List<LegalMoveModel> legalMoves = const [];
   String? selectedSquare;
   String? error;
   bool loading = false;
+  bool brainRoundLoading = false;
   bool realtimeConnected = false;
 
   PlayerModel? get me => match?.playerById(playerId);
@@ -118,35 +120,60 @@ class MatchController extends ChangeNotifier {
     });
   }
 
-  Future<void> completeBrainRound(
-    String? winnerPlayerId, {
-    int? whiteScore,
-    int? blackScore,
-  }) {
+  Future<void> loadCurrentBrainRound() async {
+    final current = match;
+    if (current == null || !current.isBrainRound) {
+      brainRound = null;
+      return;
+    }
+    brainRoundLoading = true;
+    notifyListeners();
+    try {
+      brainRound = await _api.getCurrentBrainRound(current.matchId);
+    } on ApiException catch (exception) {
+      error = exception.message;
+    } catch (exception) {
+      error = exception.toString();
+    } finally {
+      brainRoundLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<AnswerResultModel?> submitBrainRoundAnswer({
+    required int questionIndex,
+    required int answer,
+  }) async {
+    final current = match;
+    if (current == null) {
+      return null;
+    }
+    try {
+      final result = await _api.submitBrainRoundAnswer(
+        matchId: current.matchId,
+        playerId: playerId,
+        questionIndex: questionIndex,
+        answer: answer,
+      );
+      await loadCurrentBrainRound();
+      return result;
+    } on ApiException catch (exception) {
+      error = exception.message;
+    } catch (exception) {
+      error = exception.toString();
+    }
+    notifyListeners();
+    return null;
+  }
+
+  Future<void> completeBrainRound() {
     final current = match;
     if (current == null) {
       return Future.value();
     }
     return _run(() async {
-      _setMatch(await _api.completeBrainRound(
-        matchId: current.matchId,
-        winnerPlayerId: winnerPlayerId,
-        whiteScore: whiteScore ?? (winnerPlayerId == current.white.playerId ? 5 : 3),
-        blackScore: blackScore ?? (winnerPlayerId == current.black?.playerId ? 5 : 3),
-      ));
+      _setMatch(await _api.completeBrainRound(matchId: current.matchId));
     });
-  }
-
-  Future<void> claimBrainRoundWin(int score) {
-    final current = match;
-    if (current == null) {
-      return Future.value();
-    }
-    return completeBrainRound(
-      playerId,
-      whiteScore: current.white.playerId == playerId ? score : 0,
-      blackScore: current.black?.playerId == playerId ? score : 0,
-    );
   }
 
   Future<void> resign() {
@@ -186,8 +213,14 @@ class MatchController extends ChangeNotifier {
     final previousMatchId = match?.matchId;
     match = value;
     selectedSquare = null;
+    if (!value.isBrainRound) {
+      brainRound = null;
+    }
     _connectRealtimeIfNeeded(previousMatchId);
     _loadLegalMoves().then((_) => notifyListeners());
+    if (value.isBrainRound) {
+      loadCurrentBrainRound();
+    }
     notifyListeners();
   }
 
@@ -203,7 +236,13 @@ class MatchController extends ChangeNotifier {
       onMatch: (value) {
         match = value;
         selectedSquare = null;
+        if (!value.isBrainRound) {
+          brainRound = null;
+        }
         _loadLegalMoves().then((_) => notifyListeners());
+        if (value.isBrainRound) {
+          loadCurrentBrainRound();
+        }
         notifyListeners();
       },
       onConnectionChanged: (value) {

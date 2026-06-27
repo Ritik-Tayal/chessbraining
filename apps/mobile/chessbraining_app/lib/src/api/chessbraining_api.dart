@@ -93,17 +93,41 @@ class ChessbrainingApi {
     });
   }
 
+  Future<BrainRoundModel> getCurrentBrainRound(String matchId) async {
+    final response = await _client.get(
+      _uri('/matches/$matchId/brain-rounds/current'),
+    );
+    final body = _decodeResponse(response);
+    return BrainRoundModel.fromJson(body as Map<String, dynamic>);
+  }
+
+  Future<AnswerResultModel> submitBrainRoundAnswer({
+    required String matchId,
+    required String playerId,
+    required int questionIndex,
+    required int answer,
+  }) async {
+    final response = await _client.post(
+      _uri('/matches/$matchId/brain-rounds/current/answers'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'playerId': playerId,
+        'questionIndex': questionIndex,
+        'answer': answer,
+      }),
+    );
+    final body = _decodeResponse(response);
+    return AnswerResultModel.fromJson(body as Map<String, dynamic>);
+  }
+
   Future<MatchModel> completeBrainRound({
     required String matchId,
-    String? winnerPlayerId,
-    int? whiteScore,
-    int? blackScore,
-  }) {
-    return _postMatch('/matches/$matchId/brain-rounds/complete', {
-      'winnerPlayerId': winnerPlayerId,
-      'whiteScore': whiteScore,
-      'blackScore': blackScore,
-    });
+  }) async {
+    final response = await _client.post(
+      _uri('/matches/$matchId/brain-rounds/current/complete'),
+    );
+    _decodeResponse(response);
+    return getMatch(matchId);
   }
 
   Future<MatchModel> resign({

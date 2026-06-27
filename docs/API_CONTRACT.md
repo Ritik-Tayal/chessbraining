@@ -192,23 +192,35 @@ Request:
 
 Response is the full match state.
 
-### Complete Brain Round
+### Brain Round
 
 ```http
-POST /api/v1/matches/{matchId}/brain-rounds/complete
+GET /api/v1/matches/{matchId}/brain-rounds/current
+```
+
+Returns the active server-generated math puzzle set for the current brain round.
+
+```http
+POST /api/v1/matches/{matchId}/brain-rounds/current/answers
 ```
 
 Request:
 
 ```json
 {
-  "winnerPlayerId": "user_1",
-  "whiteScore": 5,
-  "blackScore": 3
+  "playerId": "user_1",
+  "questionIndex": 0,
+  "answer": 42
 }
 ```
 
-If `winnerPlayerId` is omitted or blank, the backend treats the brain round as tied and gives both players 1 Brain Point.
+Returns whether the answer was correct and the player's current correct count.
+
+```http
+POST /api/v1/matches/{matchId}/brain-rounds/current/complete
+```
+
+Completes the active round, awards Brain Points server-side, resumes the chess clock, and returns the completed brain-round result.
 
 ### Resign
 
@@ -362,8 +374,8 @@ Planned STOMP command shape:
   "payload": {
     "roundId": "round_123",
     "winnerPlayerId": "user_1",
-    "whiteScore": 8,
-    "blackScore": 6,
+    "whiteCorrectCount": 8,
+    "blackCorrectCount": 6,
     "whiteBrainPointsDelta": 2,
     "blackBrainPointsDelta": 0
   }

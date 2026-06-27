@@ -19,20 +19,21 @@ class BrainRoundOverlay extends StatefulWidget {
 
 class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   static const totalSeconds = 20;
-  final random = Random();
 
   Timer? timer;
-  late _Problem problem;
   String answer = '';
   int secondsLeft = totalSeconds;
+  int questionIndex = 0;
   int score = 0;
   bool finished = false;
   bool wrong = false;
+  bool submitting = false;
+  int? lastCorrectAnswer;
 
   @override
   void initState() {
     super.initState();
-    problem = _Problem.random(random);
+    widget.controller.loadCurrentBrainRound();
     timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) {
         return;
@@ -57,6 +58,14 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   Widget build(BuildContext context) {
     final progress = secondsLeft / totalSeconds;
     final match = widget.controller.match!;
+    final round = widget.controller.brainRound;
+    final puzzles = round?.puzzles ?? const <String>[];
+    final safeIndex = puzzles.isEmpty ? 0 : min(questionIndex, puzzles.length - 1);
+    final currentPuzzle = puzzles.isEmpty ? 'Loading puzzle...' : puzzles[safeIndex];
+    final serverScore = match.white.playerId == widget.controller.playerId
+        ? round?.whiteCorrectCount ?? 0
+        : round?.blackCorrectCount ?? 0;
+    final displayedScore = max(score, serverScore);
 
     return Positioned.fill(
       child: Material(
@@ -84,7 +93,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                             ),
                           ),
                         ),
-                        _StatPill(label: 'SCORE', value: '$score'),
+                        _StatPill(label: 'SCORE', value: '$displayedScore'),
                       ],
                     ),
                     const SizedBox(height: 28),
@@ -165,7 +174,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                           ),
                           const SizedBox(height: 22),
                           Text(
-                            problem.label,
+                            currentPuzzle,
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 44,
@@ -191,6 +200,16 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                               ),
                             ),
                           ),
+                          if (lastCorrectAnswer != null && wrong) ...[
+                            const SizedBox(height: 14),
+                            Text(
+                              'Correct answer: $lastCorrectAnswer',
+                              style: const TextStyle(
+                                color: Color(0xffffb4ab),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -203,17 +222,17 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                         childAspectRatio: 1.45,
                         children: [
                           for (final value in ['1', '2', '3', '4', '5', '6', '7', '8', '9'])
-                            _KeyButton(label: value, onPressed: finished ? null : () => _append(value)),
+                            _KeyButton(label: value, onPressed: _inputEnabled ? () => _append(value) : null),
                           _KeyButton(
                             icon: Icons.backspace_outlined,
                             color: const Color(0xffffb4ab),
-                            onPressed: finished ? null : _backspace,
+                            onPressed: _inputEnabled ? _backspace : null,
                           ),
-                          _KeyButton(label: '0', onPressed: finished ? null : () => _append('0')),
+                          _KeyButton(label: '0', onPressed: _inputEnabled ? () => _append('0') : null),
                           _KeyButton(
                             icon: Icons.check_circle_outline,
                             filled: true,
-                            onPressed: finished ? null : _submit,
+                            onPressed: _inputEnabled && answer.isNotEmpty ? _submit : null,
                           ),
                         ],
                       ),
@@ -226,10 +245,10 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                         _StatPill(label: 'BLACK BP', value: '${match.black?.brainPoints ?? 0}'),
                         const Spacer(),
                         FilledButton(
-                          onPressed: score == 0 && !finished
+                          onPressed: submitting || (displayedScore == 0 && !finished)
                               ? null
-                              : () => widget.controller.claimBrainRoundWin(score),
-                          child: Text(finished ? 'Claim Round' : 'Claim $score'),
+                              : () => widget.controller.completeBrainRound(),
+                          child: Text(finished ? 'Complete Round' : 'Complete $displayedScore'),
                         ),
                       ],
                     ),
@@ -242,6 +261,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       ),
     );
   }
+
+  bool get _inputEnabled => !finished && !submitting && widget.controller.brainRound != null;
 
   void _append(String value) {
     if (answer.length >= 5) {
@@ -257,49 +278,44 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     setState(() => answer = answer.substring(0, answer.length - 1));
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final parsed = int.tryParse(answer);
-    if (parsed == problem.answer) {
-      setState(() {
-        score += 1;
-        answer = '';
-        problem = _Problem.random(random);
-        wrong = false;
-        if (score >= 5) {
-          finished = true;
-          timer?.cancel();
-        }
-      });
+    final round = widget.controller.brainRound;
+    if (parsed == null || round == null) {
       return;
     }
 
+    setState(() => submitting = true);
+    final result = await widget.controller.submitBrainRoundAnswer(
+      questionIndex: questionIndex,
+      answer: parsed,
+    );
+    if (!mounted) {
+      return;
+    }
+    if (result == null) {
+      setState(() => submitting = false);
+      return;
+    }
+
+    final nextIndex = questionIndex + 1;
     setState(() {
       answer = '';
-      wrong = true;
+      submitting = false;
+      wrong = !result.correct;
+      score = result.playerCorrectCount;
+      lastCorrectAnswer = result.correct ? null : result.correctAnswer;
+      questionIndex = min(nextIndex, max(0, result.totalQuestions - 1));
+      if (nextIndex >= result.totalQuestions) {
+        finished = true;
+        timer?.cancel();
+      }
     });
     Future<void>.delayed(const Duration(milliseconds: 350), () {
       if (mounted) {
         setState(() => wrong = false);
       }
     });
-  }
-}
-
-class _Problem {
-  const _Problem(this.label, this.answer);
-
-  final String label;
-  final int answer;
-
-  factory _Problem.random(Random random) {
-    final a = random.nextInt(18) + 7;
-    final b = random.nextInt(8) + 2;
-    final c = random.nextInt(35) + 6;
-    final plus = random.nextBool();
-    return _Problem(
-      plus ? '$a x $b + $c' : '$a x $b - $c',
-      plus ? a * b + c : a * b - c,
-    );
   }
 }
 

@@ -21,7 +21,6 @@ public class MatchService {
 	private static final int DEFAULT_TIME_CONTROL_SECONDS = 300;
 	private static final int DEFAULT_BRAIN_ROUND_INTERVAL_MOVES = 5;
 	private static final String BRAIN_ROUND_ACTIVE = "ACTIVE";
-	private static final String BRAIN_ROUND_COMPLETED = "COMPLETED";
 	private static final String INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 	private static final SecureRandom RANDOM = new SecureRandom();
 
@@ -30,18 +29,24 @@ public class MatchService {
 	private final BrainRoundRepository brainRoundRepository;
 	private final ChessService chessService;
 	private final ClockService clockService;
+	private final MathPuzzleService mathPuzzleService;
+	private final tools.jackson.databind.ObjectMapper objectMapper;
 
 	public MatchService(
 			MatchRepository matchRepository,
 			MatchMoveRepository moveRepository,
 			BrainRoundRepository brainRoundRepository,
 			ChessService chessService,
-			ClockService clockService) {
+			ClockService clockService,
+			MathPuzzleService mathPuzzleService,
+			tools.jackson.databind.ObjectMapper objectMapper) {
 		this.matchRepository = matchRepository;
 		this.moveRepository = moveRepository;
 		this.brainRoundRepository = brainRoundRepository;
 		this.chessService = chessService;
 		this.clockService = clockService;
+		this.mathPuzzleService = mathPuzzleService;
+		this.objectMapper = objectMapper;
 	}
 
 	@Transactional
@@ -81,7 +86,7 @@ public class MatchService {
 		return joinExistingMatch(match, request);
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public MatchResponse getMatch(String matchId) {
 		MatchEntity match = loadMatch(matchId);
 		if (match.getStatus() == MatchStatus.ACTIVE && match.getPhase() == MatchPhase.CHESS_PHASE) {
@@ -159,46 +164,6 @@ public class MatchService {
 	}
 
 	@Transactional
-	public MatchResponse completeBrainRound(String matchId, CompleteBrainRoundRequest request) {
-		MatchEntity match = loadMatch(matchId);
-		if (match.getPhase() != MatchPhase.BRAIN_ROUND) {
-			throw new ApiException(HttpStatus.CONFLICT, "NOT_IN_BRAIN_ROUND", "Match is not in a brain round.");
-		}
-
-		BrainRoundEntity round = brainRoundRepository
-				.findFirstByMatchIdAndStatusOrderByRoundNumberDesc(match.getId(), BRAIN_ROUND_ACTIVE)
-				.orElseThrow(() -> new ApiException(HttpStatus.CONFLICT, "BRAIN_ROUND_NOT_FOUND",
-						"No active brain round was found."));
-
-		String winnerPlayerId = request == null ? null : request.winnerPlayerId();
-		if (!isBlank(winnerPlayerId)) {
-			requirePlayerInMatch(match, winnerPlayerId);
-			if (winnerPlayerId.equals(match.getWhitePlayerId())) {
-				match.setWhiteBrainPoints(match.getWhiteBrainPoints() + 2);
-			}
-			else {
-				match.setBlackBrainPoints(match.getBlackBrainPoints() + 2);
-			}
-			round.setWinnerPlayerId(winnerPlayerId);
-		}
-		else {
-			match.setWhiteBrainPoints(match.getWhiteBrainPoints() + 1);
-			match.setBlackBrainPoints(match.getBlackBrainPoints() + 1);
-		}
-
-		round.setWhiteScore(request == null ? null : request.whiteScore());
-		round.setBlackScore(request == null ? null : request.blackScore());
-		round.setStatus(BRAIN_ROUND_COMPLETED);
-		round.setCompletedAt(Instant.now());
-		brainRoundRepository.save(round);
-
-		match.setPhase(MatchPhase.CHESS_PHASE);
-		clockService.resumeAfterBrainRound(match);
-		MatchEntity saved = matchRepository.save(match);
-		return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
-	}
-
-	@Transactional
 	public MatchResponse resign(String matchId, String playerId) {
 		MatchEntity match = loadMatch(matchId);
 		requirePlayerInMatch(match, playerId);
@@ -271,10 +236,22 @@ public class MatchService {
 		match.setPhase(MatchPhase.BRAIN_ROUND);
 		match.setBrainRoundCount(match.getBrainRoundCount() + 1);
 
+		MathPuzzleService.PuzzleSet puzzleSet = mathPuzzleService.generatePuzzles();
+
 		BrainRoundEntity round = new BrainRoundEntity();
 		round.setMatchId(match.getId());
 		round.setRoundNumber(match.getBrainRoundCount());
 		round.setStatus(BRAIN_ROUND_ACTIVE);
+		try {
+			round.setPuzzleExpressions(objectMapper.writeValueAsString(puzzleSet.expressions()));
+			round.setPuzzleAnswers(objectMapper.writeValueAsString(puzzleSet.answers()));
+		} catch (tools.jackson.core.JacksonException e) {
+			throw new org.springframework.web.server.ResponseStatusException(
+					org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Failed to serialize puzzles");
+		}
+		round.setTotalQuestions(puzzleSet.expressions().size());
+		round.setWhiteCorrectCount(0);
+		round.setBlackCorrectCount(0);
 		brainRoundRepository.save(round);
 	}
 

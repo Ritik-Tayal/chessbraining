@@ -78,7 +78,9 @@ Implemented endpoints:
 - `GET /matches/{matchId}`
 - `GET /matches/{matchId}/legal-moves?playerId={playerId}`
 - `POST /matches/{matchId}/moves`
-- `POST /matches/{matchId}/brain-rounds/complete`
+- `GET /matches/{matchId}/brain-rounds/current`
+- `POST /matches/{matchId}/brain-rounds/current/answers`
+- `POST /matches/{matchId}/brain-rounds/current/complete`
 - `POST /matches/{matchId}/resign`
 
 ## Notes
