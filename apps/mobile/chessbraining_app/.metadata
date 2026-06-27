@@ -1,0 +1,18 @@
+# This file tracks properties of this Flutter project.
+# Used by Flutter tooling to assess capabilities and perform upgrades.
+
+version:
+  revision: "manual-initial-slice"
+  channel: "stable"
+
+project_type: app
+
+migration:
+  platforms:
+    - platform: web
+      create_revision: "manual-initial-slice"
+      base_revision: "manual-initial-slice"
+
+  unmanaged_files:
+    - "lib/main.dart"
+    - "web/index.html"

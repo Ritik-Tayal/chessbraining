@@ -1,6 +1,6 @@
 # API Contract
 
-This is the initial API design. Treat it as a planning contract until implementation begins.
+This is the API design and current backend contract. WebSocket commands remain planned; the first implemented slice uses REST.
 
 ## REST API
 
@@ -67,9 +67,10 @@ Request:
 
 ```json
 {
+  "playerId": "user_1",
+  "playerName": "Ritik",
   "timeControlSeconds": 300,
-  "brainRoundIntervalMoves": 5,
-  "mode": "BRAIN_POINTS"
+  "brainRoundIntervalMoves": 5
 }
 ```
 
@@ -77,11 +78,32 @@ Response:
 
 ```json
 {
-  "matchId": "match_123",
+  "matchId": "7366e4a7-2bbb-48f2-824e-09db9c3c2d7b",
   "inviteCode": "ABCD12",
-  "status": "WAITING_FOR_OPPONENT"
+  "status": "WAITING_FOR_OPPONENT",
+  "phase": "WAITING_FOR_OPPONENT",
+  "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "sideToMove": "WHITE",
+  "white": {
+    "playerId": "user_1",
+    "playerName": "Ritik",
+    "side": "WHITE",
+    "brainPoints": 0,
+    "clockMs": 300000
+  },
+  "black": null
 }
 ```
+
+### Quickplay
+
+```http
+POST /api/v1/matches/quickplay
+```
+
+Joins the oldest waiting match if available. Otherwise creates a new waiting match.
+
+Request body matches `POST /api/v1/matches`.
 
 ### Join Match
 
@@ -93,7 +115,9 @@ Request:
 
 ```json
 {
-  "inviteCode": "ABCD12"
+  "inviteCode": "ABCD12",
+  "playerId": "user_2",
+  "playerName": "Teammate"
 }
 ```
 
@@ -108,19 +132,164 @@ Response:
 ```json
 {
   "matchId": "match_123",
-  "status": "CHESS_PHASE",
-  "fen": "startpos",
-  "whitePlayerId": "user_1",
-  "blackPlayerId": "user_2",
+  "status": "ACTIVE",
+  "phase": "CHESS_PHASE",
+  "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
   "sideToMove": "WHITE",
-  "whiteClockMs": 300000,
-  "blackClockMs": 300000,
-  "whiteBrainPoints": 0,
-  "blackBrainPoints": 0
+  "plyCount": 0,
+  "white": {
+    "playerId": "user_1",
+    "playerName": "Ritik",
+    "side": "WHITE",
+    "brainPoints": 0,
+    "clockMs": 300000
+  },
+  "black": {
+    "playerId": "user_2",
+    "playerName": "Teammate",
+    "side": "BLACK",
+    "brainPoints": 0,
+    "clockMs": 300000
+  },
+  "moves": []
+}
+```
+
+### Legal Moves
+
+```http
+GET /api/v1/matches/{matchId}/legal-moves?playerId=user_1
+```
+
+Response:
+
+```json
+[
+  {
+    "from": "e2",
+    "to": "e4",
+    "promotion": null
+  }
+]
+```
+
+### Submit Chess Move
+
+```http
+POST /api/v1/matches/{matchId}/moves
+```
+
+Request:
+
+```json
+{
+  "playerId": "user_1",
+  "from": "e2",
+  "to": "e4",
+  "promotion": null
+}
+```
+
+Response is the full match state.
+
+### Brain Round
+
+```http
+GET /api/v1/matches/{matchId}/brain-rounds/current
+```
+
+Returns the active server-generated math puzzle set for the current brain round. `expiresAt` is the server deadline; answers submitted after that time are rejected and the round can be completed.
+
+Response:
+
+```json
+{
+  "roundId": "round_123",
+  "roundNumber": 1,
+  "status": "ACTIVE",
+  "puzzles": ["7 + 12", "4 x 9"],
+  "totalQuestions": 10,
+  "whiteCorrectCount": 0,
+  "blackCorrectCount": 0,
+  "winnerPlayerId": null,
+  "startedAt": "2026-06-27T08:00:00Z",
+  "expiresAt": "2026-06-27T08:00:30Z",
+  "completedAt": null
+}
+```
+
+```http
+POST /api/v1/matches/{matchId}/brain-rounds/current/answers
+```
+
+Request:
+
+```json
+{
+  "playerId": "user_1",
+  "questionIndex": 0,
+  "answer": 42
+}
+```
+
+Returns whether the answer was correct and the player's current correct count. The correct answer is intentionally not returned while the round is active.
+
+Response:
+
+```json
+{
+  "correct": true,
+  "playerCorrectCount": 1,
+  "totalQuestions": 10
+}
+```
+
+```http
+POST /api/v1/matches/{matchId}/brain-rounds/current/complete
+```
+
+Completes the active round, awards Brain Points server-side, resumes the chess clock, and returns the completed brain-round result. Completion is accepted only after the server deadline or after both players have answered every question.
+
+### Apply Power-Up
+
+```http
+POST /api/v1/matches/{matchId}/powerups
+```
+
+Request:
+
+```json
+{
+  "playerId": "user_1",
+  "type": "CLOCK_BOOST_30"
+}
+```
+
+Currently implemented powerups:
+
+| Type | Cost | Effect |
+| --- | ---: | --- |
+| `CLOCK_BOOST_30` | 1 Brain Point | Adds 30 seconds to that player's clock. If it is their active turn, the live clock deadline is extended too. |
+
+Response is the full match state.
+
+### Resign
+
+```http
+POST /api/v1/matches/{matchId}/resign
+```
+
+Request:
+
+```json
+{
+  "playerId": "user_1"
 }
 ```
 
 ### Match History
+
+Planned, not implemented yet:
 
 ```http
 GET /api/v1/users/me/matches
@@ -134,19 +303,30 @@ Endpoint:
 /ws
 ```
 
-Suggested subscription:
+Implemented subscription:
 
 ```text
 /topic/matches/{matchId}
 ```
 
-Suggested command destination:
+Server payload:
 
-```text
-/app/matches/{matchId}/commands
+```json
+{
+  "type": "match.state",
+  "match": {
+    "matchId": "match_123",
+    "phase": "CHESS_PHASE",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+  }
+}
 ```
 
+The current client sends commands over REST and listens over WebSocket. A future backend can move commands to `/app/matches/{matchId}/commands` when reconnect/idempotency rules are stronger.
+
 ## Client Commands
+
+Planned STOMP command shape:
 
 ### Submit Chess Move
 
@@ -245,8 +425,8 @@ Suggested command destination:
   "payload": {
     "roundId": "round_123",
     "winnerPlayerId": "user_1",
-    "whiteScore": 8,
-    "blackScore": 6,
+    "whiteCorrectCount": 8,
+    "blackCorrectCount": 6,
     "whiteBrainPointsDelta": 2,
     "blackBrainPointsDelta": 0
   }
@@ -289,4 +469,3 @@ Suggested command destination:
 - The server should broadcast authoritative state after accepted commands.
 - The client should never decide match results locally.
 - Time-sensitive actions should use server time.
-

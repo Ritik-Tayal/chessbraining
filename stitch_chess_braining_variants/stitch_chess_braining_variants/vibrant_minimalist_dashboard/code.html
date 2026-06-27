@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Chess Braining Dashboard</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@100..900&amp;family=JetBrains+Mono:wght@100..800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            background-color: #0A0A0A;
+            color: #e5e2e1;
+            font-family: 'Geist', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #131313;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #262626;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "on-surface": "#e5e2e1",
+                      "surface-container": "#201f1f",
+                      "surface-container-lowest": "#0e0e0e",
+                      "on-background": "#e5e2e1",
+                      "secondary-fixed-dim": "#adc6ff",
+                      "error": "#ffb4ab",
+                      "on-secondary-fixed-variant": "#004395",
+                      "on-primary-container": "#00422b",
+                      "tertiary": "#95d3ba",
+                      "surface-container-low": "#1c1b1b",
+                      "on-error-container": "#ffdad6",
+                      "primary-fixed-dim": "#4edea3",
+                      "background": "#131313",
+                      "on-error": "#690005",
+                      "on-secondary-container": "#e6ecff",
+                      "tertiary-container": "#71af97",
+                      "surface-tint": "#4edea3",
+                      "on-tertiary": "#003829",
+                      "surface-dim": "#131313",
+                      "on-primary-fixed": "#002113",
+                      "on-tertiary-fixed": "#002117",
+                      "on-secondary": "#002e6a",
+                      "inverse-surface": "#e5e2e1",
+                      "surface-container-high": "#2a2a2a",
+                      "on-tertiary-container": "#004231",
+                      "tertiary-fixed-dim": "#95d3ba",
+                      "outline": "#86948a",
+                      "surface-variant": "#353534",
+                      "surface": "#131313",
+                      "error-container": "#93000a",
+                      "primary-fixed": "#6ffbbe",
+                      "tertiary-fixed": "#b0f0d6",
+                      "on-primary-fixed-variant": "#005236",
+                      "on-tertiary-fixed-variant": "#0b513d",
+                      "outline-variant": "#3c4a42",
+                      "on-surface-variant": "#bbcabf",
+                      "secondary-fixed": "#d8e2ff",
+                      "primary-container": "#10b981",
+                      "on-primary": "#003824",
+                      "surface-bright": "#3a3939",
+                      "surface-container-highest": "#353534",
+                      "on-secondary-fixed": "#001a42",
+                      "secondary": "#adc6ff",
+                      "primary": "#4edea3",
+                      "inverse-on-surface": "#313030",
+                      "secondary-container": "#0566d9",
+                      "inverse-primary": "#006c49"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.25rem",
+                      "lg": "0.5rem",
+                      "xl": "0.75rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "container-max": "1280px",
+                      "gutter": "24px",
+                      "base": "8px",
+                      "margin": "32px"
+              },
+              "fontFamily": {
+                      "label-sm": ["JetBrains Mono"],
+                      "label-xs": ["JetBrains Mono"],
+                      "headline-lg": ["Geist"],
+                      "body-md": ["Geist"],
+                      "headline-lg-mobile": ["Geist"],
+                      "body-lg": ["Geist"],
+                      "headline-md": ["Geist"]
+              },
+              "fontSize": {
+                      "label-sm": ["12px", {"lineHeight": "1.0", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                      "label-xs": ["10px", {"lineHeight": "1.0", "fontWeight": "500"}],
+                      "headline-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                      "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                      "headline-lg-mobile": ["32px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                      "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                      "headline-md": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}]
+              }
+            },
+          },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background text-on-background min-h-screen pb-20 md:pb-0">
+<!-- TopAppBar -->
+<header class="w-full top-0 sticky z-50 bg-background border-b border-outline-variant flex justify-between items-center px-margin h-16 transition-colors">
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-primary hover:bg-surface-container-high p-2 transition-colors active:scale-95 duration-100">menu</button>
+<h1 class="font-headline-md text-headline-md font-bold tracking-tighter text-primary">CHESS BRAINING</h1>
+</div>
+<div class="flex items-center gap-2">
+<button class="material-symbols-outlined text-primary hover:bg-surface-container-high p-2 transition-colors active:scale-95 duration-100">settings</button>
+</div>
+</header>
+<main class="max-w-container-max mx-auto px-4 md:px-margin py-8">
+<!-- Bento Grid Layout -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+<!-- Player Profile Section -->
+<div class="md:col-span-4 lg:col-span-3 space-y-6">
+<div class="bg-[#171717] border border-[#262626] p-6 flex flex-col items-center text-center">
+<div class="relative w-32 h-32 mb-4">
+<img class="w-full h-full object-cover border-2 border-primary" data-alt="A highly detailed close-up of a professional chess grandmaster profile avatar. The character has a sharp, intellectual expression with cold blue lighting on one side and vibrant emerald green highlights on the other. The background is a dark charcoal texture with subtle digital artifacts. The aesthetic is cyber-industrial and high-contrast." src="https://lh3.googleusercontent.com/aida-public/AB6AXuBoxNOy5Ry2QeClBM87fYXPMF1xAhazp-MkEuVdqit4CoPhiXhaZpuRsqkVduAS5zZ-Y4tkc1vy4k5ggXoEVMa-07qUTw10_S9dEgCfhovAkK-0g5ZivFEIFghZQapymxvAd0eDw6edClwJtO3NMH8Zwniz2Tv5Rd1fPgLLJyEyKNwScFWYKBCl98ZN7MkYM78KtldIvLbnRTfKxIvC3aFMd7yaqgCTP2d6XUQYHbp3NdKB_NDgd_J3AM33-sQtWAwcZT1TAwE78mg"/>
+<div class="absolute bottom-1 right-1 w-6 h-6 bg-primary border-4 border-[#171717] rounded-full"></div>
+</div>
+<h2 class="font-headline-md text-headline-md text-on-surface mb-1">Grandmaster_X</h2>
+<p class="font-label-sm text-label-sm text-primary tracking-widest uppercase">LVL 42 • ONLINE</p>
+<div class="w-full mt-6 space-y-4">
+<button class="w-full py-4 bg-secondary-container text-white font-bold tracking-widest text-body-md hover:bg-blue-600 transition-colors active:scale-95 uppercase">PLAY NOW</button>
+</div>
+</div>
+<!-- Status/Rank Details -->
+<div class="bg-[#171717] border border-[#262626] p-4">
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase mb-4">Global Standing</p>
+<div class="flex justify-between items-end">
+<span class="font-label-sm text-label-sm text-on-surface">RANK #1,402</span>
+<span class="font-label-sm text-label-sm text-primary">+12 today</span>
+</div>
+<div class="w-full bg-[#262626] h-1 mt-2">
+<div class="bg-primary h-full w-[78%]"></div>
+</div>
+</div>
+</div>
+<!-- Stats & Training Section -->
+<div class="md:col-span-8 lg:col-span-9 space-y-6">
+<!-- Hero Stats -->
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-6">
+<div class="bg-[#171717] border border-[#262626] p-6 border-t-2 border-primary">
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase mb-2">Win Rate</p>
+<div class="flex items-baseline gap-2">
+<span class="font-label-sm text-3xl font-bold text-primary">64.8%</span>
+<span class="font-label-sm text-label-xs text-on-surface-variant">Avg.</span>
+</div>
+</div>
+<div class="bg-[#171717] border border-[#262626] p-6 border-t-2 border-secondary-container">
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase mb-2">Current Streak</p>
+<div class="flex items-baseline gap-2 text-secondary">
+<span class="font-label-sm text-3xl font-bold">12</span>
+<span class="material-symbols-outlined text-sm">bolt</span>
+</div>
+</div>
+<div class="bg-[#171717] border border-[#262626] p-6 border-t-2 border-primary">
+<p class="font-label-sm text-label-sm text-on-surface-variant uppercase mb-2">Accuracy</p>
+<div class="flex items-baseline gap-2">
+<span class="font-label-sm text-3xl font-bold text-on-surface">91.4</span>
+<span class="font-label-sm text-label-xs text-primary">BEST</span>
+</div>
+</div>
+</div>
+<!-- Daily Brain Training -->
+<section>
+<div class="flex justify-between items-center mb-4">
+<h3 class="font-headline-md text-headline-md text-on-surface uppercase tracking-tight">Daily Brain Training</h3>
+<span class="font-label-sm text-label-sm text-on-surface-variant">RESET IN 12H</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+<!-- Activity Card 1 -->
+<div class="bg-[#171717] border border-[#262626] p-4 flex items-center justify-between hover:bg-[#201f1f] transition-colors cursor-pointer group">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-surface-container flex items-center justify-center border border-[#262626] group-hover:border-primary transition-colors">
+<span class="material-symbols-outlined text-primary">psychology</span>
+</div>
+<div>
+<h4 class="font-body-md text-on-surface font-bold uppercase">Logic Dash</h4>
+<p class="font-label-sm text-label-xs text-on-surface-variant">SPEED PUZZLE CHALLENGE</p>
+</div>
+</div>
+<div class="text-right">
+<span class="font-label-sm text-label-sm text-primary">+250 XP</span>
+<p class="font-label-xs text-[10px] text-on-surface-variant">READY</p>
+</div>
+</div>
+<!-- Activity Card 2 -->
+<div class="bg-[#171717] border border-[#262626] p-4 flex items-center justify-between hover:bg-[#201f1f] transition-colors cursor-pointer group">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-surface-container flex items-center justify-center border border-[#262626] group-hover:border-secondary transition-colors">
+<span class="material-symbols-outlined text-secondary">visibility</span>
+</div>
+<div>
+<h4 class="font-body-md text-on-surface font-bold uppercase">Vision Pulse</h4>
+<p class="font-label-sm text-label-xs text-on-surface-variant">PATTERN RECOGNITION</p>
+</div>
+</div>
+<div class="text-right">
+<span class="font-label-sm text-label-sm text-primary">+150 XP</span>
+<p class="font-label-xs text-[10px] text-on-surface-variant">READY</p>
+</div>
+</div>
+<!-- Activity Card 3 -->
+<div class="bg-[#171717] border border-[#262626] p-4 flex items-center justify-between opacity-50">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-surface-container flex items-center justify-center border border-[#262626]">
+<span class="material-symbols-outlined text-on-surface-variant">calculate</span>
+</div>
+<div>
+<h4 class="font-body-md text-on-surface font-bold uppercase">Endgame Theory</h4>
+<p class="font-label-sm text-label-xs text-on-surface-variant">CALCULATION DRILLS</p>
+</div>
+</div>
+<div class="text-right">
+<span class="font-label-sm text-label-sm text-on-surface-variant">COMPLETE</span>
+<p class="font-label-xs text-[10px] text-primary">SUCCESS</p>
+</div>
+</div>
+<!-- Activity Card 4 -->
+<div class="bg-[#171717] border border-[#262626] p-4 flex items-center justify-between hover:bg-[#201f1f] transition-colors cursor-pointer group">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-surface-container flex items-center justify-center border border-[#262626] group-hover:border-primary transition-colors">
+<span class="material-symbols-outlined text-primary">extension</span>
+</div>
+<div>
+<h4 class="font-body-md text-on-surface font-bold uppercase">Mate Rush</h4>
+<p class="font-label-sm text-label-xs text-on-surface-variant">TACTICAL PRECISION</p>
+</div>
+</div>
+<div class="text-right">
+<span class="font-label-sm text-label-sm text-primary">+400 XP</span>
+<p class="font-label-xs text-[10px] text-on-surface-variant">LOCKED (LVL 45)</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Performance Chart (Static Representation) -->
+<section class="bg-[#171717] border border-[#262626] p-6">
+<div class="flex justify-between items-center mb-8">
+<h3 class="font-label-sm text-label-sm text-on-surface uppercase">ELO Progress (30 Days)</h3>
+<div class="flex gap-4">
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-primary"></div>
+<span class="font-label-xs text-[10px] text-on-surface-variant">BLITZ</span>
+</div>
+<div class="flex items-center gap-2">
+<div class="w-2 h-2 bg-secondary"></div>
+<span class="font-label-xs text-[10px] text-on-surface-variant">RAPID</span>
+</div>
+</div>
+</div>
+<div class="h-48 w-full flex items-end justify-between gap-1">
+<!-- Mock Bars -->
+<div class="w-full bg-[#262626] h-[40%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-[#262626] h-[45%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-[#262626] h-[42%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-[#262626] h-[55%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-[#262626] h-[62%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-[#262626] h-[58%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-[#262626] h-[70%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-[#262626] h-[75%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-primary h-[82%]"></div>
+<div class="w-full bg-[#262626] h-[78%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-[#262626] h-[85%] hover:bg-primary transition-colors"></div>
+<div class="w-full bg-[#262626] h-[92%] hover:bg-primary transition-colors"></div>
+</div>
+<div class="flex justify-between mt-4 font-label-xs text-[10px] text-on-surface-variant">
+<span>MAY 01</span>
+<span>MAY 15</span>
+<span>MAY 30</span>
+</div>
+</section>
+</div>
+</div>
+</main>
+<!-- BottomNavBar (Mobile Only) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 bg-surface-container-low border-t border-outline-variant flex justify-around items-center h-20 px-4">
+<div class="flex flex-col items-center justify-center bg-primary text-on-primary rounded-lg px-3 py-1 active:scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined">home</span>
+<span class="font-label-xs text-label-xs">Home</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant hover:text-secondary transition-colors">
+<span class="material-symbols-outlined">sports_esports</span>
+<span class="font-label-xs text-label-xs">Play</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant hover:text-secondary transition-colors">
+<span class="material-symbols-outlined">bolt</span>
+<span class="font-label-xs text-label-xs">Power-ups</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant hover:text-secondary transition-colors">
+<span class="material-symbols-outlined">person</span>
+<span class="font-label-xs text-label-xs">Profile</span>
+</div>
+</nav>
+<script>
+        // Micro-interactions for dashboard
+        document.querySelectorAll('button, .cursor-pointer').forEach(el => {
+            el.addEventListener('click', () => {
+                el.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    el.style.transform = '';
+                }, 100);
+            });
+        });
+
+        // Simulating some dynamic stats updates
+        setInterval(() => {
+            const liveCounter = document.querySelector('.text-primary-fixed-dim');
+            if (liveCounter) {
+                const current = parseInt(liveCounter.innerText);
+                liveCounter.innerText = current + (Math.random() > 0.5 ? 1 : -1);
+            }
+        }, 5000);
+    </script>
+</body></html>
