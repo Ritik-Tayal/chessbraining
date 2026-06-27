@@ -47,6 +47,17 @@ class MatchController extends ChangeNotifier {
         currentPlayer.brainPoints >= 1;
   }
 
+  int get nextBrainQuestionIndex {
+    final round = brainRound;
+    final currentPlayer = me;
+    if (round == null || currentPlayer == null) {
+      return 0;
+    }
+    return currentPlayer.side == 'WHITE'
+        ? round.nextWhiteQuestionIndex
+        : round.nextBlackQuestionIndex;
+  }
+
   void updateApiBaseUrl(String value) {
     apiBaseUrl = value.trim();
     _api = _api.copyWithBaseUrl(apiBaseUrl);
@@ -137,8 +148,21 @@ class MatchController extends ChangeNotifier {
     brainRoundLoading = true;
     notifyListeners();
     try {
-      brainRound = await _api.getCurrentBrainRound(current.matchId);
+      final round = await _api.getCurrentBrainRound(current.matchId);
+      brainRound = round;
+      if (round.status != 'ACTIVE') {
+        _setMatch(await _api.getMatch(current.matchId));
+      }
     } on ApiException catch (exception) {
+      if (exception.code == 'BRAIN_ROUND_NOT_FOUND' ||
+          exception.code == 'NOT_IN_BRAIN_ROUND') {
+        final latest = await _api.getMatch(current.matchId);
+        if (!latest.isBrainRound) {
+          brainRound = null;
+          _setMatch(latest);
+          return;
+        }
+      }
       error = exception.message;
     } catch (exception) {
       error = exception.toString();
@@ -225,10 +249,18 @@ class MatchController extends ChangeNotifier {
       legalMoves = const [];
       return;
     }
-    legalMoves = await _api.legalMoves(
-      matchId: current.matchId,
-      playerId: playerId,
-    );
+    try {
+      legalMoves = await _api.legalMoves(
+        matchId: current.matchId,
+        playerId: playerId,
+      );
+    } on ApiException catch (exception) {
+      legalMoves = const [];
+      error = exception.message;
+    } catch (exception) {
+      legalMoves = const [];
+      error = exception.toString();
+    }
   }
 
   void _setMatch(MatchModel value) {
@@ -269,6 +301,9 @@ class MatchController extends ChangeNotifier {
       },
       onConnectionChanged: (value) {
         realtimeConnected = value;
+        if (value) {
+          refresh();
+        }
         notifyListeners();
       },
     )..connect();

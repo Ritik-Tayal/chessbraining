@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -12,6 +13,7 @@ class ChessbrainingApi {
 
   final String baseUrl;
   final http.Client _client;
+  static const _requestTimeout = Duration(seconds: 12);
 
   ChessbrainingApi copyWithBaseUrl(String value) {
     return ChessbrainingApi(baseUrl: value.trim(), client: _client);
@@ -61,7 +63,9 @@ class ChessbrainingApi {
   }
 
   Future<MatchModel> getMatch(String matchId) async {
-    final response = await _client.get(_uri('/matches/$matchId'));
+    final response = await _client
+        .get(_uri('/matches/$matchId'))
+        .timeout(_requestTimeout);
     return _decodeMatch(response);
   }
 
@@ -69,9 +73,9 @@ class ChessbrainingApi {
     required String matchId,
     required String playerId,
   }) async {
-    final response = await _client.get(
-      _uri('/matches/$matchId/legal-moves', {'playerId': playerId}),
-    );
+    final response = await _client
+        .get(_uri('/matches/$matchId/legal-moves', {'playerId': playerId}))
+        .timeout(_requestTimeout);
     final body = _decodeResponse(response);
     return (body as List<dynamic>)
         .map((item) => LegalMoveModel.fromJson(item as Map<String, dynamic>))
@@ -94,9 +98,9 @@ class ChessbrainingApi {
   }
 
   Future<BrainRoundModel> getCurrentBrainRound(String matchId) async {
-    final response = await _client.get(
-      _uri('/matches/$matchId/brain-rounds/current'),
-    );
+    final response = await _client
+        .get(_uri('/matches/$matchId/brain-rounds/current'))
+        .timeout(_requestTimeout);
     final body = _decodeResponse(response);
     return BrainRoundModel.fromJson(body as Map<String, dynamic>);
   }
@@ -107,15 +111,17 @@ class ChessbrainingApi {
     required int questionIndex,
     required int answer,
   }) async {
-    final response = await _client.post(
-      _uri('/matches/$matchId/brain-rounds/current/answers'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'playerId': playerId,
-        'questionIndex': questionIndex,
-        'answer': answer,
-      }),
-    );
+    final response = await _client
+        .post(
+          _uri('/matches/$matchId/brain-rounds/current/answers'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'playerId': playerId,
+            'questionIndex': questionIndex,
+            'answer': answer,
+          }),
+        )
+        .timeout(_requestTimeout);
     final body = _decodeResponse(response);
     return AnswerResultModel.fromJson(body as Map<String, dynamic>);
   }
@@ -123,9 +129,9 @@ class ChessbrainingApi {
   Future<MatchModel> completeBrainRound({
     required String matchId,
   }) async {
-    final response = await _client.post(
-      _uri('/matches/$matchId/brain-rounds/current/complete'),
-    );
+    final response = await _client
+        .post(_uri('/matches/$matchId/brain-rounds/current/complete'))
+        .timeout(_requestTimeout);
     _decodeResponse(response);
     return getMatch(matchId);
   }
@@ -151,11 +157,13 @@ class ChessbrainingApi {
   }
 
   Future<MatchModel> _postMatch(String path, Map<String, Object?> body) async {
-    final response = await _client.post(
-      _uri(path),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(body),
-    );
+    final response = await _client
+        .post(
+          _uri(path),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(body),
+        )
+        .timeout(_requestTimeout);
     return _decodeMatch(response);
   }
 
@@ -165,7 +173,7 @@ class ChessbrainingApi {
   }
 
   Object? _decodeResponse(http.Response response) {
-    final decoded = response.body.isEmpty ? null : jsonDecode(response.body);
+    final decoded = response.body.isEmpty ? null : _tryDecodeJson(response.body);
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return decoded;
     }
@@ -176,6 +184,14 @@ class ChessbrainingApi {
       );
     }
     throw ApiException('API_ERROR', 'Request failed with ${response.statusCode}');
+  }
+
+  Object? _tryDecodeJson(String body) {
+    try {
+      return jsonDecode(body);
+    } on FormatException {
+      return null;
+    }
   }
 }
 

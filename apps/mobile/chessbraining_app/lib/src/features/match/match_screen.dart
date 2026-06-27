@@ -1,5 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
+import '../../models/match_models.dart';
 import 'brain_round_overlay.dart';
 import 'chess_board.dart';
 import 'match_controller.dart';
@@ -22,9 +25,39 @@ class _MatchScreenState extends State<MatchScreen> {
   );
   final playerNameController = TextEditingController(text: 'Neo Master');
   final inviteController = TextEditingController();
+  Timer? clockTicker;
+  DateTime? lastClockExpiryRefreshDeadline;
+
+  @override
+  void initState() {
+    super.initState();
+    clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) {
+        _refreshExpiredClock();
+        setState(() {});
+      }
+    });
+  }
+
+  void _refreshExpiredClock() {
+    final current = widget.controller.match;
+    final deadline = current?.clockDeadlineAt;
+    if (current?.isChessPhase != true || deadline == null) {
+      return;
+    }
+    if (DateTime.now().toUtc().isBefore(deadline)) {
+      return;
+    }
+    if (lastClockExpiryRefreshDeadline == deadline) {
+      return;
+    }
+    lastClockExpiryRefreshDeadline = deadline;
+    unawaited(widget.controller.refresh());
+  }
 
   @override
   void dispose() {
+    clockTicker?.cancel();
     apiUrlController.dispose();
     playerNameController.dispose();
     inviteController.dispose();
@@ -456,6 +489,7 @@ class _PlayerCard extends StatelessWidget {
     final fallback = top ? 'WAITING_OPPONENT' : controller.playerName.toUpperCase();
     final accent = top ? AppColors.primary : AppColors.secondary;
     final isTurn = match?.sideToMove == player?.side;
+    final clockMs = _displayClockMs(match, player, isTurn);
 
     return _Panel(
       child: Column(
@@ -494,22 +528,41 @@ class _PlayerCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           LinearProgressIndicator(
-            value: isTurn ? 1 : 0.72,
+            value: (clockMs / 300000).clamp(0.0, 1.0),
             minHeight: 8,
             backgroundColor: AppColors.background,
-            color: AppColors.primary,
+            color: clockMs <= 30000 ? const Color(0xffffb4ab) : AppColors.primary,
           ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _MiniMetric(label: top ? 'CPU LOAD' : 'BRAIN SYNC', value: isTurn ? 'MAX' : 'READY'),
+              _MiniMetric(label: 'CLOCK', value: _formatClock(clockMs)),
               _MiniMetric(label: 'BRAIN POINTS', value: '${player?.brainPoints ?? 0}'),
             ],
           ),
         ],
       ),
     );
+  }
+
+  int _displayClockMs(MatchModel? match, PlayerModel? player, bool isTurn) {
+    if (player == null) {
+      return 0;
+    }
+    final deadline = match?.clockDeadlineAt;
+    if (match?.isChessPhase == true && isTurn && deadline != null) {
+      final remaining = deadline.difference(DateTime.now().toUtc()).inMilliseconds;
+      return maxInt(0, remaining);
+    }
+    return player.clockMs;
+  }
+
+  String _formatClock(int clockMs) {
+    final totalSeconds = (clockMs / 1000).ceil();
+    final minutes = totalSeconds ~/ 60;
+    final seconds = totalSeconds % 60;
+    return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 }
 
@@ -691,7 +744,7 @@ class _PowerToolbar extends StatelessWidget {
                 _PowerButton(
                   label: 'SPAWN',
                   icon: Icons.bolt,
-                  enabled: (controller.me?.brainPoints ?? 0) >= 3,
+                  enabled: false,
                   primary: true,
                 ),
                 _PowerButton(
@@ -703,7 +756,7 @@ class _PowerToolbar extends StatelessWidget {
                 _PowerButton(
                   label: match?.isBrainRound == true ? 'BRAIN' : 'ANALYZE',
                   icon: Icons.psychology,
-                  enabled: match != null,
+                  enabled: false,
                 ),
               ],
             ),

@@ -30,7 +30,7 @@ public class PowerupService {
 		// Reuse match timeout enforcement before spending points.
 		matchService.getMatch(matchId);
 
-		MatchEntity match = matchRepository.findById(matchId)
+		MatchEntity match = matchRepository.findByIdForUpdate(matchId)
 				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "MATCH_NOT_FOUND", "Match not found."));
 		if (match.getStatus() != MatchStatus.ACTIVE || match.getPhase() != MatchPhase.CHESS_PHASE) {
 			throw new ApiException(HttpStatus.CONFLICT, "POWERUP_NOT_AVAILABLE",

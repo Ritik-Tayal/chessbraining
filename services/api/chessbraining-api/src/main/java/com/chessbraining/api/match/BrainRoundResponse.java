@@ -11,6 +11,8 @@ public record BrainRoundResponse(
 		int totalQuestions,
 		int whiteCorrectCount,
 		int blackCorrectCount,
+		int nextWhiteQuestionIndex,
+		int nextBlackQuestionIndex,
 		String winnerPlayerId,
 		Instant startedAt,
 		Instant expiresAt,

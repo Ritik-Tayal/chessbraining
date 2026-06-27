@@ -8,9 +8,14 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 @Entity
-@Table(name = "match_moves")
+@Table(
+		name = "match_moves",
+		uniqueConstraints = @UniqueConstraint(
+				name = "uk_match_moves_match_ply",
+				columnNames = {"matchId", "plyNumber"}))
 public class MatchMoveEntity {
 
 	@Id

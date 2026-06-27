@@ -14,6 +14,7 @@ class MatchModel {
     required this.winnerPlayerId,
     required this.resultReason,
     required this.moves,
+    required this.clockDeadlineAt,
   });
 
   final String matchId;
@@ -30,6 +31,7 @@ class MatchModel {
   final String? winnerPlayerId;
   final String? resultReason;
   final List<MoveModel> moves;
+  final DateTime? clockDeadlineAt;
 
   bool get isWaiting => phase == 'WAITING_FOR_OPPONENT';
   bool get isChessPhase => phase == 'CHESS_PHASE';
@@ -66,6 +68,9 @@ class MatchModel {
       moves: (json['moves'] as List<dynamic>)
           .map((item) => MoveModel.fromJson(item as Map<String, dynamic>))
           .toList(),
+      clockDeadlineAt: json['clockDeadlineAt'] == null
+          ? null
+          : DateTime.parse(json['clockDeadlineAt'] as String),
     );
   }
 }
@@ -157,6 +162,8 @@ class BrainRoundModel {
     required this.totalQuestions,
     required this.whiteCorrectCount,
     required this.blackCorrectCount,
+    required this.nextWhiteQuestionIndex,
+    required this.nextBlackQuestionIndex,
     required this.winnerPlayerId,
     required this.startedAt,
     required this.expiresAt,
@@ -169,6 +176,8 @@ class BrainRoundModel {
   final int totalQuestions;
   final int whiteCorrectCount;
   final int blackCorrectCount;
+  final int nextWhiteQuestionIndex;
+  final int nextBlackQuestionIndex;
   final String? winnerPlayerId;
   final DateTime startedAt;
   final DateTime expiresAt;
@@ -184,6 +193,8 @@ class BrainRoundModel {
       totalQuestions: json['totalQuestions'] as int,
       whiteCorrectCount: json['whiteCorrectCount'] as int,
       blackCorrectCount: json['blackCorrectCount'] as int,
+      nextWhiteQuestionIndex: json['nextWhiteQuestionIndex'] as int,
+      nextBlackQuestionIndex: json['nextBlackQuestionIndex'] as int,
       winnerPlayerId: json['winnerPlayerId'] as String?,
       startedAt: DateTime.parse(json['startedAt'] as String),
       expiresAt: DateTime.parse(json['expiresAt'] as String),

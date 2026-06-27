@@ -69,8 +69,10 @@ public class MatchService {
 
 	@Transactional
 	public MatchResponse quickplay(CreateMatchRequest request) {
-		return matchRepository.findFirstByStatusOrderByCreatedAtAsc(MatchStatus.WAITING_FOR_OPPONENT)
-				.filter(match -> !match.getWhitePlayerId().equals(playerIdOrEmpty(request == null ? null : request.playerId())))
+		String playerId = playerIdOrEmpty(request == null ? null : request.playerId());
+		return matchRepository.findFirstByStatusAndWhitePlayerIdNotOrderByCreatedAtAsc(
+						MatchStatus.WAITING_FOR_OPPONENT,
+						playerId)
 				.map(match -> joinExistingMatch(match, new JoinMatchRequest(match.getInviteCode(),
 						request == null ? null : request.playerId(),
 						request == null ? null : request.playerName())))
@@ -82,21 +84,21 @@ public class MatchService {
 		if (request == null || isBlank(request.inviteCode())) {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "INVITE_CODE_REQUIRED", "Invite code is required.");
 		}
-		MatchEntity match = matchRepository.findByInviteCode(request.inviteCode().trim().toUpperCase(Locale.ROOT))
+		MatchEntity match = matchRepository.findByInviteCodeForUpdate(request.inviteCode().trim().toUpperCase(Locale.ROOT))
 				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "MATCH_NOT_FOUND", "Match not found."));
 		return joinExistingMatch(match, request);
 	}
 
 	@Transactional
 	public MatchResponse getMatch(String matchId) {
-		MatchEntity match = loadMatch(matchId);
+		MatchEntity match = loadMatchForUpdate(matchId);
 		completeOnTimeoutIfNeeded(match);
 		return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
 	}
 
 	@Transactional
 	public List<LegalMoveResponse> legalMoves(String matchId, String playerId) {
-		MatchEntity match = loadMatch(matchId);
+		MatchEntity match = loadMatchForUpdate(matchId);
 		if (completeOnTimeoutIfNeeded(match)) {
 			throw new ApiException(HttpStatus.CONFLICT, "MATCH_TIMED_OUT", "The active player has timed out.");
 		}
@@ -111,7 +113,7 @@ public class MatchService {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "MOVE_REQUIRED", "Move request is required.");
 		}
 
-		MatchEntity match = loadMatch(matchId);
+		MatchEntity match = loadMatchForUpdate(matchId);
 		if (completeOnTimeoutIfNeeded(match)) {
 			return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
 		}
@@ -166,10 +168,13 @@ public class MatchService {
 
 	@Transactional
 	public MatchResponse resign(String matchId, String playerId) {
-		MatchEntity match = loadMatch(matchId);
+		MatchEntity match = loadMatchForUpdate(matchId);
 		requirePlayerInMatch(match, playerId);
 		if (match.getStatus() == MatchStatus.COMPLETED) {
 			return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
+		}
+		if (match.getStatus() != MatchStatus.ACTIVE) {
+			throw new ApiException(HttpStatus.CONFLICT, "MATCH_NOT_ACTIVE", "Only active matches can be resigned.");
 		}
 
 		String winner = playerId.equals(match.getWhitePlayerId()) ? match.getBlackPlayerId() : match.getWhitePlayerId();
@@ -201,6 +206,11 @@ public class MatchService {
 
 	private MatchEntity loadMatch(String matchId) {
 		return matchRepository.findById(matchId)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "MATCH_NOT_FOUND", "Match not found."));
+	}
+
+	private MatchEntity loadMatchForUpdate(String matchId) {
+		return matchRepository.findByIdForUpdate(matchId)
 				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "MATCH_NOT_FOUND", "Match not found."));
 	}
 
@@ -267,6 +277,7 @@ public class MatchService {
 		match.setWinnerPlayerId(winnerPlayerId);
 		match.setResultReason(reason);
 		match.setCompletedAt(Instant.now());
+		match.setClockDeadlineAt(null);
 	}
 
 	private boolean completeOnTimeoutIfNeeded(MatchEntity match) {

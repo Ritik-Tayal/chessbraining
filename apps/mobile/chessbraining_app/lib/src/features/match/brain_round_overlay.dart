@@ -56,6 +56,10 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     final match = widget.controller.match!;
     final round = widget.controller.brainRound;
     final puzzles = round?.puzzles ?? const <String>[];
+    if (round != null && widget.controller.nextBrainQuestionIndex > questionIndex) {
+      questionIndex = min(widget.controller.nextBrainQuestionIndex, round.totalQuestions);
+      finished = questionIndex >= round.totalQuestions;
+    }
     final safeIndex = puzzles.isEmpty ? 0 : min(questionIndex, puzzles.length - 1);
     final currentPuzzle = puzzles.isEmpty ? 'Loading puzzle...' : puzzles[safeIndex];
     final secondsLeft = round == null ? 30 : _remainingSeconds(round);
@@ -238,6 +242,17 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                       ),
                     ),
                     const SizedBox(height: 14),
+                    if (widget.controller.error != null) ...[
+                      Text(
+                        widget.controller.error!,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Color(0xffffb4ab),
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
                     Row(
                       children: [
                         _StatPill(label: 'WHITE BP', value: '${match.white.brainPoints}'),

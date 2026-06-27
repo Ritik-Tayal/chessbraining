@@ -27,20 +27,31 @@ public class BrainRoundController {
 
 	@GetMapping("/current")
 	public BrainRoundResponse getCurrentRound(@PathVariable String matchId) {
-		return brainRoundService.getCurrentRound(matchId);
+		BrainRoundResponse response = brainRoundService.getCurrentRound(matchId);
+		publishIfRoundFinished(matchId);
+		return response;
 	}
 
 	@PostMapping("/current/answers")
 	public AnswerResultResponse submitAnswer(
 			@PathVariable String matchId,
 			@RequestBody SubmitAnswerRequest request) {
-		return brainRoundService.submitAnswer(matchId, request);
+		AnswerResultResponse response = brainRoundService.submitAnswer(matchId, request);
+		publishIfRoundFinished(matchId);
+		return response;
 	}
 
 	@PostMapping("/current/complete")
 	public BrainRoundResponse completeRound(@PathVariable String matchId) {
 		BrainRoundResponse response = brainRoundService.completeRound(matchId);
-		realtimeService.publishMatchState(matchService.getMatch(matchId));
+		publishIfRoundFinished(matchId);
 		return response;
+	}
+
+	private void publishIfRoundFinished(String matchId) {
+		MatchResponse match = matchService.getMatch(matchId);
+		if (match.phase() != MatchPhase.BRAIN_ROUND) {
+			realtimeService.publishMatchState(match);
+		}
 	}
 }

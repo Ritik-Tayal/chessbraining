@@ -48,7 +48,11 @@ public class MatchController {
 
 	@GetMapping("/{matchId}")
 	public MatchResponse getMatch(@PathVariable String matchId) {
-		return matchService.getMatch(matchId);
+		MatchResponse response = matchService.getMatch(matchId);
+		if (response.status() == MatchStatus.COMPLETED) {
+			realtimeService.publishMatchState(response);
+		}
+		return response;
 	}
 
 	@GetMapping("/{matchId}/legal-moves")

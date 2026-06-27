@@ -71,6 +71,57 @@ class ChessbrainingApiApplicationTests {
 	}
 
 	@Test
+	void quickplayJoinsWaitingOpponentMatch() throws Exception {
+		matchRepository.deleteAll();
+		JsonNode created = createMatch("white-player", "Ritik", 5);
+
+		JsonNode quickplay = objectMapper.readTree(
+				mockMvc.perform(post("/api/v1/matches/quickplay")
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("""
+										{
+										  "playerId": "black-player",
+										  "playerName": "Teammate"
+										}
+										"""))
+						.andExpect(status().isOk())
+						.andExpect(jsonPath("$.status").value("ACTIVE"))
+						.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
+
+		org.junit.jupiter.api.Assertions.assertEquals(
+				created.get("matchId").asText(),
+				quickplay.get("matchId").asText());
+	}
+
+	@Test
+	void quickplayDoesNotJoinOwnWaitingMatch() throws Exception {
+		matchRepository.deleteAll();
+		JsonNode created = createMatch("white-player", "Ritik", 5);
+
+		JsonNode quickplay = objectMapper.readTree(
+				mockMvc.perform(post("/api/v1/matches/quickplay")
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("""
+										{
+										  "playerId": "white-player",
+										  "playerName": "Ritik"
+										}
+										"""))
+						.andExpect(status().isOk())
+						.andExpect(jsonPath("$.status").value("WAITING_FOR_OPPONENT"))
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
+
+		org.junit.jupiter.api.Assertions.assertNotEquals(
+				created.get("matchId").asText(),
+				quickplay.get("matchId").asText());
+	}
+
+	@Test
 	void acceptsLegalMoveAndRejectsIllegalMove() throws Exception {
 		JsonNode joined = createJoinedMatch(5);
 		String matchId = joined.get("matchId").asText();
@@ -156,8 +207,7 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("BRAIN_ROUND_STILL_ACTIVE"));
 
-		answerEveryQuestion(matchId, "white-player");
-		answerEveryQuestion(matchId, "black-player");
+		expireActiveBrainRound(matchId);
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
 				.andExpect(status().isOk())
@@ -199,7 +249,7 @@ class ChessbrainingApiApplicationTests {
 					.andExpect(jsonPath("$.totalQuestions").value(10));
 		}
 
-		answerEveryQuestion(matchId, "black-player");
+		expireActiveBrainRound(matchId);
 
 		JsonNode completed = objectMapper.readTree(
 				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
@@ -212,6 +262,23 @@ class ChessbrainingApiApplicationTests {
 		int blackCorrect = completed.get("blackCorrectCount").asInt();
 		org.junit.jupiter.api.Assertions.assertTrue(whiteCorrect >= 0);
 		org.junit.jupiter.api.Assertions.assertTrue(blackCorrect >= 0);
+	}
+
+	@Test
+	void brainRoundAutoCompletesWhenBothPlayersAnswerAllQuestions() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+
+		answerEveryQuestion(matchId, "white-player");
+		answerEveryQuestion(matchId, "black-player");
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
+				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
 	}
 
 	@Test
@@ -254,15 +321,68 @@ class ChessbrainingApiApplicationTests {
 		submitMove(matchId, "white-player", "e2", "e4");
 		submitMove(matchId, "black-player", "e7", "e5");
 
-		BrainRoundEntity round = brainRoundRepository
-				.findFirstByMatchIdAndStatusOrderByRoundNumberDesc(matchId, "ACTIVE")
-				.orElseThrow();
-		round.setExpiresAt(Instant.now().minusSeconds(1));
-		brainRoundRepository.save(round);
+		expireActiveBrainRound(matchId);
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("COMPLETED"));
+	}
+
+	@Test
+	void brainRoundCompletionDoesNotResumeCompletedMatch() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+		expireActiveBrainRound(matchId);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/resign", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("COMPLETED"))
+				.andExpect(jsonPath("$.phase").value("COMPLETED"));
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("NOT_IN_BRAIN_ROUND"));
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("COMPLETED"))
+				.andExpect(jsonPath("$.phase").value("COMPLETED"));
+	}
+
+	@Test
+	void answerAfterBrainRoundDeadlineCompletesRoundWithoutRollback() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+		expireActiveBrainRound(matchId);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "questionIndex": 0,
+								  "answer": 0
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.correct").value(false));
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
+				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
 	}
 
 	@Test
@@ -312,8 +432,7 @@ class ChessbrainingApiApplicationTests {
 		submitMove(matchId, "white-player", "e2", "e4");
 		submitMove(matchId, "black-player", "e7", "e5");
 
-		answerEveryQuestion(matchId, "white-player");
-		answerEveryQuestion(matchId, "black-player");
+		expireActiveBrainRound(matchId);
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
 				.andExpect(status().isOk())
@@ -347,6 +466,7 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(jsonPath("$.status").value("COMPLETED"))
 				.andExpect(jsonPath("$.resultReason").value("TIMEOUT"))
 				.andExpect(jsonPath("$.winnerPlayerId").value("black-player"))
+				.andExpect(jsonPath("$.clockDeadlineAt").isEmpty())
 				.andExpect(jsonPath("$.moves").isEmpty());
 	}
 
@@ -429,7 +549,8 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.status").value("COMPLETED"))
 				.andExpect(jsonPath("$.resultReason").value("TIMEOUT"))
-				.andExpect(jsonPath("$.winnerPlayerId").value("black-player"));
+				.andExpect(jsonPath("$.winnerPlayerId").value("black-player"))
+				.andExpect(jsonPath("$.clockDeadlineAt").isEmpty());
 	}
 
 	private JsonNode createJoinedMatch(int brainRoundIntervalMoves) throws Exception {
@@ -504,5 +625,13 @@ class ChessbrainingApiApplicationTests {
 									""".formatted(playerId, i)))
 					.andExpect(status().isOk());
 		}
+	}
+
+	private void expireActiveBrainRound(String matchId) {
+		BrainRoundEntity round = brainRoundRepository
+				.findFirstByMatchIdAndStatusOrderByStartedAtDesc(matchId, "ACTIVE")
+				.orElseThrow();
+		round.setExpiresAt(Instant.now().minusSeconds(1));
+		brainRoundRepository.save(round);
 	}
 }
