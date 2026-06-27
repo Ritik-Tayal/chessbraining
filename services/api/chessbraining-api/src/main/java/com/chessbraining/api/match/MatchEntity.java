@@ -88,6 +88,9 @@ public class MatchEntity {
 	private Instant startedAt;
 	private Instant completedAt;
 
+	@Column(nullable = true)
+	private Instant clockDeadlineAt;
+
 	@PrePersist
 	void prePersist() {
 		if (id == null) {
@@ -293,5 +296,13 @@ public class MatchEntity {
 
 	public void setCompletedAt(Instant completedAt) {
 		this.completedAt = completedAt;
+	}
+
+	public Instant getClockDeadlineAt() {
+		return clockDeadlineAt;
+	}
+
+	public void setClockDeadlineAt(Instant clockDeadlineAt) {
+		this.clockDeadlineAt = clockDeadlineAt;
 	}
 }

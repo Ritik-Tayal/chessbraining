@@ -29,16 +29,19 @@ public class MatchService {
 	private final MatchMoveRepository moveRepository;
 	private final BrainRoundRepository brainRoundRepository;
 	private final ChessService chessService;
+	private final ClockService clockService;
 
 	public MatchService(
 			MatchRepository matchRepository,
 			MatchMoveRepository moveRepository,
 			BrainRoundRepository brainRoundRepository,
-			ChessService chessService) {
+			ChessService chessService,
+			ClockService clockService) {
 		this.matchRepository = matchRepository;
 		this.moveRepository = moveRepository;
 		this.brainRoundRepository = brainRoundRepository;
 		this.chessService = chessService;
+		this.clockService = clockService;
 	}
 
 	@Transactional
@@ -81,6 +84,13 @@ public class MatchService {
 	@Transactional(readOnly = true)
 	public MatchResponse getMatch(String matchId) {
 		MatchEntity match = loadMatch(matchId);
+		if (match.getStatus() == MatchStatus.ACTIVE && match.getPhase() == MatchPhase.CHESS_PHASE) {
+			String timedOutWinner = clockService.checkTimeout(match);
+			if (timedOutWinner != null) {
+				completeMatch(match, timedOutWinner, "TIMEOUT");
+				matchRepository.save(match);
+			}
+		}
 		return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
 	}
 
@@ -133,8 +143,15 @@ public class MatchService {
 		else if (result.draw()) {
 			completeMatch(match, null, "DRAW");
 		}
-		else if (shouldStartBrainRound(match)) {
-			startBrainRound(match);
+		else {
+			String timedOutWinner = clockService.tickAfterMove(match);
+			if (timedOutWinner != null) {
+				completeMatch(match, timedOutWinner, "TIMEOUT");
+			}
+			else if (shouldStartBrainRound(match)) {
+				clockService.pauseForBrainRound(match);
+				startBrainRound(match);
+			}
 		}
 
 		MatchEntity saved = matchRepository.save(match);
@@ -176,6 +193,7 @@ public class MatchService {
 		brainRoundRepository.save(round);
 
 		match.setPhase(MatchPhase.CHESS_PHASE);
+		clockService.resumeAfterBrainRound(match);
 		MatchEntity saved = matchRepository.save(match);
 		return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
 	}
@@ -210,6 +228,7 @@ public class MatchService {
 		match.setStatus(MatchStatus.ACTIVE);
 		match.setPhase(MatchPhase.CHESS_PHASE);
 		match.setStartedAt(Instant.now());
+		clockService.startClocks(match);
 		MatchEntity saved = matchRepository.save(match);
 		return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
 	}
@@ -286,6 +305,7 @@ public class MatchService {
 				match.getWinnerPlayerId(),
 				match.getResultReason(),
 				moves.stream().map(this::toMoveResponse).toList(),
+				match.getClockDeadlineAt(),
 				match.getCreatedAt(),
 				match.getUpdatedAt());
 	}
