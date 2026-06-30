@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -6,6 +7,8 @@ import '../../models/match_models.dart';
 import 'brain_round_overlay.dart';
 import 'chess_board.dart';
 import 'match_controller.dart';
+
+enum _ScreenPage { command, play }
 
 class MatchScreen extends StatefulWidget {
   const MatchScreen({
@@ -25,18 +28,37 @@ class _MatchScreenState extends State<MatchScreen> {
   final inviteController = TextEditingController();
   Timer? clockTicker;
   DateTime? lastClockExpiryRefreshDeadline;
+  _ScreenPage selectedPage = _ScreenPage.command;
+  String? activeMatchId;
+  String? dismissedCelebrationMatchId;
 
   @override
   void initState() {
     super.initState();
     apiUrlController.text = widget.controller.apiBaseUrl;
     playerNameController.text = widget.controller.playerName;
+    activeMatchId = widget.controller.match?.matchId;
+    if (activeMatchId != null) {
+      selectedPage = _ScreenPage.play;
+    }
+    widget.controller.addListener(_handleControllerChanged);
     clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         _refreshExpiredClock();
         setState(() {});
       }
     });
+  }
+
+  void _handleControllerChanged() {
+    final matchId = widget.controller.match?.matchId;
+    if (matchId != null && matchId != activeMatchId) {
+      activeMatchId = matchId;
+      dismissedCelebrationMatchId = null;
+      if (mounted && selectedPage != _ScreenPage.play) {
+        setState(() => selectedPage = _ScreenPage.play);
+      }
+    }
   }
 
   void _refreshExpiredClock() {
@@ -57,6 +79,7 @@ class _MatchScreenState extends State<MatchScreen> {
 
   @override
   void dispose() {
+    widget.controller.removeListener(_handleControllerChanged);
     clockTicker?.cancel();
     apiUrlController.dispose();
     playerNameController.dispose();
@@ -70,6 +93,16 @@ class _MatchScreenState extends State<MatchScreen> {
       animation: widget.controller,
       builder: (context, _) {
         final controller = widget.controller;
+        final match = controller.match;
+        final page = match == null ? _ScreenPage.command : selectedPage;
+        final showPowerBar = page == _ScreenPage.play &&
+            match != null &&
+            !match.isWaiting &&
+            !match.isCompleted;
+        final showCelebration = page == _ScreenPage.play &&
+            match?.isCompleted == true &&
+            dismissedCelebrationMatchId != match!.matchId;
+
         return Scaffold(
           backgroundColor: AppColors.background,
           body: Stack(
@@ -78,43 +111,49 @@ class _MatchScreenState extends State<MatchScreen> {
               SafeArea(
                 child: Column(
                   children: [
-                    _TopBar(controller: controller),
+                    _TopBar(
+                      controller: controller,
+                      selectedPage: page,
+                      onCommand: () =>
+                          setState(() => selectedPage = _ScreenPage.command),
+                      onPlay: match == null
+                          ? null
+                          : () =>
+                              setState(() => selectedPage = _ScreenPage.play),
+                    ),
                     Expanded(
-                      child: Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 1280),
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 18, 16, 96),
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                final wide = constraints.maxWidth >= 980;
-                                return wide
-                                    ? _DesktopLayout(
-                                        controller: controller,
-                                        apiUrlController: apiUrlController,
-                                        playerNameController:
-                                            playerNameController,
-                                        inviteController: inviteController,
-                                      )
-                                    : _MobileLayout(
-                                        controller: controller,
-                                        apiUrlController: apiUrlController,
-                                        playerNameController:
-                                            playerNameController,
-                                        inviteController: inviteController,
-                                      );
-                              },
-                            ),
-                          ),
-                        ),
-                      ),
+                      child: page == _ScreenPage.command
+                          ? _CommandPage(
+                              controller: controller,
+                              apiUrlController: apiUrlController,
+                              playerNameController: playerNameController,
+                              inviteController: inviteController,
+                              onResume: match == null
+                                  ? null
+                                  : () => setState(
+                                        () => selectedPage = _ScreenPage.play,
+                                      ),
+                            )
+                          : _GameplayPage(controller: controller),
                     ),
                   ],
                 ),
               ),
-              _PowerToolbar(controller: controller),
+              if (showPowerBar) _PowerToolbar(controller: controller),
               if (controller.match?.isBrainRound == true)
                 BrainRoundOverlay(controller: controller),
+              if (showCelebration)
+                _EndGameCelebration(
+                  match: match,
+                  playerId: controller.playerId,
+                  onReview: () => setState(
+                    () => dismissedCelebrationMatchId = match.matchId,
+                  ),
+                  onCommand: () => setState(() {
+                    dismissedCelebrationMatchId = match.matchId;
+                    selectedPage = _ScreenPage.command;
+                  }),
+                ),
             ],
           ),
         );
@@ -123,198 +162,105 @@ class _MatchScreenState extends State<MatchScreen> {
   }
 }
 
-class _DesktopLayout extends StatelessWidget {
-  const _DesktopLayout({
-    required this.controller,
-    required this.apiUrlController,
-    required this.playerNameController,
-    required this.inviteController,
-  });
-
-  final MatchController controller;
-  final TextEditingController apiUrlController;
-  final TextEditingController playerNameController;
-  final TextEditingController inviteController;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          flex: 3,
-          child: _LeftRail(
-            controller: controller,
-            apiUrlController: apiUrlController,
-            playerNameController: playerNameController,
-            inviteController: inviteController,
-          ),
-        ),
-        const SizedBox(width: 24),
-        Expanded(
-          flex: 5,
-          child: _BoardColumn(controller: controller),
-        ),
-        const SizedBox(width: 24),
-        Expanded(
-          flex: 3,
-          child: _RightRail(controller: controller),
-        ),
-      ],
-    );
-  }
-}
-
-class _MobileLayout extends StatelessWidget {
-  const _MobileLayout({
-    required this.controller,
-    required this.apiUrlController,
-    required this.playerNameController,
-    required this.inviteController,
-  });
-
-  final MatchController controller;
-  final TextEditingController apiUrlController;
-  final TextEditingController playerNameController;
-  final TextEditingController inviteController;
-
-  @override
-  Widget build(BuildContext context) {
-    return ListView(
-      children: [
-        _LobbyPanel(
-          controller: controller,
-          apiUrlController: apiUrlController,
-          playerNameController: playerNameController,
-          inviteController: inviteController,
-        ),
-        const SizedBox(height: 16),
-        _BrainProgress(controller: controller),
-        const SizedBox(height: 16),
-        _PlayerCard(controller: controller, top: true),
-        const SizedBox(height: 16),
-        _BoardColumn(controller: controller),
-        const SizedBox(height: 16),
-        _MoveLog(controller: controller),
-        const SizedBox(height: 16),
-        _PlayerCard(controller: controller, top: false),
-      ],
-    );
-  }
-}
-
-class _LeftRail extends StatelessWidget {
-  const _LeftRail({
-    required this.controller,
-    required this.apiUrlController,
-    required this.playerNameController,
-    required this.inviteController,
-  });
-
-  final MatchController controller;
-  final TextEditingController apiUrlController;
-  final TextEditingController playerNameController;
-  final TextEditingController inviteController;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _LobbyPanel(
-          controller: controller,
-          apiUrlController: apiUrlController,
-          playerNameController: playerNameController,
-          inviteController: inviteController,
-        ),
-        const SizedBox(height: 16),
-        _PlayerCard(controller: controller, top: true),
-      ],
-    );
-  }
-}
-
-class _RightRail extends StatelessWidget {
-  const _RightRail({required this.controller});
-
-  final MatchController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _MoveLog(controller: controller),
-        const SizedBox(height: 16),
-        _EvaluationPanel(controller: controller),
-        const SizedBox(height: 16),
-        _PlayerCard(controller: controller, top: false),
-      ],
-    );
-  }
-}
-
-class _BoardColumn extends StatelessWidget {
-  const _BoardColumn({required this.controller});
-
-  final MatchController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final match = controller.match;
-    return Column(
-      children: [
-        _BrainProgress(controller: controller),
-        const SizedBox(height: 16),
-        AnimatedSwitcher(
-          duration: const Duration(milliseconds: 220),
-          child: match == null
-              ? const _EmptyBoard()
-              : ChessBoard(controller: controller),
-        ),
-        const SizedBox(height: 14),
-        _TurnStrip(controller: controller),
-      ],
-    );
-  }
-}
-
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.controller});
+  const _TopBar({
+    required this.controller,
+    required this.selectedPage,
+    required this.onCommand,
+    required this.onPlay,
+  });
 
   final MatchController controller;
+  final _ScreenPage selectedPage;
+  final VoidCallback onCommand;
+  final VoidCallback? onPlay;
 
   @override
   Widget build(BuildContext context) {
     final match = controller.match;
     return Container(
-      height: 66,
-      padding: const EdgeInsets.symmetric(horizontal: 18),
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
       decoration: const BoxDecoration(
         color: AppColors.background,
         border: Border(bottom: BorderSide(color: AppColors.border)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.menu, color: AppColors.primary),
-          const SizedBox(width: 16),
-          const Text(
-            'CHESS BRAINING',
-            style: TextStyle(
-              color: AppColors.primary,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              letterSpacing: -0.4,
+          const Icon(Icons.grid_4x4, color: AppColors.primary),
+          const SizedBox(width: 10),
+          const Flexible(
+            child: Text(
+              'CHESS BRAINING',
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: AppColors.primary,
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+              ),
             ),
           ),
-          const Spacer(),
-          _LiveChip(connected: controller.realtimeConnected),
           const SizedBox(width: 12),
-          Text(
-            match?.phase ?? 'LOBBY',
-            style: const TextStyle(
-              color: AppColors.muted,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1,
+          if (match != null)
+            _PageSwitch(
+              selectedPage: selectedPage,
+              onCommand: onCommand,
+              onPlay: onPlay,
             ),
+          const Spacer(),
+          if (MediaQuery.sizeOf(context).width >= 560) ...[
+            Text(
+              match?.phase ?? 'COMMAND',
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 0.8,
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
+          _LiveChip(connected: controller.realtimeConnected),
+        ],
+      ),
+    );
+  }
+}
+
+class _PageSwitch extends StatelessWidget {
+  const _PageSwitch({
+    required this.selectedPage,
+    required this.onCommand,
+    required this.onPlay,
+  });
+
+  final _ScreenPage selectedPage;
+  final VoidCallback onCommand;
+  final VoidCallback? onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 38,
+      padding: const EdgeInsets.all(3),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLow,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _SwitchTab(
+            icon: Icons.tune,
+            label: 'COMMAND',
+            selected: selectedPage == _ScreenPage.command,
+            onPressed: onCommand,
+          ),
+          _SwitchTab(
+            icon: Icons.sports_esports,
+            label: 'PLAY',
+            selected: selectedPage == _ScreenPage.play,
+            onPressed: onPlay,
           ),
         ],
       ),
@@ -322,54 +268,154 @@ class _TopBar extends StatelessWidget {
   }
 }
 
-class _LobbyPanel extends StatelessWidget {
-  const _LobbyPanel({
+class _SwitchTab extends StatelessWidget {
+  const _SwitchTab({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 620;
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        height: 32,
+        padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primary : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: selected ? AppColors.background : AppColors.muted,
+            ),
+            if (!compact) ...[
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: selected ? AppColors.background : AppColors.muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CommandPage extends StatelessWidget {
+  const _CommandPage({
     required this.controller,
     required this.apiUrlController,
     required this.playerNameController,
     required this.inviteController,
+    required this.onResume,
   });
 
   final MatchController controller;
   final TextEditingController apiUrlController;
   final TextEditingController playerNameController;
   final TextEditingController inviteController;
+  final VoidCallback? onResume;
 
   @override
   Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 900;
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(18, 22, 18, 28),
+          children: [
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 1100),
+                child: wide
+                    ? Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(flex: 6, child: _CommandPanelBody(this)),
+                          const SizedBox(width: 18),
+                          Expanded(
+                            flex: 4,
+                            child: _CommandStatusPanel(
+                              controller: controller,
+                              onResume: onResume,
+                            ),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        children: [
+                          _CommandPanelBody(this),
+                          const SizedBox(height: 16),
+                          _CommandStatusPanel(
+                            controller: controller,
+                            onResume: onResume,
+                          ),
+                        ],
+                      ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _CommandPanelBody extends StatelessWidget {
+  const _CommandPanelBody(this.page);
+
+  final _CommandPage page;
+
+  @override
+  Widget build(BuildContext context) {
+    final controller = page.controller;
     return _Panel(
       title: 'COMMAND CENTER',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _TechField(
-            controller: playerNameController,
-            label: 'GUEST CALLSIGN',
-            onChanged: controller.updatePlayerName,
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'GUEST ${controller.playerId.toUpperCase()}',
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: AppColors.muted,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.8,
-            ),
+          _SectionHeader(
+            title: 'Guest Profile',
+            value: 'GUEST ${controller.playerId.toUpperCase()}',
           ),
           const SizedBox(height: 12),
           _TechField(
-            controller: apiUrlController,
+            controller: page.playerNameController,
+            label: 'GUEST CALLSIGN',
+            icon: Icons.person,
+            onChanged: controller.updatePlayerName,
+          ),
+          const SizedBox(height: 12),
+          _TechField(
+            controller: page.apiUrlController,
             label: 'API ENDPOINT',
+            icon: Icons.cloud_queue,
             onChanged: controller.updateApiBaseUrl,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 20),
           Row(
             children: [
               Expanded(
                 child: _ActionButton(
-                  label: 'CREATE',
+                  label: 'CREATE INVITE',
                   icon: Icons.add,
                   onPressed: controller.loading ? null : controller.createMatch,
                 ),
@@ -378,48 +424,103 @@ class _LobbyPanel extends StatelessWidget {
               Expanded(
                 child: _ActionButton(
                   label: 'QUICKPLAY',
-                  icon: Icons.bolt,
+                  icon: Icons.flash_on,
                   secondary: true,
                   onPressed: controller.loading ? null : controller.quickplay,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 18),
           Row(
             children: [
               Expanded(
                 child: _TechField(
-                  controller: inviteController,
+                  controller: page.inviteController,
                   label: 'INVITE CODE',
+                  icon: Icons.key,
                   onChanged: (_) {},
                 ),
               ),
               const SizedBox(width: 10),
-              IconButton.filled(
-                tooltip: 'Join match',
-                onPressed: controller.loading
-                    ? null
-                    : () => controller.joinMatch(inviteController.text),
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.secondary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+              SizedBox(
+                height: 56,
+                width: 58,
+                child: IconButton.filled(
+                  tooltip: 'Join match',
+                  onPressed: controller.loading
+                      ? null
+                      : () => controller.joinMatch(page.inviteController.text),
+                  style: IconButton.styleFrom(
+                    backgroundColor: AppColors.secondary,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                   ),
+                  icon: const Icon(Icons.login),
                 ),
-                icon: const Icon(Icons.login),
               ),
             ],
           ),
+          if (controller.loading) ...[
+            const SizedBox(height: 18),
+            const LinearProgressIndicator(
+              minHeight: 4,
+              backgroundColor: AppColors.surfaceHigh,
+              color: AppColors.primary,
+            ),
+          ],
           if (controller.error != null) ...[
-            const SizedBox(height: 12),
-            Text(
-              controller.error!,
-              style: const TextStyle(
-                color: AppColors.error,
-                fontWeight: FontWeight.w700,
+            const SizedBox(height: 14),
+            _ErrorBanner(message: controller.error!),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CommandStatusPanel extends StatelessWidget {
+  const _CommandStatusPanel({
+    required this.controller,
+    required this.onResume,
+  });
+
+  final MatchController controller;
+  final VoidCallback? onResume;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    return _Panel(
+      title: 'CURRENT SESSION',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (match == null) ...[
+            const Icon(Icons.grid_4x4, color: AppColors.primary, size: 54),
+            const SizedBox(height: 16),
+            const Text(
+              'Create a new invite or quickplay match to enter the board.',
+              style: TextStyle(
+                color: AppColors.text,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                height: 1.25,
               ),
+            ),
+          ] else ...[
+            _SessionRow(label: 'STATUS', value: match.status),
+            _SessionRow(label: 'PHASE', value: match.phase),
+            _SessionRow(
+                label: 'INVITE', value: match.inviteCode, selectable: true),
+            _SessionRow(label: 'MOVE', value: match.sideToMove),
+            const SizedBox(height: 16),
+            _ActionButton(
+              label: 'RESUME GAME',
+              icon: Icons.play_arrow,
+              onPressed: onResume,
             ),
           ],
         ],
@@ -428,159 +529,249 @@ class _LobbyPanel extends StatelessWidget {
   }
 }
 
-class _BrainProgress extends StatelessWidget {
-  const _BrainProgress({required this.controller});
+class _GameplayPage extends StatelessWidget {
+  const _GameplayPage({required this.controller});
 
   final MatchController controller;
 
   @override
   Widget build(BuildContext context) {
-    final match = controller.match;
-    final interval = maxInt(1, match?.brainRoundIntervalMoves ?? 5) * 2;
-    final ply = match?.plyCount ?? 0;
-    final progress = match?.isBrainRound == true ? interval : ply % interval;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            const Text(
-              'BRAIN ROUND IN',
-              style: TextStyle(
-                color: AppColors.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.4,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              match?.isBrainRound == true ? 'ACTIVE' : '$progress / $interval',
-              style: const TextStyle(
-                color: AppColors.primary,
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 1.4,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            for (var i = 0; i < interval; i++)
-              Expanded(
-                child: Container(
-                  height: 12,
-                  margin: EdgeInsets.only(right: i == interval - 1 ? 0 : 4),
-                  color: i < progress
-                      ? AppColors.primary
-                      : AppColors.primary.withValues(alpha: 0.15),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 1080;
+        final availableBoardHeight = constraints.maxHeight - 18 - 106;
+        final desktopBoardMax = math.max(
+          360.0,
+          math.min(760.0, availableBoardHeight - 180),
+        );
+        return wide
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 106),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      flex: 8,
+                      child: _BoardColumn(
+                        controller: controller,
+                        maxBoardSize: desktopBoardMax,
+                      ),
+                    ),
+                    const SizedBox(width: 20),
+                    SizedBox(
+                      width: 350,
+                      child: _GameInfoRail(controller: controller),
+                    ),
+                  ],
                 ),
-              ),
-          ],
-        ),
-      ],
+              )
+            : ListView(
+                padding: const EdgeInsets.fromLTRB(12, 14, 12, 104),
+                children: [
+                  _BoardColumn(controller: controller),
+                  const SizedBox(height: 14),
+                  _GameInfoRail(controller: controller),
+                ],
+              );
+      },
     );
   }
 }
 
-class _PlayerCard extends StatelessWidget {
-  const _PlayerCard({
+class _BoardColumn extends StatelessWidget {
+  const _BoardColumn({
     required this.controller,
-    required this.top,
+    this.maxBoardSize,
   });
 
   final MatchController controller;
-  final bool top;
+  final double? maxBoardSize;
 
   @override
   Widget build(BuildContext context) {
     final match = controller.match;
-    final player = top ? match?.black : match?.white;
-    final fallback =
-        top ? 'WAITING_OPPONENT' : controller.playerName.toUpperCase();
-    final accent = top ? AppColors.primary : AppColors.secondary;
-    final isTurn = match?.sideToMove == player?.side;
-    final clockMs = _displayClockMs(match, player, isTurn);
+    final me = controller.me;
+    final opponent = _opponent(match, me);
+    final width = MediaQuery.sizeOf(context).width;
+    final boardMax =
+        maxBoardSize ?? (width >= 1080 ? 760.0 : math.min(width - 24, 620.0));
 
-    return _Panel(
-      child: Column(
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: boardMax),
+        child: Column(
+          children: [
+            _PlayerBar(
+              controller: controller,
+              player: opponent,
+              fallbackName:
+                  match?.black == null ? 'Waiting opponent' : 'Opponent',
+              alignRight: true,
+            ),
+            const SizedBox(height: 10),
+            AnimatedSwitcher(
+              duration: const Duration(milliseconds: 180),
+              child: match == null
+                  ? const _EmptyBoard()
+                  : _BoardFrame(controller: controller),
+            ),
+            const SizedBox(height: 10),
+            _PlayerBar(
+              controller: controller,
+              player: me ?? match?.white,
+              fallbackName: controller.playerName,
+              alignRight: false,
+            ),
+            const SizedBox(height: 12),
+            _TurnStrip(controller: controller),
+          ],
+        ),
+      ),
+    );
+  }
+
+  PlayerModel? _opponent(MatchModel? match, PlayerModel? me) {
+    if (match == null || me == null) {
+      return match?.black;
+    }
+    return me.side == 'WHITE' ? match.black : match.white;
+  }
+}
+
+class _BoardFrame extends StatelessWidget {
+  const _BoardFrame({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xff22201c),
+        borderRadius: BorderRadius.circular(8),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 28,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: ChessBoard(controller: controller),
+      ),
+    );
+  }
+}
+
+class _PlayerBar extends StatelessWidget {
+  const _PlayerBar({
+    required this.controller,
+    required this.player,
+    required this.fallbackName,
+    required this.alignRight,
+  });
+
+  final MatchController controller;
+  final PlayerModel? player;
+  final String fallbackName;
+  final bool alignRight;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    final isTurn = player != null && match?.sideToMove == player!.side;
+    final clockMs = _displayClockMs(match, player, isTurn);
+    final accent = isTurn ? AppColors.primary : AppColors.muted;
+
+    return Container(
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border:
+            Border.all(color: isTurn ? AppColors.primary : AppColors.border),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        textDirection: alignRight ? TextDirection.rtl : TextDirection.ltr,
         children: [
           Container(
-            width: 66,
-            height: 66,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
-              border: Border.all(color: accent, width: 1.5),
               color: AppColors.surfaceHigh,
+              border: Border.all(color: accent),
+              borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(top ? Icons.smart_toy : Icons.person,
-                color: accent, size: 34),
+            child: Icon(
+              player?.side == 'BLACK' ? Icons.person_4 : Icons.person,
+              color: accent,
+            ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  (player?.playerName ?? fallback).toUpperCase(),
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: accent,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1,
-                  ),
-                ),
-              ),
-              Text(
-                player?.side ?? (top ? 'BLACK' : 'WHITE'),
-                style: const TextStyle(
-                  color: AppColors.text,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          LinearProgressIndicator(
-            value: (clockMs / 300000).clamp(0.0, 1.0),
-            minHeight: 8,
-            backgroundColor: AppColors.background,
-            color:
-                clockMs <= 30000 ? const Color(0xffffb4ab) : AppColors.primary,
-          ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _MiniMetric(label: 'CLOCK', value: _formatClock(clockMs)),
-              _MiniMetric(
-                  label: 'BRAIN POINTS', value: '${player?.brainPoints ?? 0}'),
-            ],
-          ),
-          if (player != null &&
-              (player.extraMoveArmed ||
-                  player.extraMoveActive ||
-                  player.revivablePawns > 0)) ...[
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.center,
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: alignRight
+                  ? CrossAxisAlignment.end
+                  : CrossAxisAlignment.start,
               children: [
-                if (player.extraMoveArmed)
-                  const _StatusTag(
-                      label: 'EXTRA ARMED', color: AppColors.secondary),
-                if (player.extraMoveActive)
-                  const _StatusTag(
-                      label: 'EXTRA TURN', color: AppColors.primary),
-                if (player.revivablePawns > 0)
-                  _StatusTag(
-                      label: '${player.revivablePawns} PAWN LOST',
-                      color: const Color(0xfff59e0b)),
+                Row(
+                  textDirection:
+                      alignRight ? TextDirection.rtl : TextDirection.ltr,
+                  children: [
+                    Flexible(
+                      child: Text(
+                        (player?.playerName ?? fallbackName).toUpperCase(),
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: AppColors.text,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (isTurn)
+                      const _StatusTag(
+                        label: 'TURN',
+                        color: AppColors.primary,
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  alignment:
+                      alignRight ? WrapAlignment.end : WrapAlignment.start,
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: [
+                    _TinyStat(icon: Icons.timer, value: _formatClock(clockMs)),
+                    _TinyStat(
+                      icon: Icons.psychology,
+                      value: '${player?.brainPoints ?? 0} BP',
+                    ),
+                    if (player?.extraMoveArmed == true)
+                      const _StatusTag(
+                        label: 'EXTRA ARMED',
+                        color: AppColors.secondary,
+                      ),
+                    if (player?.extraMoveActive == true)
+                      const _StatusTag(
+                        label: 'EXTRA TURN',
+                        color: AppColors.primary,
+                      ),
+                    if ((player?.revivablePawns ?? 0) > 0)
+                      _StatusTag(
+                        label: '${player!.revivablePawns} PAWN LOST',
+                        color: AppColors.warning,
+                      ),
+                  ],
+                ),
               ],
             ),
-          ],
+          ),
         ],
       ),
     );
@@ -607,6 +798,131 @@ class _PlayerCard extends StatelessWidget {
   }
 }
 
+class _GameInfoRail extends StatelessWidget {
+  const _GameInfoRail({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _InvitePanel(controller: controller),
+        const SizedBox(height: 14),
+        _BrainProgress(controller: controller),
+        const SizedBox(height: 14),
+        _MoveLog(controller: controller),
+        const SizedBox(height: 14),
+        _EvaluationPanel(controller: controller),
+        if (controller.error != null) ...[
+          const SizedBox(height: 14),
+          _ErrorBanner(message: controller.error!),
+        ],
+      ],
+    );
+  }
+}
+
+class _InvitePanel extends StatelessWidget {
+  const _InvitePanel({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    if (match == null) {
+      return const SizedBox.shrink();
+    }
+    return _Panel(
+      title: 'MATCH',
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'INVITE CODE',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                SelectableText(
+                  match.inviteCode,
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 26,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _LiveChip(connected: controller.realtimeConnected),
+        ],
+      ),
+    );
+  }
+}
+
+class _BrainProgress extends StatelessWidget {
+  const _BrainProgress({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    final interval = maxInt(1, match?.brainRoundIntervalMoves ?? 5) * 2;
+    final ply = match?.plyCount ?? 0;
+    final progress = match?.isBrainRound == true ? interval : ply % interval;
+
+    return _Panel(
+      title: 'BRAIN ROUND',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                match?.isBrainRound == true ? 'ACTIVE' : 'NEXT CHECKPOINT',
+                style: const TextStyle(
+                  color: AppColors.primary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                '$progress / $interval',
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: LinearProgressIndicator(
+              value: interval == 0 ? 0 : progress / interval,
+              minHeight: 12,
+              backgroundColor: AppColors.surfaceHigh,
+              color: AppColors.primary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MoveLog extends StatelessWidget {
   const _MoveLog({required this.controller});
 
@@ -616,13 +932,18 @@ class _MoveLog extends StatelessWidget {
   Widget build(BuildContext context) {
     final moves = controller.match?.moves ?? const [];
     return _Panel(
-      title: 'MOVE LOG',
+      title: 'MOVES',
       child: SizedBox(
-        height: 280,
+        height: 230,
         child: moves.isEmpty
             ? const Center(
-                child: Text('NO MOVES RECORDED',
-                    style: TextStyle(color: AppColors.muted)),
+                child: Text(
+                  'No moves yet',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
               )
             : ListView.separated(
                 itemCount: moves.length,
@@ -630,14 +951,12 @@ class _MoveLog extends StatelessWidget {
                     const Divider(color: AppColors.border, height: 1),
                 itemBuilder: (context, index) {
                   final move = moves[index];
-                  final accent =
-                      move.side == 'WHITE' ? AppColors.text : AppColors.primary;
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Row(
                       children: [
                         SizedBox(
-                          width: 40,
+                          width: 36,
                           child: Text(
                             '${move.plyNumber}.',
                             style: const TextStyle(color: AppColors.muted),
@@ -646,8 +965,8 @@ class _MoveLog extends StatelessWidget {
                         Expanded(
                           child: Text(
                             '${move.from}-${move.to}',
-                            style: TextStyle(
-                              color: accent,
+                            style: const TextStyle(
+                              color: AppColors.text,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -657,7 +976,7 @@ class _MoveLog extends StatelessWidget {
                           style: const TextStyle(
                             color: AppColors.muted,
                             fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                            fontWeight: FontWeight.w900,
                           ),
                         ),
                       ],
@@ -681,36 +1000,69 @@ class _EvaluationPanel extends StatelessWidget {
     final whitePoints = match?.white.brainPoints ?? 0;
     final blackPoints = match?.black?.brainPoints ?? 0;
     return _Panel(
-      title: 'NEURAL EVALUATION',
+      title: 'BRAIN POINTS',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                flex: maxInt(1, whitePoints + 1),
-                child: Container(height: 4, color: AppColors.primary),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                flex: maxInt(1, blackPoints + 1),
-                child: Container(height: 4, color: AppColors.secondary),
-              ),
-            ],
+          _PointRow(
+            label: match?.white.playerName ?? 'White',
+            points: whitePoints,
+            color: AppColors.primary,
           ),
-          const SizedBox(height: 16),
-          Text(
-            match == null
-                ? 'AWAITING MATCH DATA'
-                : '${match.white.playerName.toUpperCase()} $whitePoints BP | ${match.black?.playerName.toUpperCase() ?? 'WAITING'} $blackPoints BP',
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1,
-            ),
+          const SizedBox(height: 10),
+          _PointRow(
+            label: match?.black?.playerName ?? 'Black',
+            points: blackPoints,
+            color: AppColors.secondary,
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PointRow extends StatelessWidget {
+  const _PointRow({
+    required this.label,
+    required this.points,
+    required this.color,
+  });
+
+  final String label;
+  final int points;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label.toUpperCase(),
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.14),
+            border: Border.all(color: color),
+            borderRadius: BorderRadius.circular(7),
+          ),
+          child: Text(
+            '$points BP',
+            style: TextStyle(
+              color: color,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -727,34 +1079,50 @@ class _TurnStrip extends StatelessWidget {
       return const SizedBox.shrink();
     }
     final text = controller.isRevivePawnTargeting
-        ? 'CHOOSE EMPTY SQUARE FOR REVIVED PAWN'
+        ? 'Choose an empty square for revived pawn'
         : match.isCompleted
-            ? match.resultReason ?? 'COMPLETED'
+            ? match.resultReason ?? 'Completed'
             : controller.canMove
-                ? 'YOUR MOVE'
+                ? 'Your move'
                 : match.isWaiting
-                    ? 'WAITING FOR OPPONENT'
-                    : '${match.sideToMove} TO MOVE';
+                    ? 'Waiting for opponent'
+                    : '${match.sideToMove} to move';
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         children: [
-          Text(
-            text,
+          Icon(
+            controller.canMove
+                ? Icons.radio_button_checked
+                : Icons.info_outline,
+            color: controller.canMove ? AppColors.primary : AppColors.muted,
+            size: 18,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text.toUpperCase(),
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 0.8,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SelectableText(
+            match.inviteCode,
             style: const TextStyle(
               color: AppColors.primary,
               fontWeight: FontWeight.w900,
-              letterSpacing: 1.2,
             ),
-          ),
-          const Spacer(),
-          SelectableText(
-            'INVITE ${match.inviteCode}',
-            style: const TextStyle(color: AppColors.text),
           ),
         ],
       ),
@@ -769,26 +1137,24 @@ class _PowerToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final match = controller.match;
     final targeting = controller.isRevivePawnTargeting;
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
-      child: Container(
-        height: 88,
-        decoration: const BoxDecoration(
-          color: AppColors.surfaceLow,
-          border: Border(top: BorderSide(color: AppColors.border)),
-        ),
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 980),
+      child: SafeArea(
+        top: false,
+        child: Container(
+          height: 88,
+          decoration: const BoxDecoration(
+            color: AppColors.surfaceLow,
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          child: Center(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.symmetric(horizontal: 12),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   _PowerButton(
                     label: 'EXTRA',
@@ -818,8 +1184,8 @@ class _PowerToolbar extends StatelessWidget {
                   _PowerButton(
                     label: 'RESIGN',
                     icon: Icons.flag,
-                    enabled: match?.isChessPhase == true ||
-                        match?.isBrainRound == true,
+                    enabled: controller.match?.isChessPhase == true ||
+                        controller.match?.isBrainRound == true,
                     onPressed: controller.resign,
                   ),
                 ],
@@ -852,37 +1218,38 @@ class _PowerButton extends StatelessWidget {
     final foreground = enabled
         ? primary
             ? AppColors.background
-            : AppColors.secondary
+            : AppColors.text
         : AppColors.muted;
     final background =
-        primary && enabled ? AppColors.primary : Colors.transparent;
+        primary && enabled ? AppColors.primary : AppColors.surface;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 120),
-      opacity: enabled ? 1 : 0.42,
+      opacity: enabled ? 1 : 0.45,
       child: InkWell(
         onTap: enabled ? onPressed : null,
         borderRadius: BorderRadius.circular(8),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          width: 86,
+          height: 64,
           decoration: BoxDecoration(
             color: background,
             border: Border.all(
-                color:
-                    primary && enabled ? AppColors.primary : AppColors.border),
+              color: primary && enabled ? AppColors.primary : AppColors.border,
+            ),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: foreground),
-              const SizedBox(height: 3),
+              Icon(icon, color: foreground, size: 22),
+              const SizedBox(height: 4),
               Text(
                 label,
                 style: TextStyle(
                   color: foreground,
                   fontSize: 10,
                   fontWeight: FontWeight.w900,
-                  letterSpacing: 0.6,
+                  letterSpacing: 0.5,
                 ),
               ),
             ],
@@ -890,6 +1257,250 @@ class _PowerButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _EndGameCelebration extends StatefulWidget {
+  const _EndGameCelebration({
+    required this.match,
+    required this.playerId,
+    required this.onReview,
+    required this.onCommand,
+  });
+
+  final MatchModel match;
+  final String playerId;
+  final VoidCallback onReview;
+  final VoidCallback onCommand;
+
+  @override
+  State<_EndGameCelebration> createState() => _EndGameCelebrationState();
+}
+
+class _EndGameCelebrationState extends State<_EndGameCelebration>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+  late List<_ConfettiParticle> particles;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3200),
+    )..forward();
+    particles = _makeParticles(widget.match.matchId.hashCode);
+  }
+
+  @override
+  void didUpdateWidget(covariant _EndGameCelebration oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.match.matchId != widget.match.matchId) {
+      particles = _makeParticles(widget.match.matchId.hashCode);
+      controller.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final winner = _winnerLabel();
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          IgnorePointer(
+            child: AnimatedBuilder(
+              animation: controller,
+              builder: (context, _) {
+                return CustomPaint(
+                  painter: _ConfettiPainter(
+                    particles: particles,
+                    progress: Curves.easeOut.transform(controller.value),
+                  ),
+                  child: const SizedBox.expand(),
+                );
+              },
+            ),
+          ),
+          Align(
+            alignment: Alignment.topCenter,
+            child: SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: Container(
+                      padding: const EdgeInsets.all(18),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        border:
+                            Border.all(color: AppColors.primary, width: 1.5),
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.35),
+                            blurRadius: 22,
+                          ),
+                        ],
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.emoji_events,
+                            color: AppColors.warning,
+                            size: 44,
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            winner,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: AppColors.text,
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            widget.match.resultReason ?? 'Game completed',
+                            style: const TextStyle(
+                              color: AppColors.muted,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: widget.onReview,
+                                  icon: const Icon(Icons.visibility),
+                                  label: const Text('REVIEW'),
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: FilledButton.icon(
+                                  onPressed: widget.onCommand,
+                                  icon: const Icon(Icons.tune),
+                                  label: const Text('COMMAND'),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _winnerLabel() {
+    final winnerId = widget.match.winnerPlayerId;
+    if (winnerId == null) {
+      return 'Draw';
+    }
+    return winnerId == widget.playerId ? 'You won' : 'Game over';
+  }
+
+  List<_ConfettiParticle> _makeParticles(int seed) {
+    final random = math.Random(seed);
+    const colors = [
+      AppColors.primary,
+      AppColors.secondary,
+      AppColors.warning,
+      Color(0xfff472b6),
+      Color(0xfff8fafc),
+    ];
+    return List.generate(90, (index) {
+      return _ConfettiParticle(
+        x: random.nextDouble(),
+        y: -random.nextDouble(),
+        drift: random.nextDouble() * 0.7 - 0.35,
+        size: 5 + random.nextDouble() * 7,
+        speed: 0.55 + random.nextDouble() * 0.9,
+        rotation: random.nextDouble() * math.pi,
+        color: colors[index % colors.length],
+      );
+    });
+  }
+}
+
+class _ConfettiParticle {
+  const _ConfettiParticle({
+    required this.x,
+    required this.y,
+    required this.drift,
+    required this.size,
+    required this.speed,
+    required this.rotation,
+    required this.color,
+  });
+
+  final double x;
+  final double y;
+  final double drift;
+  final double size;
+  final double speed;
+  final double rotation;
+  final Color color;
+}
+
+class _ConfettiPainter extends CustomPainter {
+  const _ConfettiPainter({
+    required this.particles,
+    required this.progress,
+  });
+
+  final List<_ConfettiParticle> particles;
+  final double progress;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+    for (final particle in particles) {
+      final x = (particle.x + particle.drift * progress) * size.width;
+      final y = (particle.y + particle.speed * progress) * size.height;
+      if (y < -20 || y > size.height + 20) {
+        continue;
+      }
+      paint.color = particle.color.withValues(alpha: 1 - progress * 0.25);
+      canvas.save();
+      canvas.translate(x, y);
+      canvas.rotate(particle.rotation + progress * math.pi * 2);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(
+          Rect.fromCenter(
+            center: Offset.zero,
+            width: particle.size,
+            height: particle.size * 0.55,
+          ),
+          const Radius.circular(1),
+        ),
+        paint,
+      );
+      canvas.restore();
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConfettiPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.particles != particles;
   }
 }
 
@@ -910,6 +1521,7 @@ class _Panel extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -941,11 +1553,13 @@ class _TechField extends StatelessWidget {
     required this.controller,
     required this.label,
     required this.onChanged,
+    required this.icon,
   });
 
   final TextEditingController controller;
   final String label;
   final ValueChanged<String> onChanged;
+  final IconData icon;
 
   @override
   Widget build(BuildContext context) {
@@ -955,19 +1569,22 @@ class _TechField extends StatelessWidget {
       style:
           const TextStyle(color: AppColors.text, fontWeight: FontWeight.w700),
       decoration: InputDecoration(
+        prefixIcon: Icon(icon, color: AppColors.muted),
         labelText: label,
         labelStyle: const TextStyle(
           color: AppColors.muted,
           fontWeight: FontWeight.w900,
-          letterSpacing: 1,
+          letterSpacing: 0.8,
         ),
         filled: true,
         fillColor: AppColors.background,
-        enabledBorder: const OutlineInputBorder(
-          borderSide: BorderSide(color: AppColors.border),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.circular(8),
         ),
-        focusedBorder: const OutlineInputBorder(
-          borderSide: BorderSide(color: AppColors.primary),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: AppColors.primary),
+          borderRadius: BorderRadius.circular(8),
         ),
       ),
     );
@@ -989,63 +1606,153 @@ class _ActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return secondary
-        ? OutlinedButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon),
-            label: Text(label),
-            style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.secondary,
-              side: const BorderSide(color: AppColors.secondary),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+    return SizedBox(
+      height: 48,
+      child: secondary
+          ? OutlinedButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon),
+              label: Text(label),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.secondary,
+                side: const BorderSide(color: AppColors.secondary),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            )
+          : FilledButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon),
+              label: Text(label),
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: AppColors.background,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
             ),
-          )
-        : FilledButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon),
-            label: Text(label),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.primary,
-              foregroundColor: AppColors.background,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-            ),
-          );
+    );
   }
 }
 
-class _MiniMetric extends StatelessWidget {
-  const _MiniMetric({
-    required this.label,
+class _SectionHeader extends StatelessWidget {
+  const _SectionHeader({
+    required this.title,
     required this.value,
   });
 
-  final String label;
+  final String title;
   final String value;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
       children: [
         Text(
-          label,
-          style: const TextStyle(
-            color: AppColors.muted,
-            fontSize: 10,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.8,
-          ),
-        ),
-        Text(
-          value,
+          title.toUpperCase(),
           style: const TextStyle(
             color: AppColors.primary,
             fontWeight: FontWeight.w900,
+            letterSpacing: 1,
+          ),
+        ),
+        const Spacer(),
+        Flexible(
+          child: Text(
+            value,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ),
       ],
+    );
+  }
+}
+
+class _SessionRow extends StatelessWidget {
+  const _SessionRow({
+    required this.label,
+    required this.value,
+    this.selectable = false,
+  });
+
+  final String label;
+  final String value;
+  final bool selectable;
+
+  @override
+  Widget build(BuildContext context) {
+    final valueStyle = const TextStyle(
+      color: AppColors.text,
+      fontWeight: FontWeight.w900,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 74,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          Expanded(
+            child: selectable
+                ? SelectableText(value, style: valueStyle)
+                : Text(value,
+                    style: valueStyle, overflow: TextOverflow.ellipsis),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TinyStat extends StatelessWidget {
+  const _TinyStat({
+    required this.icon,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceLow,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: AppColors.muted),
+          const SizedBox(width: 5),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -1062,7 +1769,7 @@ class _StatusTag extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.14),
         border: Border.all(color: color.withValues(alpha: 0.7)),
@@ -1074,7 +1781,7 @@ class _StatusTag extends StatelessWidget {
           color: color,
           fontSize: 10,
           fontWeight: FontWeight.w900,
-          letterSpacing: 0.6,
+          letterSpacing: 0.3,
         ),
       ),
     );
@@ -1095,11 +1802,36 @@ class _LiveChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
-        connected ? 'LIVE' : 'OFFLINE',
+        connected ? 'LIVE' : 'SYNC',
         style: TextStyle(
           color: connected ? AppColors.background : AppColors.muted,
           fontSize: 11,
           fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorBanner extends StatelessWidget {
+  const _ErrorBanner({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.12),
+        border: Border.all(color: AppColors.error),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        message,
+        style: const TextStyle(
+          color: AppColors.error,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -1117,22 +1849,15 @@ class _EmptyBoard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surface,
           border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: const Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.grid_4x4, color: AppColors.primary, size: 52),
-              SizedBox(height: 16),
-              Text(
-                'CREATE OR JOIN A MATCH',
-                style: TextStyle(
-                  color: AppColors.text,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1,
-                ),
-              ),
-            ],
+          child: Text(
+            'Create or join a match',
+            style: TextStyle(
+              color: AppColors.text,
+              fontWeight: FontWeight.w900,
+            ),
           ),
         ),
       ),
@@ -1148,12 +1873,11 @@ class _BackgroundGrid extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: AppColors.background,
-        backgroundBlendMode: BlendMode.screen,
-        gradient: RadialGradient(
-          center: Alignment.topRight,
-          radius: 1.1,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
           colors: [
-            AppColors.primary.withValues(alpha: 0.08),
+            AppColors.surfaceLow.withValues(alpha: 0.95),
             AppColors.background,
           ],
         ),
@@ -1164,16 +1888,17 @@ class _BackgroundGrid extends StatelessWidget {
 }
 
 class AppColors {
-  static const background = Color(0xff0a0a0a);
-  static const surfaceLow = Color(0xff111111);
-  static const surface = Color(0xff171717);
-  static const surfaceHigh = Color(0xff262626);
-  static const border = Color(0xff3c4a42);
-  static const primary = Color(0xff10b981);
-  static const secondary = Color(0xff3b82f6);
-  static const text = Color(0xffe5e2e1);
-  static const muted = Color(0xff86948a);
-  static const error = Color(0xffffb4ab);
+  static const background = Color(0xff0f1115);
+  static const surfaceLow = Color(0xff15181d);
+  static const surface = Color(0xff1d2026);
+  static const surfaceHigh = Color(0xff2a2f38);
+  static const border = Color(0xff333a45);
+  static const primary = Color(0xff81b64c);
+  static const secondary = Color(0xff4f8ddf);
+  static const warning = Color(0xfff4b942);
+  static const text = Color(0xfff0f3f5);
+  static const muted = Color(0xff9aa4b2);
+  static const error = Color(0xffff8a80);
 }
 
 int maxInt(int a, int b) => a > b ? a : b;
