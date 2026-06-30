@@ -25,7 +25,7 @@ The first version should focus on proving that the loop is fun.
 
 ### MVP Features
 
-- User accounts.
+- Guest identity with a locally persisted player name.
 - Create or join a match by invite code.
 - Real-time online chess board.
 - Legal chess moves, check, checkmate, stalemate, resignation, and timeout.
@@ -34,8 +34,8 @@ The first version should focus on proving that the loop is fun.
 - Brain Points reward system.
 - Three starter power-ups:
   - `Clock Boost`: add time to your clock.
-  - `Extra Move Token`: earn one extra move opportunity, with restrictions.
-  - `Spawn Pawn`: place a pawn on an allowed square.
+  - `Extra Move`: arm one safe additional turn, with restrictions.
+  - `Revive Pawn`: restore one captured pawn to an allowed empty square.
 - Basic match history.
 - Mobile-first Flutter app.
 - Spring Boot backend with WebSocket game sessions.
@@ -71,6 +71,7 @@ For the backend, prefer a tested chess library instead of writing legal move val
 chessbraining/
   apps/
     mobile/
+      chessbraining_app/
       README.md
       .gitkeep
   services/
@@ -113,7 +114,7 @@ Goal: make the core loop playable locally.
 
 Goal: make it playable by testers.
 
-- Authentication.
+- Guest identity now, followed by real authentication when player history/rating becomes important.
 - WebSocket real-time sync.
 - Match timers.
 - Brain Points wallet per match.
@@ -151,17 +152,50 @@ The power-ups should create interesting chess decisions without making chess irr
 
 ## Local Setup
 
-The actual Flutter and Spring Boot projects are not generated yet. After creating the repo, initialize them inside the prepared folders:
+The Spring Boot backend exists under:
 
-```powershell
-cd apps/mobile
-flutter create chessbraining_app
-
-cd ../../services/api
-spring init --dependencies=web,websocket,security,data-jpa,postgresql,lombok chessbraining-api
+```text
+services/api/chessbraining-api
 ```
 
-If `spring init` is not installed, create the backend from https://start.spring.io and place it under `services/api/chessbraining-api`.
+Run backend tests:
+
+```powershell
+cd services/api/chessbraining-api
+.\mvnw.cmd test
+```
+
+Run the backend locally with database environment variables set:
+
+```powershell
+$env:SPRING_DATASOURCE_URL="jdbc:postgresql://host/database?sslmode=require"
+$env:SPRING_DATASOURCE_USERNAME="database_user"
+$env:SPRING_DATASOURCE_PASSWORD="database_password"
+.\mvnw.cmd spring-boot:run
+```
+
+For a disposable local backend without the shared Postgres database:
+
+```powershell
+cd services/api/chessbraining-api
+.\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local
+```
+
+The first Flutter client source now exists under:
+
+```text
+apps/mobile/chessbraining_app
+```
+
+Run it after installing Flutter:
+
+```powershell
+cd apps/mobile/chessbraining_app
+flutter pub get
+flutter run -d chrome
+```
+
+Do not commit real database credentials. Use environment variables or a local untracked `.env` file.
 
 ## Team Workflow
 

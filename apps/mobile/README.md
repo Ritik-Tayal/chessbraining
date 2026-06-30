@@ -2,17 +2,18 @@
 
 Flutter app for ChessBraining.
 
-Expected generated project path:
+Current project path:
 
 ```text
 apps/mobile/chessbraining_app
 ```
 
-Create it with:
+Install dependencies and run:
 
 ```powershell
-cd apps/mobile
-flutter create chessbraining_app
+cd apps/mobile/chessbraining_app
+flutter pub get
+flutter run -d chrome
 ```
 
 Suggested package organization:
@@ -45,3 +46,11 @@ First screens to build:
 5. Brain round screen.
 6. Match result screen.
 
+Current first slice:
+
+- Lobby without authentication.
+- Create, quickplay, and invite-code join.
+- Tappable board backed by server legal move validation.
+- REST commands for gameplay actions.
+- STOMP WebSocket updates from `/topic/matches/{matchId}`.
+- Manual brain-round resolution until the real mini-game service is added.

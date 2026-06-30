@@ -1,0 +1,24 @@
+name: chessbraining_app
+description: Playable Flutter client for ChessBraining.
+publish_to: "none"
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  chess_vectors_flutter: ^1.1.0
+  flutter:
+    sdk: flutter
+  google_fonts: ^8.1.0
+  http: ^1.2.2
+  stomp_dart_client: ^3.0.0
+  web: ^1.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

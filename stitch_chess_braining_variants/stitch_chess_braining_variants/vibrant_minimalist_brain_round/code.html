@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Mental Math Brain Round</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&amp;family=Geist:wght@400;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        body {
+            background-color: #0A0A0A;
+            color: #e5e2e1;
+            font-family: 'Geist', sans-serif;
+            overflow: hidden;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Hard-edge active state for keypad */
+        .key-active:active {
+            background-color: #3B82F6 !important;
+            color: #0A0A0A !important;
+            transform: scale(0.95);
+        }
+        /* Progress bar animation */
+        @keyframes timer-drain {
+            from { width: 100%; }
+            to { width: 0%; }
+        }
+        .timer-animate {
+            animation: timer-drain 30s linear forwards;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "on-surface": "#e5e2e1",
+                        "surface-container": "#201f1f",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-background": "#e5e2e1",
+                        "secondary-fixed-dim": "#adc6ff",
+                        "error": "#ffb4ab",
+                        "on-secondary-fixed-variant": "#004395",
+                        "on-primary-container": "#00422b",
+                        "tertiary": "#95d3ba",
+                        "surface-container-low": "#1c1b1b",
+                        "on-error-container": "#ffdad6",
+                        "primary-fixed-dim": "#4edea3",
+                        "background": "#131313",
+                        "on-error": "#690005",
+                        "on-secondary-container": "#e6ecff",
+                        "tertiary-container": "#71af97",
+                        "surface-tint": "#4edea3",
+                        "on-tertiary": "#003829",
+                        "surface-dim": "#131313",
+                        "on-primary-fixed": "#002113",
+                        "on-tertiary-fixed": "#002117",
+                        "on-secondary": "#002e6a",
+                        "inverse-surface": "#e5e2e1",
+                        "surface-container-high": "#2a2a2a",
+                        "on-tertiary-container": "#004231",
+                        "tertiary-fixed-dim": "#95d3ba",
+                        "outline": "#86948a",
+                        "surface-variant": "#353534",
+                        "surface": "#131313",
+                        "error-container": "#93000a",
+                        "primary-fixed": "#6ffbbe",
+                        "tertiary-fixed": "#b0f0d6",
+                        "on-primary-fixed-variant": "#005236",
+                        "on-tertiary-fixed-variant": "#0b513d",
+                        "outline-variant": "#3c4a42",
+                        "on-surface-variant": "#bbcabf",
+                        "secondary-fixed": "#d8e2ff",
+                        "primary-container": "#10b981",
+                        "on-primary": "#003824",
+                        "surface-bright": "#3a3939",
+                        "surface-container-highest": "#353534",
+                        "on-secondary-fixed": "#001a42",
+                        "secondary": "#adc6ff",
+                        "primary": "#4edea3",
+                        "inverse-on-surface": "#313030",
+                        "secondary-container": "#0566d9",
+                        "inverse-primary": "#006c49"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "spacing": {
+                        "container-max": "1280px",
+                        "gutter": "24px",
+                        "base": "8px",
+                        "margin": "32px"
+                    },
+                    "fontFamily": {
+                        "label-sm": ["JetBrains Mono"],
+                        "label-xs": ["JetBrains Mono"],
+                        "headline-lg": ["Geist"],
+                        "body-md": ["Geist"],
+                        "headline-lg-mobile": ["Geist"],
+                        "body-lg": ["Geist"],
+                        "headline-md": ["Geist"]
+                    },
+                    "fontSize": {
+                        "label-sm": ["12px", {"lineHeight": "1.0", "letterSpacing": "0.05em", "fontWeight": "500"}],
+                        "label-xs": ["10px", {"lineHeight": "1.0", "fontWeight": "500"}],
+                        "headline-lg": ["48px", {"lineHeight": "1.1", "letterSpacing": "-0.02em", "fontWeight": "700"}],
+                        "body-md": ["16px", {"lineHeight": "1.5", "fontWeight": "400"}],
+                        "headline-lg-mobile": ["32px", {"lineHeight": "1.2", "fontWeight": "700"}],
+                        "body-lg": ["18px", {"lineHeight": "1.6", "fontWeight": "400"}],
+                        "headline-md": ["24px", {"lineHeight": "1.3", "fontWeight": "600"}]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+</head>
+<body class="bg-surface-container-lowest min-h-screen flex flex-col">
+<!-- Top AppBar (JSON Component Mapping) -->
+<header class="w-full top-0 sticky z-50 bg-background border-b border-outline-variant flex justify-between items-center px-margin h-16">
+<div class="flex items-center gap-4">
+<button class="material-symbols-outlined text-primary hover:bg-surface-container-high transition-colors p-2 active:scale-95 duration-100" data-icon="menu">menu</button>
+<h1 class="font-headline-md text-headline-md font-bold tracking-tighter text-primary">CHESS BRAINING</h1>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden md:flex gap-6 items-center mr-8">
+<span class="font-label-sm text-label-sm text-primary transition-colors cursor-pointer">HOME</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-container-high px-2 py-1 transition-colors cursor-pointer">PLAY</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant hover:bg-surface-container-high px-2 py-1 transition-colors cursor-pointer">POWER-UPS</span>
+</div>
+<button class="material-symbols-outlined text-primary hover:bg-surface-container-high transition-colors p-2 active:scale-95 duration-100" data-icon="settings">settings</button>
+</div>
+</header>
+<!-- Main Game Canvas -->
+<main class="flex-grow flex flex-col items-center justify-center relative p-margin">
+<!-- Background Animation Overlay -->
+<div class="absolute inset-0 z-0 opacity-10 pointer-events-none">
+
+</div>
+<!-- Stats Bar (Top) -->
+<div class="w-full max-w-2xl flex justify-between items-start mb-12 z-10">
+<div class="flex flex-col gap-1 border-l-2 border-primary pl-4">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest">Accuracy</span>
+<span class="font-headline-md text-headline-md font-bold text-primary">98.2%</span>
+</div>
+<div class="flex flex-col gap-1 border-r-2 border-secondary pl-4 text-right pr-4">
+<span class="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest">Score</span>
+<span class="font-headline-md text-headline-md font-bold text-secondary">12,450</span>
+</div>
+</div>
+<!-- Game Centerpiece -->
+<div class="w-full max-w-xl z-10 flex flex-col items-center">
+<!-- Equation Section -->
+<div class="mb-12 text-center">
+<span class="font-label-xs text-label-xs text-on-surface-variant uppercase mb-4 block">Current Equation</span>
+<div class="bg-surface-container border-2 border-outline-variant px-12 py-8 min-w-[320px]">
+<h2 class="font-headline-lg text-headline-lg-mobile md:text-headline-lg text-white font-black tracking-tight" id="equation">
+                        24 x 3 + 12
+                    </h2>
+<div class="mt-8 border-t border-outline-variant pt-4">
+<div class="font-headline-lg text-headline-lg text-secondary text-center tracking-widest h-14" id="answer-display">
+                            _ _ _
+                        </div>
+</div>
+</div>
+</div>
+<!-- Hard-Edge Progress Bar -->
+<div class="w-full mb-16 px-4">
+<div class="flex justify-between items-end mb-2">
+<span class="font-label-sm text-label-sm text-primary font-bold">TIME REMAINING</span>
+<span class="font-label-sm text-label-sm text-on-surface-variant" id="timer-text">0:24</span>
+</div>
+<div class="w-full h-4 bg-surface-container-high border border-outline-variant overflow-hidden">
+<div class="h-full bg-primary-container timer-animate" id="timer-bar"></div>
+</div>
+</div>
+<!-- Monolithic Keypad -->
+<div class="grid grid-cols-3 gap-0 w-full max-w-sm border-2 border-outline-variant bg-outline-variant">
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('1')">1</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('2')">2</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('3')">3</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('4')">4</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('5')">5</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('6')">6</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('7')">7</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('8')">8</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('9')">9</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-error key-active flex items-center justify-center" onclick="clearAnswer()">
+<span class="material-symbols-outlined" data-icon="backspace">backspace</span>
+</button>
+<button class="bg-surface-container h-20 font-headline-md text-headline-md hover:bg-surface-container-high transition-colors text-white key-active" onclick="appendDigit('0')">0</button>
+<button class="bg-secondary-container h-20 font-headline-md text-headline-md text-on-secondary-container hover:bg-secondary transition-colors font-bold active:scale-95 duration-100 flex items-center justify-center" onclick="confirmAnswer()">
+<span class="material-symbols-outlined" data-icon="check">check</span>
+</button>
+</div>
+</div>
+<!-- Floating High-Pressure Context -->
+<div class="fixed bottom-32 right-margin hidden xl:block">
+<div class="bg-surface-container border-t-2 border-primary p-6 w-64">
+<span class="font-label-sm text-label-sm text-primary block mb-2">BONUS STREAK</span>
+<div class="flex gap-1 mb-4">
+<div class="w-full h-1 bg-primary"></div>
+<div class="w-full h-1 bg-primary"></div>
+<div class="w-full h-1 bg-primary"></div>
+<div class="w-full h-1 bg-outline-variant"></div>
+<div class="w-full h-1 bg-outline-variant"></div>
+</div>
+<p class="font-body-md text-body-md text-on-surface-variant">Answer next question within <span class="text-white font-bold">3.5s</span> for 2x multiplier.</p>
+</div>
+</div>
+</main>
+<!-- Bottom Navigation (JSON Component Mapping) -->
+<nav class="md:hidden fixed bottom-0 w-full z-50 bg-surface-container-low border-t border-outline-variant flex justify-around items-center h-20 px-4">
+<div class="flex flex-col items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="home">home</span>
+<span class="font-label-xs text-label-xs">Home</span>
+</div>
+<div class="flex flex-col items-center justify-center bg-primary text-on-primary rounded-lg px-3 py-1 scale-90 transition-transform duration-150">
+<span class="material-symbols-outlined" data-icon="sports_esports">sports_esports</span>
+<span class="font-label-xs text-label-xs">Play</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="bolt">bolt</span>
+<span class="font-label-xs text-label-xs">Power-ups</span>
+</div>
+<div class="flex flex-col items-center justify-center text-on-surface-variant">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+<span class="font-label-xs text-label-xs">Profile</span>
+</div>
+</nav>
+<script>
+        let currentAnswer = "";
+        const answerDisplay = document.getElementById('answer-display');
+
+        function appendDigit(digit) {
+            if (currentAnswer.length < 5) {
+                currentAnswer += digit;
+                updateDisplay();
+            }
+        }
+
+        function clearAnswer() {
+            currentAnswer = "";
+            updateDisplay();
+        }
+
+        function updateDisplay() {
+            answerDisplay.innerText = currentAnswer || "_ _ _";
+            // Flash blue highlight on update
+            answerDisplay.classList.remove('text-secondary');
+            answerDisplay.classList.add('text-primary');
+            setTimeout(() => {
+                answerDisplay.classList.remove('text-primary');
+                answerDisplay.classList.add('text-secondary');
+            }, 100);
+        }
+
+        function confirmAnswer() {
+            if (currentAnswer === "84") { // Hardcoded correct answer for demo
+                flashScreen('bg-primary-container');
+                generateNewQuestion();
+            } else {
+                flashScreen('bg-error-container');
+            }
+            clearAnswer();
+        }
+
+        function flashScreen(colorClass) {
+            const overlay = document.createElement('div');
+            overlay.className = `fixed inset-0 z-[100] ${colorClass} opacity-30 pointer-events-none transition-opacity duration-300`;
+            document.body.appendChild(overlay);
+            setTimeout(() => {
+                overlay.style.opacity = '0';
+                setTimeout(() => overlay.remove(), 300);
+            }, 50);
+        }
+
+        function generateNewQuestion() {
+            const eq = document.getElementById('equation');
+            const ops = ['+', '-', 'x'];
+            const n1 = Math.floor(Math.random() * 20) + 5;
+            const n2 = Math.floor(Math.random() * 10) + 2;
+            const n3 = Math.floor(Math.random() * 15) + 1;
+            eq.innerText = `${n1} ${ops[Math.floor(Math.random()*3)]} ${n2} + ${n3}`;
+        }
+
+        // Simple timer logic
+        let timeLeft = 24;
+        const timerText = document.getElementById('timer-text');
+        setInterval(() => {
+            if (timeLeft > 0) {
+                timeLeft--;
+                timerText.innerText = `0:${timeLeft < 10 ? '0' : ''}${timeLeft}`;
+            }
+        }, 1000);
+    </script>
+</body></html>

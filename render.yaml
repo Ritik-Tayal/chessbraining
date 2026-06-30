@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: chessbraining-api
+    runtime: docker
+    rootDir: services/api/chessbraining-api
+    plan: free
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: SPRING_DATASOURCE_URL
+        sync: false
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
