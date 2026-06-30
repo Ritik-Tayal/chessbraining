@@ -6,8 +6,13 @@ import 'package:http/http.dart' as http;
 import '../models/match_models.dart';
 
 class ChessbrainingApi {
+  static const defaultBaseUrl = String.fromEnvironment(
+    'CHESSBRAINING_API_BASE_URL',
+    defaultValue: 'http://localhost:8080/api/v1',
+  );
+
   ChessbrainingApi({
-    this.baseUrl = 'http://localhost:8080/api/v1',
+    this.baseUrl = defaultBaseUrl,
     http.Client? client,
   }) : _client = client ?? http.Client();
 
