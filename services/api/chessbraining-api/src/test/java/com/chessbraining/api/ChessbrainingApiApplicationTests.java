@@ -402,6 +402,10 @@ class ChessbrainingApiApplicationTests {
 		JsonNode joined = createJoinedMatch(5);
 		String matchId = joined.get("matchId").asText();
 
+		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+		match.setClockDeadlineAt(Instant.now().plusMillis(299_000));
+		matchRepository.save(match);
+
 		submitMove(matchId, "white-player", "e2", "e4");
 
 		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
@@ -507,6 +511,137 @@ class ChessbrainingApiApplicationTests {
 								"""))
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("INSUFFICIENT_BRAIN_POINTS"));
+	}
+
+	@Test
+	void extraMovePowerupArmsAndGrantsOneAdditionalTurn() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+		match.setWhiteBrainPoints(2);
+		matchRepository.save(match);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "type": "EXTRA_MOVE"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.white.brainPoints").value(0))
+				.andExpect(jsonPath("$.white.extraMoveArmed").value(true));
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/moves", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "from": "e2",
+								  "to": "e3"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.sideToMove").value("WHITE"))
+				.andExpect(jsonPath("$.white.extraMoveArmed").value(false))
+				.andExpect(jsonPath("$.white.extraMoveActive").value(true));
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/moves", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "from": "d2",
+								  "to": "d4"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.sideToMove").value("BLACK"))
+				.andExpect(jsonPath("$.white.extraMoveActive").value(false))
+				.andExpect(jsonPath("$.moves.length()").value(2));
+	}
+
+	@Test
+	void extraMoveCannotBeArmedOnBrainRoundTriggerMove() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+		match.setBlackBrainPoints(2);
+		matchRepository.save(match);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "black-player",
+								  "type": "EXTRA_MOVE"
+								}
+								"""))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("EXTRA_MOVE_BLOCKED_BY_BRAIN_ROUND"));
+	}
+
+	@Test
+	void revivePawnPowerupRestoresCapturedPawnToEmptyLegalSquare() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+		match.setFen("rnbqkbnr/pppppppp/8/8/8/8/1PPPPPPP/RNBQKBNR w KQkq - 0 1");
+		match.setWhiteBrainPoints(3);
+		matchRepository.save(match);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "type": "REVIVE_PAWN",
+								  "targetSquare": "a3"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.white.brainPoints").value(0))
+				.andExpect(jsonPath("$.white.revivablePawns").value(0))
+				.andExpect(jsonPath("$.fen").value(org.hamcrest.Matchers.startsWith("rnbqkbnr/pppppppp/8/8/8/P7/1PPPPPPP/RNBQKBNR")));
+	}
+
+	@Test
+	void revivePawnRejectsOccupiedSquareAndMissingCapturedPawn() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+		match.setWhiteBrainPoints(6);
+		matchRepository.save(match);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "type": "REVIVE_PAWN",
+								  "targetSquare": "e2"
+								}
+								"""))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("POWERUP_TARGET_OCCUPIED"));
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "type": "REVIVE_PAWN",
+								  "targetSquare": "a3"
+								}
+								"""))
+				.andExpect(status().isConflict())
+				.andExpect(jsonPath("$.code").value("NO_PAWN_TO_REVIVE"));
 	}
 
 	@Test

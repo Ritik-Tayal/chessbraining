@@ -63,9 +63,8 @@ class ChessbrainingApi {
   }
 
   Future<MatchModel> getMatch(String matchId) async {
-    final response = await _client
-        .get(_uri('/matches/$matchId'))
-        .timeout(_requestTimeout);
+    final response =
+        await _client.get(_uri('/matches/$matchId')).timeout(_requestTimeout);
     return _decodeMatch(response);
   }
 
@@ -140,10 +139,12 @@ class ChessbrainingApi {
     required String matchId,
     required String playerId,
     required String type,
+    String? targetSquare,
   }) {
     return _postMatch('/matches/$matchId/powerups', {
       'playerId': playerId,
       'type': type,
+      'targetSquare': targetSquare,
     });
   }
 
@@ -173,7 +174,8 @@ class ChessbrainingApi {
   }
 
   Object? _decodeResponse(http.Response response) {
-    final decoded = response.body.isEmpty ? null : _tryDecodeJson(response.body);
+    final decoded =
+        response.body.isEmpty ? null : _tryDecodeJson(response.body);
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return decoded;
     }
@@ -183,7 +185,8 @@ class ChessbrainingApi {
         decoded['message']?.toString() ?? 'Request failed',
       );
     }
-    throw ApiException('API_ERROR', 'Request failed with ${response.statusCode}');
+    throw ApiException(
+        'API_ERROR', 'Request failed with ${response.statusCode}');
   }
 
   Object? _tryDecodeJson(String body) {

@@ -23,7 +23,7 @@ class _MatchScreenState extends State<MatchScreen> {
   final apiUrlController = TextEditingController(
     text: 'http://localhost:8080/api/v1',
   );
-  final playerNameController = TextEditingController(text: 'Neo Master');
+  final playerNameController = TextEditingController();
   final inviteController = TextEditingController();
   Timer? clockTicker;
   DateTime? lastClockExpiryRefreshDeadline;
@@ -31,6 +31,7 @@ class _MatchScreenState extends State<MatchScreen> {
   @override
   void initState() {
     super.initState();
+    playerNameController.text = widget.controller.playerName;
     clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         _refreshExpiredClock();
@@ -92,13 +93,15 @@ class _MatchScreenState extends State<MatchScreen> {
                                     ? _DesktopLayout(
                                         controller: controller,
                                         apiUrlController: apiUrlController,
-                                        playerNameController: playerNameController,
+                                        playerNameController:
+                                            playerNameController,
                                         inviteController: inviteController,
                                       )
                                     : _MobileLayout(
                                         controller: controller,
                                         apiUrlController: apiUrlController,
-                                        playerNameController: playerNameController,
+                                        playerNameController:
+                                            playerNameController,
                                         inviteController: inviteController,
                                       );
                               },
@@ -342,8 +345,19 @@ class _LobbyPanel extends StatelessWidget {
         children: [
           _TechField(
             controller: playerNameController,
-            label: 'CALLSIGN',
+            label: 'GUEST CALLSIGN',
             onChanged: controller.updatePlayerName,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'GUEST ${controller.playerId.toUpperCase()}',
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.8,
+            ),
           ),
           const SizedBox(height: 12),
           _TechField(
@@ -486,7 +500,8 @@ class _PlayerCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final match = controller.match;
     final player = top ? match?.black : match?.white;
-    final fallback = top ? 'WAITING_OPPONENT' : controller.playerName.toUpperCase();
+    final fallback =
+        top ? 'WAITING_OPPONENT' : controller.playerName.toUpperCase();
     final accent = top ? AppColors.primary : AppColors.secondary;
     final isTurn = match?.sideToMove == player?.side;
     final clockMs = _displayClockMs(match, player, isTurn);
@@ -501,7 +516,8 @@ class _PlayerCard extends StatelessWidget {
               border: Border.all(color: accent, width: 1.5),
               color: AppColors.surfaceHigh,
             ),
-            child: Icon(top ? Icons.smart_toy : Icons.person, color: accent, size: 34),
+            child: Icon(top ? Icons.smart_toy : Icons.person,
+                color: accent, size: 34),
           ),
           const SizedBox(height: 16),
           Row(
@@ -531,16 +547,41 @@ class _PlayerCard extends StatelessWidget {
             value: (clockMs / 300000).clamp(0.0, 1.0),
             minHeight: 8,
             backgroundColor: AppColors.background,
-            color: clockMs <= 30000 ? const Color(0xffffb4ab) : AppColors.primary,
+            color:
+                clockMs <= 30000 ? const Color(0xffffb4ab) : AppColors.primary,
           ),
           const SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               _MiniMetric(label: 'CLOCK', value: _formatClock(clockMs)),
-              _MiniMetric(label: 'BRAIN POINTS', value: '${player?.brainPoints ?? 0}'),
+              _MiniMetric(
+                  label: 'BRAIN POINTS', value: '${player?.brainPoints ?? 0}'),
             ],
           ),
+          if (player != null &&
+              (player.extraMoveArmed ||
+                  player.extraMoveActive ||
+                  player.revivablePawns > 0)) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              alignment: WrapAlignment.center,
+              children: [
+                if (player.extraMoveArmed)
+                  const _StatusTag(
+                      label: 'EXTRA ARMED', color: AppColors.secondary),
+                if (player.extraMoveActive)
+                  const _StatusTag(
+                      label: 'EXTRA TURN', color: AppColors.primary),
+                if (player.revivablePawns > 0)
+                  _StatusTag(
+                      label: '${player.revivablePawns} PAWN LOST',
+                      color: const Color(0xfff59e0b)),
+              ],
+            ),
+          ],
         ],
       ),
     );
@@ -552,7 +593,8 @@ class _PlayerCard extends StatelessWidget {
     }
     final deadline = match?.clockDeadlineAt;
     if (match?.isChessPhase == true && isTurn && deadline != null) {
-      final remaining = deadline.difference(DateTime.now().toUtc()).inMilliseconds;
+      final remaining =
+          deadline.difference(DateTime.now().toUtc()).inMilliseconds;
       return maxInt(0, remaining);
     }
     return player.clockMs;
@@ -580,14 +622,17 @@ class _MoveLog extends StatelessWidget {
         height: 280,
         child: moves.isEmpty
             ? const Center(
-                child: Text('NO MOVES RECORDED', style: TextStyle(color: AppColors.muted)),
+                child: Text('NO MOVES RECORDED',
+                    style: TextStyle(color: AppColors.muted)),
               )
             : ListView.separated(
                 itemCount: moves.length,
-                separatorBuilder: (_, __) => const Divider(color: AppColors.border, height: 1),
+                separatorBuilder: (_, __) =>
+                    const Divider(color: AppColors.border, height: 1),
                 itemBuilder: (context, index) {
                   final move = moves[index];
-                  final accent = move.side == 'WHITE' ? AppColors.text : AppColors.primary;
+                  final accent =
+                      move.side == 'WHITE' ? AppColors.text : AppColors.primary;
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     child: Row(
@@ -682,13 +727,15 @@ class _TurnStrip extends StatelessWidget {
     if (match == null) {
       return const SizedBox.shrink();
     }
-    final text = match.isCompleted
-        ? match.resultReason ?? 'COMPLETED'
-        : controller.canMove
-            ? 'YOUR MOVE'
-            : match.isWaiting
-                ? 'WAITING FOR OPPONENT'
-                : '${match.sideToMove} TO MOVE';
+    final text = controller.isRevivePawnTargeting
+        ? 'CHOOSE EMPTY SQUARE FOR REVIVED PAWN'
+        : match.isCompleted
+            ? match.resultReason ?? 'COMPLETED'
+            : controller.canMove
+                ? 'YOUR MOVE'
+                : match.isWaiting
+                    ? 'WAITING FOR OPPONENT'
+                    : '${match.sideToMove} TO MOVE';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
@@ -724,41 +771,60 @@ class _PowerToolbar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final match = controller.match;
+    final targeting = controller.isRevivePawnTargeting;
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
       child: Container(
-        height: 78,
+        height: 88,
         decoration: const BoxDecoration(
           color: AppColors.surfaceLow,
           border: Border(top: BorderSide(color: AppColors.border)),
         ),
         child: Center(
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 880),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _PowerButton(label: 'UNDO', icon: Icons.undo, enabled: false),
-                _PowerButton(
-                  label: 'SPAWN',
-                  icon: Icons.bolt,
-                  enabled: false,
-                  primary: true,
-                ),
-                _PowerButton(
-                  label: '+30 SEC',
-                  icon: Icons.more_time,
-                  enabled: controller.canUseClockBoost,
-                  onPressed: controller.applyClockBoost,
-                ),
-                _PowerButton(
-                  label: match?.isBrainRound == true ? 'BRAIN' : 'ANALYZE',
-                  icon: Icons.psychology,
-                  enabled: false,
-                ),
-              ],
+            constraints: const BoxConstraints(maxWidth: 980),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  _PowerButton(
+                    label: 'EXTRA',
+                    icon: Icons.double_arrow,
+                    enabled: controller.canArmExtraMove,
+                    primary: controller.me?.extraMoveArmed == true,
+                    onPressed: controller.armExtraMove,
+                  ),
+                  const SizedBox(width: 10),
+                  _PowerButton(
+                    label: targeting ? 'CANCEL' : 'REVIVE',
+                    icon: targeting ? Icons.close : Icons.replay,
+                    enabled: targeting || controller.canRevivePawn,
+                    primary: targeting,
+                    onPressed: targeting
+                        ? controller.cancelPowerupTargeting
+                        : controller.startRevivePawnTargeting,
+                  ),
+                  const SizedBox(width: 10),
+                  _PowerButton(
+                    label: '+30 SEC',
+                    icon: Icons.more_time,
+                    enabled: controller.canUseClockBoost,
+                    onPressed: controller.applyClockBoost,
+                  ),
+                  const SizedBox(width: 10),
+                  _PowerButton(
+                    label: 'RESIGN',
+                    icon: Icons.flag,
+                    enabled: match?.isChessPhase == true ||
+                        match?.isBrainRound == true,
+                    onPressed: controller.resign,
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -789,7 +855,8 @@ class _PowerButton extends StatelessWidget {
             ? AppColors.background
             : AppColors.secondary
         : AppColors.muted;
-    final background = primary && enabled ? AppColors.primary : Colors.transparent;
+    final background =
+        primary && enabled ? AppColors.primary : Colors.transparent;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 120),
       opacity: enabled ? 1 : 0.42,
@@ -800,7 +867,9 @@ class _PowerButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           decoration: BoxDecoration(
             color: background,
-            border: Border.all(color: primary && enabled ? AppColors.primary : AppColors.border),
+            border: Border.all(
+                color:
+                    primary && enabled ? AppColors.primary : AppColors.border),
             borderRadius: BorderRadius.circular(8),
           ),
           child: Column(
@@ -884,7 +953,8 @@ class _TechField extends StatelessWidget {
     return TextField(
       controller: controller,
       onChanged: onChanged,
-      style: const TextStyle(color: AppColors.text, fontWeight: FontWeight.w700),
+      style:
+          const TextStyle(color: AppColors.text, fontWeight: FontWeight.w700),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(
@@ -928,7 +998,8 @@ class _ActionButton extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: AppColors.secondary,
               side: const BorderSide(color: AppColors.secondary),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
           )
         : FilledButton.icon(
@@ -938,7 +1009,8 @@ class _ActionButton extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: AppColors.background,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
           );
   }
@@ -975,6 +1047,37 @@ class _MiniMetric extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _StatusTag extends StatelessWidget {
+  const _StatusTag({
+    required this.label,
+    required this.color,
+  });
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.14),
+        border: Border.all(color: color.withValues(alpha: 0.7)),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.6,
+        ),
+      ),
     );
   }
 }

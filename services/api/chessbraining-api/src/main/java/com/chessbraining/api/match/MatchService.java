@@ -120,10 +120,20 @@ public class MatchService {
 		requireActiveChessPhase(match);
 		String side = requirePlayerTurn(match, request.playerId());
 		String fenBefore = match.getFen();
+		boolean extraMoveArmed = isExtraMoveArmed(match, side);
+		boolean extraMoveContinuation = isExtraMoveActive(match, side);
 
 		ChessMoveResult result = chessService.applyMove(fenBefore,
 				new ChessMove(request.from(), request.to(), request.promotion()),
 				side);
+		if (extraMoveArmed && result.check()) {
+			throw new ApiException(HttpStatus.CONFLICT, "EXTRA_MOVE_CANNOT_GIVE_CHECK",
+					"The first extra-move turn cannot give check. Choose a quiet move or use the power later.");
+		}
+		if (extraMoveArmed && (result.checkmate() || result.stalemate() || result.draw())) {
+			throw new ApiException(HttpStatus.CONFLICT, "EXTRA_MOVE_TERMINAL_MOVE",
+					"Extra move cannot be opened with a move that ends the game.");
+		}
 
 		int nextPly = match.getPlyCount() + 1;
 		MatchMoveEntity move = new MatchMoveEntity();
@@ -143,17 +153,36 @@ public class MatchService {
 		match.setPlyCount(nextPly);
 
 		if (result.checkmate()) {
+			clearExtraMoveState(match, side);
 			completeMatch(match, request.playerId(), "CHECKMATE");
 		}
 		else if (result.stalemate()) {
+			clearExtraMoveState(match, side);
 			completeMatch(match, null, "STALEMATE");
 		}
 		else if (result.draw()) {
+			clearExtraMoveState(match, side);
 			completeMatch(match, null, "DRAW");
 		}
+		else if (extraMoveArmed) {
+			String timedOutWinner = clockService.tickAfterMoveKeepingTurn(match, side);
+			if (timedOutWinner != null) {
+				clearExtraMoveState(match, side);
+				completeMatch(match, timedOutWinner, "TIMEOUT");
+			} else {
+				match.setFen(chessService.withSideToMove(result.fen(), side));
+				match.setSideToMove(side);
+				setExtraMoveArmed(match, side, false);
+				setExtraMoveActive(match, side, true);
+			}
+		}
 		else {
+			if (extraMoveContinuation) {
+				setExtraMoveActive(match, side, false);
+			}
 			String timedOutWinner = clockService.tickAfterMove(match);
 			if (timedOutWinner != null) {
+				clearExtraMoveState(match, side);
 				completeMatch(match, timedOutWinner, "TIMEOUT");
 			}
 			else if (shouldStartBrainRound(match)) {
@@ -243,6 +272,41 @@ public class MatchService {
 		return intervalPlyCount > 0 && match.getPlyCount() > 0 && match.getPlyCount() % intervalPlyCount == 0;
 	}
 
+	boolean nextMoveWouldStartBrainRound(MatchEntity match) {
+		int intervalPlyCount = match.getBrainRoundIntervalMoves() * 2;
+		int nextPly = match.getPlyCount() + 1;
+		return intervalPlyCount > 0 && nextPly > 0 && nextPly % intervalPlyCount == 0;
+	}
+
+	private boolean isExtraMoveArmed(MatchEntity match, String side) {
+		return "WHITE".equals(side) ? match.isWhiteExtraMoveArmed() : match.isBlackExtraMoveArmed();
+	}
+
+	private boolean isExtraMoveActive(MatchEntity match, String side) {
+		return "WHITE".equals(side) ? match.isWhiteExtraMoveActive() : match.isBlackExtraMoveActive();
+	}
+
+	private void setExtraMoveArmed(MatchEntity match, String side, boolean value) {
+		if ("WHITE".equals(side)) {
+			match.setWhiteExtraMoveArmed(value);
+		} else {
+			match.setBlackExtraMoveArmed(value);
+		}
+	}
+
+	private void setExtraMoveActive(MatchEntity match, String side, boolean value) {
+		if ("WHITE".equals(side)) {
+			match.setWhiteExtraMoveActive(value);
+		} else {
+			match.setBlackExtraMoveActive(value);
+		}
+	}
+
+	private void clearExtraMoveState(MatchEntity match, String side) {
+		setExtraMoveArmed(match, side, false);
+		setExtraMoveActive(match, side, false);
+	}
+
 	private void startBrainRound(MatchEntity match) {
 		match.setPhase(MatchPhase.BRAIN_ROUND);
 		match.setBrainRoundCount(match.getBrainRoundCount() + 1);
@@ -278,6 +342,10 @@ public class MatchService {
 		match.setResultReason(reason);
 		match.setCompletedAt(Instant.now());
 		match.setClockDeadlineAt(null);
+		match.setWhiteExtraMoveArmed(false);
+		match.setBlackExtraMoveArmed(false);
+		match.setWhiteExtraMoveActive(false);
+		match.setBlackExtraMoveActive(false);
 	}
 
 	private boolean completeOnTimeoutIfNeeded(MatchEntity match) {
@@ -305,10 +373,14 @@ public class MatchService {
 				match.getBrainRoundIntervalMoves(),
 				match.getBrainRoundCount(),
 				new PlayerResponse(match.getWhitePlayerId(), match.getWhitePlayerName(), "WHITE",
-						match.getWhiteBrainPoints(), match.getWhiteClockMs()),
+						match.getWhiteBrainPoints(), match.getWhiteClockMs(),
+						match.isWhiteExtraMoveArmed(), match.isWhiteExtraMoveActive(),
+						chessService.revivablePawnCount(match.getFen(), "WHITE")),
 				match.getBlackPlayerId() == null ? null :
 						new PlayerResponse(match.getBlackPlayerId(), match.getBlackPlayerName(), "BLACK",
-								match.getBlackBrainPoints(), match.getBlackClockMs()),
+								match.getBlackBrainPoints(), match.getBlackClockMs(),
+								match.isBlackExtraMoveArmed(), match.isBlackExtraMoveActive(),
+								chessService.revivablePawnCount(match.getFen(), "BLACK")),
 				match.getWinnerPlayerId(),
 				match.getResultReason(),
 				moves.stream().map(this::toMoveResponse).toList(),

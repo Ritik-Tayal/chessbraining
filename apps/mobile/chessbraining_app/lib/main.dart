@@ -5,13 +5,21 @@ import 'src/api/chessbraining_api.dart';
 import 'src/api/match_socket_client.dart';
 import 'src/features/match/match_controller.dart';
 import 'src/features/match/match_screen.dart';
+import 'src/session/guest_session.dart';
 
-void main() {
-  runApp(const ChessBrainingApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final guestSession = await GuestSession.load();
+  runApp(ChessBrainingApp(guestSession: guestSession));
 }
 
 class ChessBrainingApp extends StatefulWidget {
-  const ChessBrainingApp({super.key});
+  const ChessBrainingApp({
+    required this.guestSession,
+    super.key,
+  });
+
+  final GuestSession guestSession;
 
   @override
   State<ChessBrainingApp> createState() => _ChessBrainingAppState();
@@ -26,6 +34,7 @@ class _ChessBrainingAppState extends State<ChessBrainingApp> {
     controller = MatchController(
       api: ChessbrainingApi(),
       socketFactory: MatchSocketClient.new,
+      guestSession: widget.guestSession,
     );
   }
 

@@ -53,6 +53,34 @@ public class ClockService {
 		return null;
 	}
 
+	public String tickAfterMoveKeepingTurn(MatchEntity match, String movingSide) {
+		if (match.getClockDeadlineAt() == null) {
+			return null;
+		}
+
+		Instant now = Instant.now();
+		long remainingMs = Duration.between(now, match.getClockDeadlineAt()).toMillis();
+		boolean whiteMoved = "WHITE".equals(movingSide);
+
+		if (whiteMoved) {
+			match.setWhiteClockMs(Math.max(0, (int) remainingMs));
+			if (remainingMs <= 0) {
+				match.setClockDeadlineAt(null);
+				return match.getBlackPlayerId();
+			}
+			match.setClockDeadlineAt(Instant.now().plusMillis(match.getWhiteClockMs()));
+		} else {
+			match.setBlackClockMs(Math.max(0, (int) remainingMs));
+			if (remainingMs <= 0) {
+				match.setClockDeadlineAt(null);
+				return match.getWhitePlayerId();
+			}
+			match.setClockDeadlineAt(Instant.now().plusMillis(match.getBlackClockMs()));
+		}
+
+		return null;
+	}
+
 	/**
 	 * Check if the active player has already timed out (for GET /match checks).
 	 * Returns the winner player ID if timed out, or null otherwise.
