@@ -73,6 +73,18 @@ public class MatchEntity {
 	@Column(nullable = false)
 	private int blackBrainPoints;
 
+	@Column(nullable = false)
+	private boolean whiteExtraMoveArmed;
+
+	@Column(nullable = false)
+	private boolean blackExtraMoveArmed;
+
+	@Column(nullable = false)
+	private boolean whiteExtraMoveActive;
+
+	@Column(nullable = false)
+	private boolean blackExtraMoveActive;
+
 	@Column(length = 64)
 	private String winnerPlayerId;
 
@@ -248,6 +260,38 @@ public class MatchEntity {
 
 	public void setBlackBrainPoints(int blackBrainPoints) {
 		this.blackBrainPoints = blackBrainPoints;
+	}
+
+	public boolean isWhiteExtraMoveArmed() {
+		return whiteExtraMoveArmed;
+	}
+
+	public void setWhiteExtraMoveArmed(boolean whiteExtraMoveArmed) {
+		this.whiteExtraMoveArmed = whiteExtraMoveArmed;
+	}
+
+	public boolean isBlackExtraMoveArmed() {
+		return blackExtraMoveArmed;
+	}
+
+	public void setBlackExtraMoveArmed(boolean blackExtraMoveArmed) {
+		this.blackExtraMoveArmed = blackExtraMoveArmed;
+	}
+
+	public boolean isWhiteExtraMoveActive() {
+		return whiteExtraMoveActive;
+	}
+
+	public void setWhiteExtraMoveActive(boolean whiteExtraMoveActive) {
+		this.whiteExtraMoveActive = whiteExtraMoveActive;
+	}
+
+	public boolean isBlackExtraMoveActive() {
+		return blackExtraMoveActive;
+	}
+
+	public void setBlackExtraMoveActive(boolean blackExtraMoveActive) {
+		this.blackExtraMoveActive = blackExtraMoveActive;
 	}
 
 	public String getWinnerPlayerId() {

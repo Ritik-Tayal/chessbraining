@@ -82,6 +82,9 @@ class PlayerModel {
     required this.side,
     required this.brainPoints,
     required this.clockMs,
+    required this.extraMoveArmed,
+    required this.extraMoveActive,
+    required this.revivablePawns,
   });
 
   final String playerId;
@@ -89,6 +92,9 @@ class PlayerModel {
   final String side;
   final int brainPoints;
   final int clockMs;
+  final bool extraMoveArmed;
+  final bool extraMoveActive;
+  final int revivablePawns;
 
   factory PlayerModel.fromJson(Map<String, dynamic> json) {
     return PlayerModel(
@@ -97,6 +103,9 @@ class PlayerModel {
       side: json['side'] as String,
       brainPoints: json['brainPoints'] as int,
       clockMs: json['clockMs'] as int,
+      extraMoveArmed: json['extraMoveArmed'] as bool? ?? false,
+      extraMoveActive: json['extraMoveActive'] as bool? ?? false,
+      revivablePawns: json['revivablePawns'] as int? ?? 0,
     );
   }
 }

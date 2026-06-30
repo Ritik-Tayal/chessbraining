@@ -25,7 +25,7 @@ The first version should focus on proving that the loop is fun.
 
 ### MVP Features
 
-- User accounts.
+- Guest identity with a locally persisted player name.
 - Create or join a match by invite code.
 - Real-time online chess board.
 - Legal chess moves, check, checkmate, stalemate, resignation, and timeout.
@@ -34,8 +34,8 @@ The first version should focus on proving that the loop is fun.
 - Brain Points reward system.
 - Three starter power-ups:
   - `Clock Boost`: add time to your clock.
-  - `Extra Move Token`: earn one extra move opportunity, with restrictions.
-  - `Spawn Pawn`: place a pawn on an allowed square.
+  - `Extra Move`: arm one safe additional turn, with restrictions.
+  - `Revive Pawn`: restore one captured pawn to an allowed empty square.
 - Basic match history.
 - Mobile-first Flutter app.
 - Spring Boot backend with WebSocket game sessions.
@@ -114,7 +114,7 @@ Goal: make the core loop playable locally.
 
 Goal: make it playable by testers.
 
-- Authentication.
+- Guest identity now, followed by real authentication when player history/rating becomes important.
 - WebSocket real-time sync.
 - Match timers.
 - Brain Points wallet per match.

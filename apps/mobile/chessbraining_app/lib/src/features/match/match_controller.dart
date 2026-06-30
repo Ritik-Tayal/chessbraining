@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../api/chessbraining_api.dart';
 import '../../api/match_socket_client.dart';
 import '../../models/match_models.dart';
+import '../../session/guest_session.dart';
 
 typedef MatchSocketFactory = MatchSocketClient Function({
   required String apiBaseUrl,
@@ -11,20 +14,33 @@ typedef MatchSocketFactory = MatchSocketClient Function({
   required void Function(bool connected) onConnectionChanged,
 });
 
+enum PowerupTargetMode {
+  none,
+  revivePawn,
+}
+
 class MatchController extends ChangeNotifier {
+  static const defaultApiBaseUrl = String.fromEnvironment(
+    'CHESSBRAINING_API_BASE_URL',
+    defaultValue: 'http://localhost:8080/api/v1',
+  );
+
   MatchController({
     required ChessbrainingApi api,
     required MatchSocketFactory socketFactory,
+    required GuestSession guestSession,
   })  : _api = api,
-        _socketFactory = socketFactory;
+        _socketFactory = socketFactory,
+        playerId = guestSession.playerId,
+        playerName = guestSession.playerName;
 
   ChessbrainingApi _api;
   final MatchSocketFactory _socketFactory;
   MatchSocketClient? _socket;
 
-  String apiBaseUrl = 'http://localhost:8080/api/v1';
-  String playerName = 'Player';
-  late final String playerId = 'player_${DateTime.now().microsecondsSinceEpoch}';
+  String apiBaseUrl = defaultApiBaseUrl;
+  final String playerId;
+  String playerName;
 
   MatchModel? match;
   BrainRoundModel? brainRound;
@@ -34,6 +50,7 @@ class MatchController extends ChangeNotifier {
   bool loading = false;
   bool brainRoundLoading = false;
   bool realtimeConnected = false;
+  PowerupTargetMode powerupTargetMode = PowerupTargetMode.none;
 
   PlayerModel? get me => match?.playerById(playerId);
   bool get isMyTurn => me != null && match?.sideToMove == me!.side;
@@ -46,6 +63,36 @@ class MatchController extends ChangeNotifier {
         currentPlayer != null &&
         currentPlayer.brainPoints >= 1;
   }
+
+  bool get canArmExtraMove {
+    final current = match;
+    final currentPlayer = me;
+    if (current == null ||
+        !current.isChessPhase ||
+        currentPlayer == null ||
+        !isMyTurn ||
+        currentPlayer.brainPoints < 2 ||
+        currentPlayer.extraMoveArmed ||
+        currentPlayer.extraMoveActive) {
+      return false;
+    }
+    final interval = current.brainRoundIntervalMoves * 2;
+    return interval <= 0 || (current.plyCount + 1) % interval != 0;
+  }
+
+  bool get canRevivePawn {
+    final current = match;
+    final currentPlayer = me;
+    return current != null &&
+        current.isChessPhase &&
+        currentPlayer != null &&
+        isMyTurn &&
+        currentPlayer.brainPoints >= 3 &&
+        currentPlayer.revivablePawns > 0;
+  }
+
+  bool get isRevivePawnTargeting =>
+      powerupTargetMode == PowerupTargetMode.revivePawn;
 
   int get nextBrainQuestionIndex {
     final round = brainRound;
@@ -66,6 +113,7 @@ class MatchController extends ChangeNotifier {
 
   void updatePlayerName(String value) {
     playerName = value.trim().isEmpty ? 'Player' : value.trim();
+    unawaited(GuestSession.saveName(playerName));
     notifyListeners();
   }
 
@@ -108,6 +156,10 @@ class MatchController extends ChangeNotifier {
   }
 
   Future<void> selectSquare(String square) async {
+    if (powerupTargetMode == PowerupTargetMode.revivePawn) {
+      await applyRevivePawn(square);
+      return;
+    }
     if (!canMove) {
       return;
     }
@@ -235,12 +287,70 @@ class MatchController extends ChangeNotifier {
     });
   }
 
+  Future<void> armExtraMove() {
+    final current = match;
+    if (current == null || !canArmExtraMove) {
+      return Future.value();
+    }
+    return _run(() async {
+      _setMatch(await _api.applyPowerup(
+        matchId: current.matchId,
+        playerId: playerId,
+        type: 'EXTRA_MOVE',
+      ));
+    });
+  }
+
+  void startRevivePawnTargeting() {
+    if (!canRevivePawn) {
+      return;
+    }
+    powerupTargetMode = PowerupTargetMode.revivePawn;
+    selectedSquare = null;
+    error = null;
+    notifyListeners();
+  }
+
+  void cancelPowerupTargeting() {
+    powerupTargetMode = PowerupTargetMode.none;
+    notifyListeners();
+  }
+
+  Future<void> applyRevivePawn(String targetSquare) {
+    final current = match;
+    if (current == null || !canRevivePawn) {
+      return Future.value();
+    }
+    if (!isPowerupTarget(targetSquare)) {
+      error = 'Choose an empty square between ranks 2 and 7.';
+      notifyListeners();
+      return Future.value();
+    }
+    return _run(() async {
+      _setMatch(await _api.applyPowerup(
+        matchId: current.matchId,
+        playerId: playerId,
+        type: 'REVIVE_PAWN',
+        targetSquare: targetSquare,
+      ));
+      powerupTargetMode = PowerupTargetMode.none;
+    });
+  }
+
   bool isLegalTarget(String square) {
     final source = selectedSquare;
     if (source == null) {
       return false;
     }
     return legalMoves.any((move) => move.from == source && move.to == square);
+  }
+
+  bool isPowerupTarget(String square) {
+    if (!isRevivePawnTargeting || _pieceAt(square) != null) {
+      return false;
+    }
+    final rank = int.tryParse(square.substring(1));
+    return rank != 1 && rank != 8;
   }
 
   Future<void> _loadLegalMoves() async {
@@ -267,6 +377,7 @@ class MatchController extends ChangeNotifier {
     final previousMatchId = match?.matchId;
     match = value;
     selectedSquare = null;
+    powerupTargetMode = PowerupTargetMode.none;
     if (!value.isBrainRound) {
       brainRound = null;
     }
@@ -290,6 +401,7 @@ class MatchController extends ChangeNotifier {
       onMatch: (value) {
         match = value;
         selectedSquare = null;
+        powerupTargetMode = PowerupTargetMode.none;
         if (!value.isBrainRound) {
           brainRound = null;
         }
@@ -323,6 +435,32 @@ class MatchController extends ChangeNotifier {
       loading = false;
       notifyListeners();
     }
+  }
+
+  String? _pieceAt(String square) {
+    final current = match;
+    if (current == null) {
+      return null;
+    }
+    final placement = current.fen.split(' ').first;
+    final ranks = placement.split('/');
+    for (var rankIndex = 0; rankIndex < ranks.length; rankIndex++) {
+      final rank = 8 - rankIndex;
+      var fileIndex = 0;
+      for (final unit in ranks[rankIndex].split('')) {
+        final emptyCount = int.tryParse(unit);
+        if (emptyCount != null) {
+          fileIndex += emptyCount;
+          continue;
+        }
+        final file = String.fromCharCode('a'.codeUnitAt(0) + fileIndex);
+        if ('$file$rank' == square) {
+          return unit;
+        }
+        fileIndex++;
+      }
+    }
+    return null;
   }
 
   @override

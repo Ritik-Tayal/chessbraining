@@ -51,10 +51,86 @@ public class ChessService {
 				.toList();
 	}
 
+	public boolean isSideInCheck(String fen, String side) {
+		Board board = loadBoard(fen);
+		return isSideKingAttacked(board, toSide(side));
+	}
+
+	public int revivablePawnCount(String fen, String side) {
+		Board board = loadBoard(fen);
+		Piece pawn = pawnFor(toSide(side));
+		return Math.max(0, 8 - board.getPieceLocation(pawn).size());
+	}
+
+	public String withSideToMove(String fen, String side) {
+		Board board = loadBoard(fen);
+		board.setSideToMove(toSide(side));
+		return board.getFen();
+	}
+
+	public String revivePawn(String fen, String side, String targetSquare) {
+		Board board = loadBoard(fen);
+		Side playerSide = toSide(side);
+		Square square = toSquare(targetSquare, "target");
+		Piece pawn = pawnFor(playerSide);
+
+		if (board.getPiece(square) != Piece.NONE) {
+			throw new ApiException(HttpStatus.CONFLICT, "POWERUP_TARGET_OCCUPIED",
+					"Pawn revival target square must be empty.");
+		}
+		if (board.getPieceLocation(pawn).size() >= 8) {
+			throw new ApiException(HttpStatus.CONFLICT, "NO_PAWN_TO_REVIVE",
+					"This player does not have a captured pawn to revive.");
+		}
+		int rank = rankOf(square);
+		if (rank == 1 || rank == 8) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_REVIVE_RANK",
+					"Revived pawns cannot be placed on the first or eighth rank.");
+		}
+
+		board.setPiece(pawn, square);
+		board.setEnPassant(Square.NONE);
+		board.setEnPassantTarget(Square.NONE);
+
+		if (isSideKingAttacked(board, playerSide)) {
+			throw new ApiException(HttpStatus.CONFLICT, "REVIVE_LEAVES_KING_IN_CHECK",
+					"Pawn revival must leave your king safe.");
+		}
+		if (isSideKingAttacked(board, playerSide.flip())) {
+			throw new ApiException(HttpStatus.CONFLICT, "REVIVE_CANNOT_GIVE_CHECK",
+					"Pawn revival cannot immediately give check.");
+		}
+
+		board.legalMoves();
+		return board.getFen();
+	}
+
 	private Board loadBoard(String fen) {
 		Board board = new Board();
 		board.loadFromFen(fen);
 		return board;
+	}
+
+	private Side toSide(String value) {
+		try {
+			return Side.valueOf(value);
+		} catch (IllegalArgumentException | NullPointerException e) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_SIDE", "Side must be WHITE or BLACK.");
+		}
+	}
+
+	private Piece pawnFor(Side side) {
+		return side == Side.WHITE ? Piece.WHITE_PAWN : Piece.BLACK_PAWN;
+	}
+
+	private boolean isSideKingAttacked(Board board, Side side) {
+		Square kingSquare = board.getKingSquare(side);
+		return kingSquare != Square.NONE && board.squareAttackedBy(kingSquare, side.flip()) != 0;
+	}
+
+	private int rankOf(Square square) {
+		String value = square.value();
+		return Character.digit(value.charAt(1), 10);
 	}
 
 	private Move toChessLibMove(ChessMove command, Side sideToMove) {

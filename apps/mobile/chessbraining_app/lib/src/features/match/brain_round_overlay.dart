@@ -56,12 +56,16 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     final match = widget.controller.match!;
     final round = widget.controller.brainRound;
     final puzzles = round?.puzzles ?? const <String>[];
-    if (round != null && widget.controller.nextBrainQuestionIndex > questionIndex) {
-      questionIndex = min(widget.controller.nextBrainQuestionIndex, round.totalQuestions);
+    if (round != null &&
+        widget.controller.nextBrainQuestionIndex > questionIndex) {
+      questionIndex =
+          min(widget.controller.nextBrainQuestionIndex, round.totalQuestions);
       finished = questionIndex >= round.totalQuestions;
     }
-    final safeIndex = puzzles.isEmpty ? 0 : min(questionIndex, puzzles.length - 1);
-    final currentPuzzle = puzzles.isEmpty ? 'Loading puzzle...' : puzzles[safeIndex];
+    final safeIndex =
+        puzzles.isEmpty ? 0 : min(questionIndex, puzzles.length - 1);
+    final currentPuzzle =
+        puzzles.isEmpty ? 'Loading puzzle...' : puzzles[safeIndex];
     final secondsLeft = round == null ? 30 : _remainingSeconds(round);
     final totalSeconds = round == null ? 30 : _durationSeconds(round);
     final progress = totalSeconds == 0 ? 0.0 : secondsLeft / totalSeconds;
@@ -103,9 +107,11 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                     const SizedBox(height: 28),
                     Center(
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 12),
                         decoration: BoxDecoration(
-                          color: const Color(0xffb600f8).withValues(alpha: 0.22),
+                          color:
+                              const Color(0xffb600f8).withValues(alpha: 0.22),
                           border: Border.all(color: const Color(0xffb600f8)),
                           borderRadius: BorderRadius.circular(24),
                         ),
@@ -191,7 +197,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                             alignment: Alignment.center,
                             decoration: const BoxDecoration(
                               border: Border(
-                                bottom: BorderSide(color: Color(0xff849396), width: 2),
+                                bottom: BorderSide(
+                                    color: Color(0xff849396), width: 2),
                               ),
                             ),
                             child: Text(
@@ -225,18 +232,37 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                         crossAxisSpacing: 12,
                         childAspectRatio: 1.45,
                         children: [
-                          for (final value in ['1', '2', '3', '4', '5', '6', '7', '8', '9'])
-                            _KeyButton(label: value, onPressed: _inputEnabled ? () => _append(value) : null),
+                          for (final value in [
+                            '1',
+                            '2',
+                            '3',
+                            '4',
+                            '5',
+                            '6',
+                            '7',
+                            '8',
+                            '9'
+                          ])
+                            _KeyButton(
+                                label: value,
+                                onPressed: _inputEnabled
+                                    ? () => _append(value)
+                                    : null),
                           _KeyButton(
                             icon: Icons.backspace_outlined,
                             color: const Color(0xffffb4ab),
                             onPressed: _inputEnabled ? _backspace : null,
                           ),
-                          _KeyButton(label: '0', onPressed: _inputEnabled ? () => _append('0') : null),
+                          _KeyButton(
+                              label: '0',
+                              onPressed:
+                                  _inputEnabled ? () => _append('0') : null),
                           _KeyButton(
                             icon: Icons.check_circle_outline,
                             filled: true,
-                            onPressed: _inputEnabled && answer.isNotEmpty ? _submit : null,
+                            onPressed: _inputEnabled && answer.isNotEmpty
+                                ? _submit
+                                : null,
                           ),
                         ],
                       ),
@@ -255,15 +281,21 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                     ],
                     Row(
                       children: [
-                        _StatPill(label: 'WHITE BP', value: '${match.white.brainPoints}'),
+                        _StatPill(
+                            label: 'WHITE BP',
+                            value: '${match.white.brainPoints}'),
                         const SizedBox(width: 12),
-                        _StatPill(label: 'BLACK BP', value: '${match.black?.brainPoints ?? 0}'),
+                        _StatPill(
+                            label: 'BLACK BP',
+                            value: '${match.black?.brainPoints ?? 0}'),
                         const Spacer(),
                         FilledButton(
                           onPressed: submitting || !deadlinePassed
                               ? null
                               : () => widget.controller.completeBrainRound(),
-                          child: Text(deadlinePassed ? 'Complete Round' : 'Locked ${secondsLeft}s'),
+                          child: Text(deadlinePassed
+                              ? 'Complete Round'
+                              : 'Locked ${secondsLeft}s'),
                         ),
                       ],
                     ),
@@ -279,11 +311,15 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
 
   bool get _inputEnabled {
     final round = widget.controller.brainRound;
-    return round != null && !finished && !submitting && _remainingSeconds(round) > 0;
+    return round != null &&
+        !finished &&
+        !submitting &&
+        _remainingSeconds(round) > 0;
   }
 
   int _remainingSeconds(BrainRoundModel round) {
-    final remainingMs = round.expiresAt.difference(DateTime.now().toUtc()).inMilliseconds;
+    final remainingMs =
+        round.expiresAt.difference(DateTime.now().toUtc()).inMilliseconds;
     if (remainingMs <= 0) {
       return 0;
     }
@@ -291,7 +327,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   }
 
   int _durationSeconds(BrainRoundModel round) {
-    final durationMs = round.expiresAt.difference(round.startedAt).inMilliseconds;
+    final durationMs =
+        round.expiresAt.difference(round.startedAt).inMilliseconds;
     if (durationMs <= 0) {
       return 0;
     }
@@ -381,7 +418,8 @@ class _KeyButton extends StatelessWidget {
             style: FilledButton.styleFrom(
               backgroundColor: const Color(0xffc3f5ff),
               foregroundColor: const Color(0xff001f24),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             child: child,
           )
@@ -390,7 +428,8 @@ class _KeyButton extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: color ?? Colors.white,
               side: const BorderSide(color: Color(0xff353437)),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
             child: child,
           );

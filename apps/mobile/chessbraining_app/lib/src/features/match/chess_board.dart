@@ -51,7 +51,9 @@ class ChessBoard extends StatelessWidget {
             final isLight = (fileIndex + rankIndex).isEven;
             final isSelected = controller.selectedSquare == square;
             final isTarget = controller.isLegalTarget(square);
-            final isLastMove = lastMove?.from == square || lastMove?.to == square;
+            final isPowerupTarget = controller.isPowerupTarget(square);
+            final isLastMove =
+                lastMove?.from == square || lastMove?.to == square;
 
             return _BoardSquare(
               square: square,
@@ -59,6 +61,7 @@ class ChessBoard extends StatelessWidget {
               isLight: isLight,
               isSelected: isSelected,
               isTarget: isTarget,
+              isPowerupTarget: isPowerupTarget,
               isLastMove: isLastMove,
               onTap: () => controller.selectSquare(square),
             );
@@ -76,6 +79,7 @@ class _BoardSquare extends StatelessWidget {
     required this.isLight,
     required this.isSelected,
     required this.isTarget,
+    required this.isPowerupTarget,
     required this.isLastMove,
     required this.onTap,
   });
@@ -85,6 +89,7 @@ class _BoardSquare extends StatelessWidget {
   final bool isLight;
   final bool isSelected;
   final bool isTarget;
+  final bool isPowerupTarget;
   final bool isLastMove;
   final VoidCallback onTap;
 
@@ -119,15 +124,22 @@ class _BoardSquare extends StatelessWidget {
                   ),
                 ),
               ),
-              if (isTarget)
+              if (isTarget || isPowerupTarget)
                 Center(
                   child: Container(
-                    width: 16,
-                    height: 16,
+                    width: isPowerupTarget ? 24 : 16,
+                    height: isPowerupTarget ? 24 : 16,
                     decoration: BoxDecoration(
-                      color: const Color(0xff3b82f6).withValues(alpha: 0.32),
+                      color: (isPowerupTarget
+                              ? const Color(0xfff59e0b)
+                              : const Color(0xff3b82f6))
+                          .withValues(alpha: 0.32),
                       shape: BoxShape.circle,
-                      border: Border.all(color: const Color(0xff3b82f6)),
+                      border: Border.all(
+                        color: isPowerupTarget
+                            ? const Color(0xfff59e0b)
+                            : const Color(0xff3b82f6),
+                      ),
                     ),
                   ),
                 ),
@@ -154,6 +166,9 @@ class _BoardSquare extends StatelessWidget {
     if (isLastMove) {
       return Color.lerp(base, const Color(0xff3b82f6), 0.22)!;
     }
+    if (isPowerupTarget) {
+      return Color.lerp(base, const Color(0xfff59e0b), 0.18)!;
+    }
     return base;
   }
 
@@ -164,6 +179,9 @@ class _BoardSquare extends StatelessWidget {
     if (isTarget) {
       return const Color(0xff3b82f6);
     }
+    if (isPowerupTarget) {
+      return const Color(0xfff59e0b);
+    }
     if (isLastMove) {
       return const Color(0xff3b82f6).withValues(alpha: 0.65);
     }
@@ -171,7 +189,7 @@ class _BoardSquare extends StatelessWidget {
   }
 
   double _borderWidth() {
-    if (isSelected || isTarget) {
+    if (isSelected || isTarget || isPowerupTarget) {
       return 2;
     }
     if (isLastMove) {

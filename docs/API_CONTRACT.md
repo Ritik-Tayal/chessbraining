@@ -10,7 +10,13 @@ Base path:
 /api/v1
 ```
 
-## Auth
+## Guest Identity
+
+The current playable version does not require signup, email verification, or login. The Flutter client creates a local guest identity, stores it on the device, and sends `playerId` plus `playerName` with match commands.
+
+Real authentication remains planned for history, ratings, and public competitive play.
+
+## Planned Auth
 
 ### Register
 
@@ -261,7 +267,8 @@ Request:
 ```json
 {
   "playerId": "user_1",
-  "type": "CLOCK_BOOST_30"
+  "type": "REVIVE_PAWN",
+  "targetSquare": "e3"
 }
 ```
 
@@ -270,6 +277,8 @@ Currently implemented powerups:
 | Type | Cost | Effect |
 | --- | ---: | --- |
 | `CLOCK_BOOST_30` | 1 Brain Point | Adds 30 seconds to that player's clock. If it is their active turn, the live clock deadline is extended too. |
+| `EXTRA_MOVE` | 2 Brain Points | Arms one extra turn for the current player. It can only be armed on that player's turn, not while in check, not immediately before a brain round, and the first move cannot give check or end the game. |
+| `REVIVE_PAWN` | 3 Brain Points | Restores one captured pawn to `targetSquare`. The square must be empty, on ranks 2-7, must leave the player's king safe, and cannot immediately give check. |
 
 Response is the full match state.
 

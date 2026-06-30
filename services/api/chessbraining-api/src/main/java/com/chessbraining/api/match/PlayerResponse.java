@@ -5,5 +5,8 @@ public record PlayerResponse(
 		String playerName,
 		String side,
 		int brainPoints,
-		int clockMs) {
+		int clockMs,
+		boolean extraMoveArmed,
+		boolean extraMoveActive,
+		int revivablePawns) {
 }
