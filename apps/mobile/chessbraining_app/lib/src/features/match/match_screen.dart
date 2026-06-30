@@ -20,9 +20,7 @@ class MatchScreen extends StatefulWidget {
 }
 
 class _MatchScreenState extends State<MatchScreen> {
-  final apiUrlController = TextEditingController(
-    text: 'http://localhost:8080/api/v1',
-  );
+  final apiUrlController = TextEditingController();
   final playerNameController = TextEditingController();
   final inviteController = TextEditingController();
   Timer? clockTicker;
@@ -31,6 +29,7 @@ class _MatchScreenState extends State<MatchScreen> {
   @override
   void initState() {
     super.initState();
+    apiUrlController.text = widget.controller.apiBaseUrl;
     playerNameController.text = widget.controller.playerName;
     clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {

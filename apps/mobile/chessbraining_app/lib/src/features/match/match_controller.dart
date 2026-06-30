@@ -20,6 +20,11 @@ enum PowerupTargetMode {
 }
 
 class MatchController extends ChangeNotifier {
+  static const defaultApiBaseUrl = String.fromEnvironment(
+    'CHESSBRAINING_API_BASE_URL',
+    defaultValue: 'http://localhost:8080/api/v1',
+  );
+
   MatchController({
     required ChessbrainingApi api,
     required MatchSocketFactory socketFactory,
@@ -33,7 +38,7 @@ class MatchController extends ChangeNotifier {
   final MatchSocketFactory _socketFactory;
   MatchSocketClient? _socket;
 
-  String apiBaseUrl = 'http://localhost:8080/api/v1';
+  String apiBaseUrl = defaultApiBaseUrl;
   final String playerId;
   String playerName;
 
