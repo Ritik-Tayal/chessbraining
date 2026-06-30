@@ -30,10 +30,11 @@ class ChessBoard extends StatelessWidget {
     final lastMove = match.moves.isEmpty ? null : match.moves.last;
 
     return Container(
-      padding: const EdgeInsets.all(8),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xff201f1f),
-        border: Border.all(color: const Color(0xff3c4a42)),
+        color: const Color(0xff312e2b),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xff463f39), width: 2),
       ),
       child: AspectRatio(
         aspectRatio: 1,
@@ -95,7 +96,7 @@ class _BoardSquare extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = isLight ? const Color(0xff262626) : const Color(0xff121212);
+    final base = isLight ? const Color(0xffeeeed2) : const Color(0xff769656);
     final pieceValue = piece;
 
     return Material(
@@ -118,9 +119,11 @@ class _BoardSquare extends StatelessWidget {
                 child: Text(
                   square,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.28),
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
+                    color: isLight
+                        ? const Color(0xff769656)
+                        : const Color(0xffeeeed2),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
@@ -147,7 +150,7 @@ class _BoardSquare extends StatelessWidget {
                 Center(
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final size = constraints.biggest.shortestSide * 0.72;
+                      final size = constraints.biggest.shortestSide * 0.82;
                       return _PieceVector(piece: pieceValue, size: size);
                     },
                   ),
@@ -161,20 +164,20 @@ class _BoardSquare extends StatelessWidget {
 
   Color _squareColor(Color base) {
     if (isSelected) {
-      return const Color(0xff073b2c);
+      return const Color(0xfff6f669);
     }
     if (isLastMove) {
-      return Color.lerp(base, const Color(0xff3b82f6), 0.22)!;
+      return Color.lerp(base, const Color(0xffffef5f), 0.48)!;
     }
     if (isPowerupTarget) {
-      return Color.lerp(base, const Color(0xfff59e0b), 0.18)!;
+      return Color.lerp(base, const Color(0xffffa726), 0.35)!;
     }
     return base;
   }
 
   Color _borderColor() {
     if (isSelected) {
-      return const Color(0xff10b981);
+      return const Color(0xfff6f669);
     }
     if (isTarget) {
       return const Color(0xff3b82f6);
@@ -183,7 +186,7 @@ class _BoardSquare extends StatelessWidget {
       return const Color(0xfff59e0b);
     }
     if (isLastMove) {
-      return const Color(0xff3b82f6).withValues(alpha: 0.65);
+      return const Color(0xffffef5f).withValues(alpha: 0.85);
     }
     return Colors.transparent;
   }
@@ -211,16 +214,17 @@ class _PieceVector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final white = isWhitePiece(piece);
-    final fill = white ? const Color(0xff10b981) : const Color(0xff6f7772);
-    final stroke = white ? const Color(0xff06261c) : const Color(0xff2a2a2a);
+    final fill = white ? const Color(0xfff8fafc) : const Color(0xff2a2f38);
+    final stroke = white ? const Color(0xff65758b) : const Color(0xff0b0f14);
 
     return DecoratedBox(
       decoration: BoxDecoration(
         boxShadow: white
             ? [
                 BoxShadow(
-                  color: const Color(0xff10b981).withValues(alpha: 0.22),
-                  blurRadius: 16,
+                  color: Colors.black.withValues(alpha: 0.22),
+                  blurRadius: 10,
+                  offset: const Offset(0, 3),
                 ),
               ]
             : null,
