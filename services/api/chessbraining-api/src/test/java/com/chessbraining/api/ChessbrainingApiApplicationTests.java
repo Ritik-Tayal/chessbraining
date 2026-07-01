@@ -282,6 +282,63 @@ class ChessbrainingApiApplicationTests {
 	}
 
 	@Test
+	void brainRoundBatchSubmissionScoresAndAutoCompletes() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(brainRoundSubmissionJson("white-player", 10)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.playerAnsweredCount").value(10))
+				.andExpect(jsonPath("$.totalQuestions").value(10))
+				.andExpect(jsonPath("$.roundCompleted").value(false));
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.phase").value("BRAIN_ROUND"));
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(brainRoundSubmissionJson("black-player", 10)))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.playerAnsweredCount").value(10))
+				.andExpect(jsonPath("$.totalQuestions").value(10))
+				.andExpect(jsonPath("$.roundCompleted").value(true));
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
+				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
+	}
+
+	@Test
+	void brainRoundBatchSubmissionRejectsDuplicateQuestionIndexes() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player",
+								  "answers": [
+								    {"questionIndex": 0, "answer": 0},
+								    {"questionIndex": 0, "answer": 0}
+								  ]
+								}
+								"""))
+				.andExpect(status().isBadRequest())
+				.andExpect(jsonPath("$.code").value("DUPLICATE_QUESTION_INDEX"));
+	}
+
+	@Test
 	void brainRoundRejectsDuplicateAnswers() throws Exception {
 		JsonNode joined = createJoinedMatch(1);
 		String matchId = joined.get("matchId").asText();
@@ -519,7 +576,7 @@ class ChessbrainingApiApplicationTests {
 		String matchId = joined.get("matchId").asText();
 
 		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
-		match.setWhiteBrainPoints(2);
+		match.setWhiteBrainPoints(4);
 		matchRepository.save(match);
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
@@ -570,7 +627,7 @@ class ChessbrainingApiApplicationTests {
 
 		submitMove(matchId, "white-player", "e2", "e4");
 		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
-		match.setBlackBrainPoints(2);
+		match.setBlackBrainPoints(4);
 		matchRepository.save(match);
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
@@ -760,6 +817,24 @@ class ChessbrainingApiApplicationTests {
 									""".formatted(playerId, i)))
 					.andExpect(status().isOk());
 		}
+	}
+
+	private String brainRoundSubmissionJson(String playerId, int answerCount) {
+		StringBuilder answers = new StringBuilder();
+		for (int i = 0; i < answerCount; i++) {
+			if (i > 0) {
+				answers.append(',');
+			}
+			answers.append("""
+					{"questionIndex": %d, "answer": 0}
+					""".formatted(i));
+		}
+		return """
+				{
+				  "playerId": "%s",
+				  "answers": [%s]
+				}
+				""".formatted(playerId, answers);
 	}
 
 	private void expireActiveBrainRound(String matchId) {

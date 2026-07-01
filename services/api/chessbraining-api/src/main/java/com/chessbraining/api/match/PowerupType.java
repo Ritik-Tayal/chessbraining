@@ -2,7 +2,7 @@ package com.chessbraining.api.match;
 
 public enum PowerupType {
 	CLOCK_BOOST_30(1, 30_000),
-	EXTRA_MOVE(2, 0),
+	EXTRA_MOVE(4, 0),
 	REVIVE_PAWN(3, 0);
 
 	private final int cost;

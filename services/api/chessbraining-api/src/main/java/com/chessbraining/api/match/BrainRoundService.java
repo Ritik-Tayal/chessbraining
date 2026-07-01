@@ -2,7 +2,9 @@ package com.chessbraining.api.match;
 
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import com.chessbraining.api.common.ApiException;
 import tools.jackson.core.JacksonException;
@@ -108,6 +110,88 @@ public class BrainRoundService {
 	}
 
 	@Transactional
+	public BrainRoundSubmissionResponse submitAnswerBatch(String matchId, SubmitAnswerBatchRequest request) {
+		if (request == null) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, "ANSWER_REQUIRED", "Answer submission is required.");
+		}
+
+		BrainRoundEntity round = loadActiveRound(matchId);
+		MatchEntity match = loadMatchForUpdate(matchId);
+		List<Integer> answers = parseAnswers(round.getPuzzleAnswers());
+		requireActiveBrainRoundMatch(match);
+		String side = requirePlayerInMatch(match, request.playerId());
+		boolean isWhite = side.equals("WHITE");
+		int allAnsweredMask = allAnsweredMask(round);
+		int currentAnsweredMask = isWhite ? round.getWhiteAnsweredMask() : round.getBlackAnsweredMask();
+
+		if (currentAnsweredMask != 0) {
+			boolean roundCompleted = false;
+			if (isExpired(round)) {
+				completeActiveRound(round, match);
+				roundCompleted = true;
+			}
+			return new BrainRoundSubmissionResponse(
+					isWhite ? round.getWhiteCorrectCount() : round.getBlackCorrectCount(),
+					Integer.bitCount(currentAnsweredMask & allAnsweredMask),
+					round.getTotalQuestions(),
+					roundCompleted);
+		}
+
+		List<SubmitAnswerBatchRequest.SubmittedAnswer> submittedAnswers = request.answers();
+		if (submittedAnswers == null) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, "ANSWERS_REQUIRED", "Answers are required.");
+		}
+		if (submittedAnswers.size() > round.getTotalQuestions()) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, "TOO_MANY_ANSWERS",
+					"Answer submission has more answers than the current brain round.");
+		}
+
+		int answeredMask = 0;
+		int correctCount = 0;
+		Set<Integer> submittedQuestionIndexes = new HashSet<>();
+		for (SubmitAnswerBatchRequest.SubmittedAnswer submittedAnswer : submittedAnswers) {
+			if (submittedAnswer == null) {
+				throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_ANSWER", "Answer entry is required.");
+			}
+			int questionIndex = submittedAnswer.questionIndex();
+			if (questionIndex < 0 || questionIndex >= answers.size()) {
+				throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_QUESTION_INDEX",
+						"Question index is out of range.");
+			}
+			if (!submittedQuestionIndexes.add(questionIndex)) {
+				throw new ApiException(HttpStatus.BAD_REQUEST, "DUPLICATE_QUESTION_INDEX",
+						"Question index appears more than once in the submission.");
+			}
+
+			answeredMask |= 1 << questionIndex;
+			if (mathPuzzleService.validateAnswer(answers, questionIndex, submittedAnswer.answer())) {
+				correctCount++;
+			}
+		}
+
+		if (isWhite) {
+			round.setWhiteAnsweredMask(allAnsweredMask);
+			round.setWhiteCorrectCount(correctCount);
+		} else {
+			round.setBlackAnsweredMask(allAnsweredMask);
+			round.setBlackCorrectCount(correctCount);
+		}
+
+		boolean shouldCompleteRound = bothPlayersAnsweredAll(round) || isExpired(round);
+		if (shouldCompleteRound) {
+			completeActiveRound(round, match);
+		} else {
+			brainRoundRepository.save(round);
+		}
+
+		return new BrainRoundSubmissionResponse(
+				correctCount,
+				Integer.bitCount(answeredMask & allAnsweredMask),
+				round.getTotalQuestions(),
+				shouldCompleteRound);
+	}
+
+	@Transactional
 	public BrainRoundResponse completeRound(String matchId) {
 		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
@@ -184,9 +268,13 @@ public class BrainRoundService {
 	}
 
 	private boolean bothPlayersAnsweredAll(BrainRoundEntity round) {
-		int allAnsweredMask = (1 << round.getTotalQuestions()) - 1;
+		int allAnsweredMask = allAnsweredMask(round);
 		return (round.getWhiteAnsweredMask() & allAnsweredMask) == allAnsweredMask &&
 				(round.getBlackAnsweredMask() & allAnsweredMask) == allAnsweredMask;
+	}
+
+	private int allAnsweredMask(BrainRoundEntity round) {
+		return (1 << round.getTotalQuestions()) - 1;
 	}
 
 	private List<String> parseExpressions(String json) {

@@ -20,11 +20,12 @@ class BrainRoundOverlay extends StatefulWidget {
 
 class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   Timer? timer;
+  final Map<int, int> answersByQuestion = {};
   String answer = '';
   int questionIndex = 0;
   int score = 0;
   bool finished = false;
-  bool wrong = false;
+  bool scoreSubmitted = false;
   bool submitting = false;
 
   @override
@@ -39,6 +40,11 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       if (round != null && _remainingSeconds(round) == 0) {
         setState(() => finished = true);
         timer?.cancel();
+        if (scoreSubmitted) {
+          unawaited(widget.controller.completeBrainRound());
+        } else {
+          unawaited(_submitAnswers());
+        }
         return;
       }
       setState(() {});
@@ -56,11 +62,16 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     final match = widget.controller.match!;
     final round = widget.controller.brainRound;
     final puzzles = round?.puzzles ?? const <String>[];
+    final serverScore = match.white.playerId == widget.controller.playerId
+        ? round?.whiteCorrectCount ?? 0
+        : round?.blackCorrectCount ?? 0;
     if (round != null &&
-        widget.controller.nextBrainQuestionIndex > questionIndex) {
-      questionIndex =
-          min(widget.controller.nextBrainQuestionIndex, round.totalQuestions);
-      finished = questionIndex >= round.totalQuestions;
+        answersByQuestion.isEmpty &&
+        widget.controller.nextBrainQuestionIndex >= round.totalQuestions) {
+      questionIndex = round.totalQuestions;
+      finished = true;
+      scoreSubmitted = true;
+      score = serverScore;
     }
     final safeIndex =
         puzzles.isEmpty ? 0 : min(questionIndex, puzzles.length - 1);
@@ -68,10 +79,12 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     final secondsLeft = round == null ? 30 : _remainingSeconds(round);
     final totalSeconds = round == null ? 30 : _durationSeconds(round);
     final progress = totalSeconds == 0 ? 0.0 : secondsLeft / totalSeconds;
-    final serverScore = match.white.playerId == widget.controller.playerId
-        ? round?.whiteCorrectCount ?? 0
-        : round?.blackCorrectCount ?? 0;
-    final displayedScore = max(score, serverScore);
+    final displayedScore =
+        scoreSubmitted ? max(score, serverScore) : answersByQuestion.length;
+    final scoreLabel = scoreSubmitted ? 'SCORE' : 'DONE';
+    final scoreValue = scoreSubmitted
+        ? '$displayedScore'
+        : '${answersByQuestion.length}/${round?.totalQuestions ?? 0}';
     final deadlinePassed = round != null && secondsLeft == 0;
 
     return Positioned.fill(
@@ -90,7 +103,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _BrainHeader(
-                          score: displayedScore,
+                          scoreLabel: scoreLabel,
+                          scoreValue: scoreValue,
                           secondsLeft: secondsLeft,
                           compact: compact,
                         ),
@@ -112,8 +126,9 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                           child: _PuzzleCard(
                             puzzle: currentPuzzle,
                             answer: answer,
-                            wrong: wrong,
                             finished: finished,
+                            scoreSubmitted: scoreSubmitted,
+                            submitting: submitting,
                             questionIndex: questionIndex,
                             totalQuestions: round?.totalQuestions ?? 0,
                             compact: compact,
@@ -151,8 +166,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                           secondsLeft: secondsLeft,
                           deadlinePassed: deadlinePassed,
                           submitting: submitting,
-                          onComplete: () =>
-                              widget.controller.completeBrainRound(),
+                          scoreSubmitted: scoreSubmitted,
+                          onComplete: _handleComplete,
                         ),
                       ],
                     ),
@@ -171,6 +186,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     return round != null &&
         !finished &&
         !submitting &&
+        !scoreSubmitted &&
         _remainingSeconds(round) > 0;
   }
 
@@ -213,10 +229,28 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       return;
     }
 
+    final nextIndex = questionIndex + 1;
+    setState(() {
+      answersByQuestion[questionIndex] = parsed;
+      answer = '';
+      questionIndex = min(nextIndex, round.totalQuestions);
+      finished = nextIndex >= round.totalQuestions;
+    });
+
+    if (nextIndex >= round.totalQuestions) {
+      unawaited(_submitAnswers());
+    }
+  }
+
+  Future<void> _submitAnswers() async {
+    final round = widget.controller.brainRound;
+    if (round == null || scoreSubmitted || submitting) {
+      return;
+    }
+
     setState(() => submitting = true);
-    final result = await widget.controller.submitBrainRoundAnswer(
-      questionIndex: questionIndex,
-      answer: parsed,
+    final result = await widget.controller.submitBrainRoundAnswers(
+      Map<int, int>.from(answersByQuestion),
     );
     if (!mounted) {
       return;
@@ -226,33 +260,37 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       return;
     }
 
-    final nextIndex = questionIndex + 1;
     setState(() {
-      answer = '';
-      submitting = false;
-      wrong = !result.correct;
       score = result.playerCorrectCount;
-      questionIndex = min(nextIndex, max(0, result.totalQuestions - 1));
-      if (nextIndex >= result.totalQuestions) {
-        finished = true;
-      }
+      questionIndex = round.totalQuestions;
+      finished = true;
+      scoreSubmitted = true;
+      submitting = false;
     });
-    Future<void>.delayed(const Duration(milliseconds: 350), () {
-      if (mounted) {
-        setState(() => wrong = false);
-      }
-    });
+    if (result.roundCompleted) {
+      timer?.cancel();
+    }
+  }
+
+  Future<void> _handleComplete() async {
+    if (!scoreSubmitted) {
+      await _submitAnswers();
+      return;
+    }
+    await widget.controller.completeBrainRound();
   }
 }
 
 class _BrainHeader extends StatelessWidget {
   const _BrainHeader({
-    required this.score,
+    required this.scoreLabel,
+    required this.scoreValue,
     required this.secondsLeft,
     required this.compact,
   });
 
-  final int score;
+  final String scoreLabel;
+  final String scoreValue;
   final int secondsLeft;
   final bool compact;
 
@@ -273,7 +311,7 @@ class _BrainHeader extends StatelessWidget {
             ),
           ),
         ),
-        _StatPill(label: 'SCORE', value: '$score'),
+        _StatPill(label: scoreLabel, value: scoreValue),
         const SizedBox(width: 8),
         _StatPill(label: 'TIME', value: '${secondsLeft}s'),
       ],
@@ -285,8 +323,9 @@ class _PuzzleCard extends StatelessWidget {
   const _PuzzleCard({
     required this.puzzle,
     required this.answer,
-    required this.wrong,
     required this.finished,
+    required this.scoreSubmitted,
+    required this.submitting,
     required this.questionIndex,
     required this.totalQuestions,
     required this.compact,
@@ -294,8 +333,9 @@ class _PuzzleCard extends StatelessWidget {
 
   final String puzzle;
   final String answer;
-  final bool wrong;
   final bool finished;
+  final bool scoreSubmitted;
+  final bool submitting;
   final int questionIndex;
   final int totalQuestions;
   final bool compact;
@@ -305,22 +345,27 @@ class _PuzzleCard extends StatelessWidget {
     final questionLabel = totalQuestions == 0
         ? 'Loading'
         : 'Question ${min(questionIndex + 1, totalQuestions)} / $totalQuestions';
+    final title = finished ? 'Answers locked' : questionLabel.toUpperCase();
+    final mainText = submitting
+        ? 'SUBMITTING SCORE'
+        : scoreSubmitted
+            ? 'WAIT FOR OPPONENT'
+            : finished
+                ? 'ANSWERS LOCKED'
+                : puzzle;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 120),
       padding: EdgeInsets.all(compact ? 14 : 22),
       decoration: BoxDecoration(
         color: const Color(0xff121720),
-        border: Border.all(
-          color: wrong ? const Color(0xffff8a80) : const Color(0xff303844),
-          width: wrong ? 2 : 1,
-        ),
+        border: Border.all(color: const Color(0xff303844)),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(
-            finished ? 'All answers submitted' : questionLabel.toUpperCase(),
+            title,
             textAlign: TextAlign.center,
             style: const TextStyle(
               color: Color(0xff94a3b8),
@@ -332,7 +377,7 @@ class _PuzzleCard extends StatelessWidget {
           FittedBox(
             fit: BoxFit.scaleDown,
             child: Text(
-              finished ? 'WAIT FOR TIMER' : puzzle,
+              mainText,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: Colors.white,
@@ -360,16 +405,6 @@ class _PuzzleCard extends StatelessWidget {
               ),
             ),
           ),
-          if (wrong) ...[
-            const SizedBox(height: 8),
-            const Text(
-              'Not scored',
-              style: TextStyle(
-                color: Color(0xffff8a80),
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -456,6 +491,7 @@ class _BrainFooter extends StatelessWidget {
     required this.secondsLeft,
     required this.deadlinePassed,
     required this.submitting,
+    required this.scoreSubmitted,
     required this.onComplete,
   });
 
@@ -464,10 +500,18 @@ class _BrainFooter extends StatelessWidget {
   final int secondsLeft;
   final bool deadlinePassed;
   final bool submitting;
-  final VoidCallback onComplete;
+  final bool scoreSubmitted;
+  final Future<void> Function() onComplete;
 
   @override
   Widget build(BuildContext context) {
+    final buttonLabel = submitting
+        ? 'SUBMITTING'
+        : deadlinePassed
+            ? scoreSubmitted
+                ? 'SYNC'
+                : 'SUBMIT'
+            : '${secondsLeft}s';
     return Row(
       children: [
         _StatPill(label: 'WHITE BP', value: '$whitePoints'),
@@ -477,9 +521,11 @@ class _BrainFooter extends StatelessWidget {
         SizedBox(
           height: 44,
           child: FilledButton.icon(
-            onPressed: submitting || !deadlinePassed ? null : onComplete,
+            onPressed: submitting || !deadlinePassed
+                ? null
+                : () => unawaited(onComplete()),
             icon: Icon(deadlinePassed ? Icons.done_all : Icons.lock_clock),
-            label: Text(deadlinePassed ? 'COMPLETE' : '${secondsLeft}s'),
+            label: Text(buttonLabel),
           ),
         ),
       ],

@@ -230,3 +230,26 @@ class AnswerResultModel {
     );
   }
 }
+
+class BrainRoundSubmissionModel {
+  const BrainRoundSubmissionModel({
+    required this.playerCorrectCount,
+    required this.playerAnsweredCount,
+    required this.totalQuestions,
+    required this.roundCompleted,
+  });
+
+  final int playerCorrectCount;
+  final int playerAnsweredCount;
+  final int totalQuestions;
+  final bool roundCompleted;
+
+  factory BrainRoundSubmissionModel.fromJson(Map<String, dynamic> json) {
+    return BrainRoundSubmissionModel(
+      playerCorrectCount: json['playerCorrectCount'] as int,
+      playerAnsweredCount: json['playerAnsweredCount'] as int,
+      totalQuestions: json['totalQuestions'] as int,
+      roundCompleted: json['roundCompleted'] as bool,
+    );
+  }
+}
