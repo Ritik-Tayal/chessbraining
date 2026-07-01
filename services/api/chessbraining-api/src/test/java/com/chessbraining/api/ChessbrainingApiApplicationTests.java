@@ -576,7 +576,7 @@ class ChessbrainingApiApplicationTests {
 		String matchId = joined.get("matchId").asText();
 
 		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
-		match.setWhiteBrainPoints(2);
+		match.setWhiteBrainPoints(4);
 		matchRepository.save(match);
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
@@ -627,7 +627,7 @@ class ChessbrainingApiApplicationTests {
 
 		submitMove(matchId, "white-player", "e2", "e4");
 		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
-		match.setBlackBrainPoints(2);
+		match.setBlackBrainPoints(4);
 		matchRepository.save(match);
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)

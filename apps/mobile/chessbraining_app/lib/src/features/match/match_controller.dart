@@ -67,7 +67,7 @@ class MatchController extends ChangeNotifier {
         !current.isChessPhase ||
         currentPlayer == null ||
         !isMyTurn ||
-        currentPlayer.brainPoints < 2 ||
+        currentPlayer.brainPoints < 4 ||
         currentPlayer.extraMoveArmed ||
         currentPlayer.extraMoveActive) {
       return false;
