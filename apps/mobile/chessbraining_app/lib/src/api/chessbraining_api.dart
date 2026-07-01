@@ -130,6 +130,33 @@ class ChessbrainingApi {
     return AnswerResultModel.fromJson(body as Map<String, dynamic>);
   }
 
+  Future<BrainRoundSubmissionModel> submitBrainRoundAnswers({
+    required String matchId,
+    required String playerId,
+    required Map<int, int> answers,
+  }) async {
+    final orderedAnswers = answers.entries.toList()
+      ..sort((left, right) => left.key.compareTo(right.key));
+    final response = await _withTimeout(
+      _client.post(
+        _uri('/matches/$matchId/brain-rounds/current/submissions'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'playerId': playerId,
+          'answers': [
+            for (final answer in orderedAnswers)
+              {
+                'questionIndex': answer.key,
+                'answer': answer.value,
+              },
+          ],
+        }),
+      ),
+    );
+    final body = _decodeResponse(response);
+    return BrainRoundSubmissionModel.fromJson(body as Map<String, dynamic>);
+  }
+
   Future<MatchModel> completeBrainRound({
     required String matchId,
   }) async {

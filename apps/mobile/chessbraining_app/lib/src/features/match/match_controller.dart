@@ -239,21 +239,25 @@ class MatchController extends ChangeNotifier {
       if (currentRound != null) {
         final isWhite = me?.side == 'WHITE';
         final nextWhite = isWhite
-            ? min(currentRound.nextWhiteQuestionIndex + 1, currentRound.totalQuestions)
+            ? min(currentRound.nextWhiteQuestionIndex + 1,
+                currentRound.totalQuestions)
             : currentRound.nextWhiteQuestionIndex;
         final nextBlack = isWhite
             ? currentRound.nextBlackQuestionIndex
-            : min(currentRound.nextBlackQuestionIndex + 1, currentRound.totalQuestions);
+            : min(currentRound.nextBlackQuestionIndex + 1,
+                currentRound.totalQuestions);
         brainRound = BrainRoundModel(
           roundId: currentRound.roundId,
           roundNumber: currentRound.roundNumber,
           status: currentRound.status,
           puzzles: currentRound.puzzles,
           totalQuestions: currentRound.totalQuestions,
-          whiteCorrectCount:
-              isWhite ? result.playerCorrectCount : currentRound.whiteCorrectCount,
-          blackCorrectCount:
-              isWhite ? currentRound.blackCorrectCount : result.playerCorrectCount,
+          whiteCorrectCount: isWhite
+              ? result.playerCorrectCount
+              : currentRound.whiteCorrectCount,
+          blackCorrectCount: isWhite
+              ? currentRound.blackCorrectCount
+              : result.playerCorrectCount,
           nextWhiteQuestionIndex: nextWhite,
           nextBlackQuestionIndex: nextBlack,
           winnerPlayerId: currentRound.winnerPlayerId,
@@ -264,6 +268,69 @@ class MatchController extends ChangeNotifier {
       notifyListeners();
       return result;
     } on ApiException catch (exception) {
+      error = exception.message;
+    } catch (exception) {
+      error = exception.toString();
+    }
+    notifyListeners();
+    return null;
+  }
+
+  Future<BrainRoundSubmissionModel?> submitBrainRoundAnswers(
+    Map<int, int> answers,
+  ) async {
+    final current = match;
+    if (current == null) {
+      return null;
+    }
+    try {
+      final result = await _api.submitBrainRoundAnswers(
+        matchId: current.matchId,
+        playerId: playerId,
+        answers: answers,
+      );
+      final currentRound = brainRound;
+      if (currentRound != null) {
+        final isWhite = me?.side == 'WHITE';
+        brainRound = BrainRoundModel(
+          roundId: currentRound.roundId,
+          roundNumber: currentRound.roundNumber,
+          status: currentRound.status,
+          puzzles: currentRound.puzzles,
+          totalQuestions: currentRound.totalQuestions,
+          whiteCorrectCount: isWhite
+              ? result.playerCorrectCount
+              : currentRound.whiteCorrectCount,
+          blackCorrectCount: isWhite
+              ? currentRound.blackCorrectCount
+              : result.playerCorrectCount,
+          nextWhiteQuestionIndex: isWhite
+              ? result.playerAnsweredCount
+              : currentRound.nextWhiteQuestionIndex,
+          nextBlackQuestionIndex: isWhite
+              ? currentRound.nextBlackQuestionIndex
+              : result.playerAnsweredCount,
+          winnerPlayerId: currentRound.winnerPlayerId,
+          startedAt: currentRound.startedAt,
+          expiresAt: currentRound.expiresAt,
+        );
+      }
+      if (result.roundCompleted) {
+        _setMatch(await _api.getMatch(current.matchId));
+      } else {
+        notifyListeners();
+      }
+      return result;
+    } on ApiException catch (exception) {
+      if (exception.code == 'BRAIN_ROUND_NOT_FOUND' ||
+          exception.code == 'NOT_IN_BRAIN_ROUND') {
+        final latest = await _api.getMatch(current.matchId);
+        if (!latest.isBrainRound) {
+          brainRound = null;
+          _setMatch(latest);
+          return null;
+        }
+      }
       error = exception.message;
     } catch (exception) {
       error = exception.toString();

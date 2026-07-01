@@ -36,7 +36,18 @@ public class BrainRoundController {
 	public AnswerResultResponse submitAnswer(
 			@PathVariable String matchId,
 			@RequestBody SubmitAnswerRequest request) {
-		return brainRoundService.submitAnswer(matchId, request);
+		AnswerResultResponse response = brainRoundService.submitAnswer(matchId, request);
+		publishIfRoundFinished(matchId);
+		return response;
+	}
+
+	@PostMapping("/current/submissions")
+	public BrainRoundSubmissionResponse submitAnswers(
+			@PathVariable String matchId,
+			@RequestBody SubmitAnswerBatchRequest request) {
+		BrainRoundSubmissionResponse response = brainRoundService.submitAnswerBatch(matchId, request);
+		publishIfRoundFinished(matchId);
+		return response;
 	}
 
 	@PostMapping("/current/complete")
