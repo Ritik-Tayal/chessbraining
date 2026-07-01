@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
@@ -234,7 +235,33 @@ class MatchController extends ChangeNotifier {
         questionIndex: questionIndex,
         answer: answer,
       );
-      await loadCurrentBrainRound();
+      final currentRound = brainRound;
+      if (currentRound != null) {
+        final isWhite = me?.side == 'WHITE';
+        final nextWhite = isWhite
+            ? min(currentRound.nextWhiteQuestionIndex + 1, currentRound.totalQuestions)
+            : currentRound.nextWhiteQuestionIndex;
+        final nextBlack = isWhite
+            ? currentRound.nextBlackQuestionIndex
+            : min(currentRound.nextBlackQuestionIndex + 1, currentRound.totalQuestions);
+        brainRound = BrainRoundModel(
+          roundId: currentRound.roundId,
+          roundNumber: currentRound.roundNumber,
+          status: currentRound.status,
+          puzzles: currentRound.puzzles,
+          totalQuestions: currentRound.totalQuestions,
+          whiteCorrectCount:
+              isWhite ? result.playerCorrectCount : currentRound.whiteCorrectCount,
+          blackCorrectCount:
+              isWhite ? currentRound.blackCorrectCount : result.playerCorrectCount,
+          nextWhiteQuestionIndex: nextWhite,
+          nextBlackQuestionIndex: nextBlack,
+          winnerPlayerId: currentRound.winnerPlayerId,
+          startedAt: currentRound.startedAt,
+          expiresAt: currentRound.expiresAt,
+        );
+      }
+      notifyListeners();
       return result;
     } on ApiException catch (exception) {
       error = exception.message;
@@ -377,11 +404,12 @@ class MatchController extends ChangeNotifier {
       brainRound = null;
     }
     _connectRealtimeIfNeeded(previousMatchId);
-    _loadLegalMoves().then((_) => notifyListeners());
     if (value.isBrainRound) {
       loadCurrentBrainRound();
+      notifyListeners();
+    } else {
+      _loadLegalMoves().then((_) => notifyListeners());
     }
-    notifyListeners();
   }
 
   void _connectRealtimeIfNeeded(String? previousMatchId) {
@@ -400,11 +428,12 @@ class MatchController extends ChangeNotifier {
         if (!value.isBrainRound) {
           brainRound = null;
         }
-        _loadLegalMoves().then((_) => notifyListeners());
         if (value.isBrainRound) {
           loadCurrentBrainRound();
+          notifyListeners();
+        } else {
+          _loadLegalMoves().then((_) => notifyListeners());
         }
-        notifyListeners();
       },
       onConnectionChanged: (value) {
         realtimeConnected = value;
