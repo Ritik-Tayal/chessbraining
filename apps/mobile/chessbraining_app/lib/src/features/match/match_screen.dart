@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/match_models.dart';
 import 'brain_round_overlay.dart';
@@ -25,6 +26,11 @@ class MatchScreen extends StatefulWidget {
 class _MatchScreenState extends State<MatchScreen> {
   final playerNameController = TextEditingController();
   final inviteController = TextEditingController();
+  final commandScrollController = ScrollController();
+  final homeSectionKey = GlobalKey();
+  final playSectionKey = GlobalKey();
+  final powerupsSectionKey = GlobalKey();
+  final profileSectionKey = GlobalKey();
   Timer? clockTicker;
   DateTime? lastClockExpiryRefreshDeadline;
   _ScreenPage selectedPage = _ScreenPage.command;
@@ -75,10 +81,24 @@ class _MatchScreenState extends State<MatchScreen> {
     unawaited(widget.controller.refresh());
   }
 
+  void _scrollToHomeSection(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) {
+      return;
+    }
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
+  }
+
   @override
   void dispose() {
     widget.controller.removeListener(_handleControllerChanged);
     clockTicker?.cancel();
+    commandScrollController.dispose();
     playerNameController.dispose();
     inviteController.dispose();
     super.dispose();
@@ -124,6 +144,11 @@ class _MatchScreenState extends State<MatchScreen> {
                               controller: controller,
                               playerNameController: playerNameController,
                               inviteController: inviteController,
+                              scrollController: commandScrollController,
+                              homeKey: homeSectionKey,
+                              playKey: playSectionKey,
+                              powerupsKey: powerupsSectionKey,
+                              profileKey: profileSectionKey,
                               onResume: match == null
                                   ? null
                                   : () => setState(
@@ -136,6 +161,13 @@ class _MatchScreenState extends State<MatchScreen> {
                 ),
               ),
               if (showPowerBar) _PowerToolbar(controller: controller),
+              if (page == _ScreenPage.command)
+                _HomeBottomNav(
+                  onHome: () => _scrollToHomeSection(homeSectionKey),
+                  onPlay: () => _scrollToHomeSection(playSectionKey),
+                  onPowerups: () => _scrollToHomeSection(powerupsSectionKey),
+                  onProfile: () => _scrollToHomeSection(profileSectionKey),
+                ),
               if (controller.match?.isBrainRound == true)
                 BrainRoundOverlay(controller: controller),
               if (showCelebration)
@@ -177,13 +209,22 @@ class _TopBar extends StatelessWidget {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+        border: Border(
+          bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.65)),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          const Icon(Icons.grid_4x4, color: AppColors.primary),
+          const Icon(Icons.menu, color: AppColors.primary, size: 26),
           const SizedBox(width: 10),
           const Flexible(
             child: Text(
@@ -191,8 +232,9 @@ class _TopBar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppColors.primary,
-                fontSize: 22,
+                fontSize: 24,
                 fontWeight: FontWeight.w900,
+                fontFamily: 'Playfair Display',
               ),
             ),
           ),
@@ -204,18 +246,21 @@ class _TopBar extends StatelessWidget {
               onPlay: onPlay,
             ),
           const Spacer(),
-          if (MediaQuery.sizeOf(context).width >= 560) ...[
+          if (selectedPage == _ScreenPage.play &&
+              match != null &&
+              MediaQuery.sizeOf(context).width >= 560) ...[
             Text(
-              match?.phase ?? 'HOME',
+              match.phase,
               style: const TextStyle(
-                color: AppColors.muted,
+                color: AppColors.quiet,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.8,
               ),
             ),
             const SizedBox(width: 12),
           ],
-          _LiveChip(connected: controller.realtimeConnected),
+          if (selectedPage == _ScreenPage.play && match != null)
+            _LiveChip(connected: controller.realtimeConnected),
         ],
       ),
     );
@@ -320,12 +365,22 @@ class _CommandPage extends StatelessWidget {
     required this.controller,
     required this.playerNameController,
     required this.inviteController,
+    required this.scrollController,
+    required this.homeKey,
+    required this.playKey,
+    required this.powerupsKey,
+    required this.profileKey,
     required this.onResume,
   });
 
   final MatchController controller;
   final TextEditingController playerNameController;
   final TextEditingController inviteController;
+  final ScrollController scrollController;
+  final GlobalKey homeKey;
+  final GlobalKey playKey;
+  final GlobalKey powerupsKey;
+  final GlobalKey profileKey;
   final VoidCallback? onResume;
 
   @override
@@ -334,30 +389,59 @@ class _CommandPage extends StatelessWidget {
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 980;
         return ListView(
-          padding: const EdgeInsets.fromLTRB(18, 22, 18, 28),
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(18, 22, 18, 108),
           children: [
             Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1100),
-                child: wide
-                    ? Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    KeyedSubtree(
+                      key: homeKey,
+                      child: _HomeHero(controller: controller),
+                    ),
+                    const SizedBox(height: 18),
+                    if (wide)
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(flex: 6, child: _HomeMainPanel(this)),
+                          Expanded(
+                            flex: 6,
+                            child: _HomeMainPanel(
+                              page: this,
+                              profileKey: profileKey,
+                              playKey: playKey,
+                            ),
+                          ),
                           const SizedBox(width: 18),
                           Expanded(
                             flex: 4,
-                            child: _HomeSidePanel(this),
+                            child: _HomeSidePanel(
+                              page: this,
+                              powerupsKey: powerupsKey,
+                            ),
                           ),
                         ],
                       )
-                    : Column(
+                    else
+                      Column(
                         children: [
-                          _HomeMainPanel(this),
+                          _HomeMainPanel(
+                            page: this,
+                            profileKey: profileKey,
+                            playKey: playKey,
+                          ),
                           const SizedBox(height: 16),
-                          _HomeSidePanel(this),
+                          _HomeSidePanel(
+                            page: this,
+                            powerupsKey: powerupsKey,
+                          ),
                         ],
                       ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -368,9 +452,15 @@ class _CommandPage extends StatelessWidget {
 }
 
 class _HomeMainPanel extends StatelessWidget {
-  const _HomeMainPanel(this.page);
+  const _HomeMainPanel({
+    required this.page,
+    required this.profileKey,
+    required this.playKey,
+  });
 
   final _CommandPage page;
+  final GlobalKey profileKey;
+  final GlobalKey playKey;
 
   @override
   Widget build(BuildContext context) {
@@ -378,108 +468,80 @@ class _HomeMainPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _HomeHero(controller: controller),
-        const SizedBox(height: 16),
-        _Panel(
-          title: 'PROFILE',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.18),
-                      border: Border.all(color: AppColors.primary),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.person,
-                      color: AppColors.primary,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _TechField(
-                      controller: page.playerNameController,
-                      label: 'DISPLAY NAME',
-                      icon: Icons.edit,
-                      onChanged: controller.updatePlayerName,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+        KeyedSubtree(
+          key: profileKey,
+          child: _Panel(
+            title: 'PROFILE',
+            child: _GuestProfileCard(
+              controller: controller,
+              playerNameController: page.playerNameController,
+            ),
           ),
         ),
         const SizedBox(height: 16),
-        _Panel(
-          title: 'PLAY',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final stacked = constraints.maxWidth < 620;
-                  final cards = [
-                    _PlayModeCard(
-                      title: 'Instant Play',
-                      description: 'Find a waiting player or create a table.',
-                      icon: Icons.flash_on,
-                      color: AppColors.primary,
-                      onPressed:
-                          controller.loading ? null : controller.quickplay,
-                    ),
-                    _PlayModeCard(
-                      title: 'Create Match',
-                      description: 'Open a private invite for a friend.',
-                      icon: Icons.add_circle_outline,
-                      color: AppColors.secondary,
-                      onPressed:
-                          controller.loading ? null : controller.createMatch,
-                    ),
-                  ];
-                  if (stacked) {
-                    return Column(
+        KeyedSubtree(
+          key: playKey,
+          child: _Panel(
+            title: 'PLAY',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final stacked = constraints.maxWidth < 620;
+                    final cards = [
+                      _PlayModeCard(
+                        title: 'Instant Play',
+                        description: 'Find a waiting player or create a table.',
+                        icon: Icons.flash_on,
+                        color: AppColors.primary,
+                        onPressed:
+                            controller.loading ? null : controller.quickplay,
+                      ),
+                      _PlayModeCard(
+                        title: 'Create Match',
+                        description: 'Open a private invite for a friend.',
+                        icon: Icons.add_circle_outline,
+                        color: AppColors.secondary,
+                        onPressed:
+                            controller.loading ? null : controller.createMatch,
+                      ),
+                    ];
+                    if (stacked) {
+                      return Column(
+                        children: [
+                          for (final card in cards) ...[
+                            card,
+                            if (card != cards.last) const SizedBox(height: 10),
+                          ],
+                        ],
+                      );
+                    }
+                    return Row(
                       children: [
                         for (final card in cards) ...[
-                          card,
-                          if (card != cards.last) const SizedBox(height: 10),
+                          Expanded(child: card),
+                          if (card != cards.last) const SizedBox(width: 10),
                         ],
                       ],
                     );
-                  }
-                  return Row(
-                    children: [
-                      for (final card in cards) ...[
-                        Expanded(child: card),
-                        if (card != cards.last) const SizedBox(width: 10),
-                      ],
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 14),
-              _JoinMatchRow(
-                controller: controller,
-                inviteController: page.inviteController,
-              ),
-              if (controller.loading) ...[
-                const SizedBox(height: 18),
-                const LinearProgressIndicator(
-                  minHeight: 4,
-                  backgroundColor: AppColors.surfaceHigh,
-                  color: AppColors.primary,
+                  },
                 ),
-              ],
-              if (controller.error != null) ...[
                 const SizedBox(height: 14),
-                _ErrorBanner(message: controller.error!),
+                _JoinMatchRow(
+                  controller: controller,
+                  inviteController: page.inviteController,
+                ),
+                if (controller.loading) ...[
+                  const SizedBox(height: 18),
+                  const _LoadingBanner(),
+                ],
+                if (controller.error != null) ...[
+                  const SizedBox(height: 14),
+                  _ErrorBanner(message: controller.error!),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ],
@@ -488,9 +550,13 @@ class _HomeMainPanel extends StatelessWidget {
 }
 
 class _HomeSidePanel extends StatelessWidget {
-  const _HomeSidePanel(this.page);
+  const _HomeSidePanel({
+    required this.page,
+    required this.powerupsKey,
+  });
 
   final _CommandPage page;
+  final GlobalKey powerupsKey;
 
   @override
   Widget build(BuildContext context) {
@@ -524,8 +590,150 @@ class _HomeSidePanel extends StatelessWidget {
                 ),
         ),
         const SizedBox(height: 16),
-        const _PowerupGuide(),
+        KeyedSubtree(
+          key: powerupsKey,
+          child: const _PowerupGuide(),
+        ),
       ],
+    );
+  }
+}
+
+class _GuestProfileCard extends StatelessWidget {
+  const _GuestProfileCard({
+    required this.controller,
+    required this.playerNameController,
+  });
+
+  final MatchController controller;
+  final TextEditingController playerNameController;
+
+  @override
+  Widget build(BuildContext context) {
+    final player = controller.me;
+    final brainPoints = player?.brainPoints ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                color: AppColors.primaryContainer,
+                border: Border.all(color: AppColors.secondary, width: 2),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.secondary.withValues(alpha: 0.18),
+                    blurRadius: 18,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.person,
+                color: AppColors.surfaceHigh,
+                size: 34,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    controller.playerName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'Playfair Display',
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'GUEST PLAYER • NEW BRAINER',
+                    style: TextStyle(
+                      color: AppColors.secondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const Expanded(child: _ProfileStat(label: 'WINS', value: '0')),
+            const SizedBox(width: 10),
+            const Expanded(child: _ProfileStat(label: 'LOSSES', value: '0')),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _ProfileStat(label: 'BRAIN POINTS', value: '$brainPoints'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _TechField(
+          controller: playerNameController,
+          label: 'DISPLAY NAME',
+          icon: Icons.edit,
+          onChanged: controller.updatePlayerName,
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileStat extends StatelessWidget {
+  const _ProfileStat({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh.withValues(alpha: 0.55),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.75)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.quiet,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Playfair Display',
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -541,49 +749,84 @@ class _HomeHero extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(compact ? 18 : 22),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLow,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.primaryContainer,
+        border: Border.all(color: AppColors.primary),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 14),
+          ),
+        ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          Container(
-            width: compact ? 52 : 64,
-            height: compact ? 52 : 64,
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.psychology_alt,
-              color: AppColors.background,
-              size: 34,
+          Positioned(
+            right: compact ? -28 : -10,
+            bottom: compact ? -26 : -18,
+            child: IgnorePointer(
+              child: SizedBox(
+                width: compact ? 142 : 230,
+                height: compact ? 142 : 190,
+                child: const _HeroBrainBoardVisual(),
+              ),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
+          Padding(
+            padding: EdgeInsets.only(right: compact ? 6 : 190),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                Text(
+                  'COMPETITIVE ARENA',
+                  style: TextStyle(
+                    color: AppColors.secondaryContainer.withValues(alpha: 0.78),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2.4,
+                  ),
+                ),
+                const SizedBox(height: 10),
                 const Text(
                   'Chess Braining',
                   style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 30,
+                    color: AppColors.background,
+                    fontSize: 42,
                     fontWeight: FontWeight.w900,
-                    height: 1,
+                    fontFamily: 'Playfair Display',
+                    height: 0.98,
                   ),
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Play chess, win brain rounds, spend Brain Points on tactical powerups.',
+                  'Chess + brain battles + powerups.',
                   style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: compact ? 14 : 16,
+                    color: AppColors.background.withValues(alpha: 0.86),
+                    fontSize: compact ? 17 : 20,
                     fontWeight: FontWeight.w700,
                     height: 1.35,
                   ),
+                ),
+                const SizedBox(height: 18),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _HeroAction(
+                      label: 'PLAY NOW',
+                      icon: Icons.arrow_forward,
+                      primary: true,
+                      onPressed:
+                          controller.loading ? null : controller.quickplay,
+                    ),
+                    _HeroAction(
+                      label: 'CREATE PRIVATE MATCH',
+                      icon: Icons.add,
+                      onPressed:
+                          controller.loading ? null : controller.createMatch,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 Wrap(
@@ -600,6 +843,170 @@ class _HomeHero extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _HeroBrainBoardVisual extends StatelessWidget {
+  const _HeroBrainBoardVisual();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: const _HeroBrainBoardPainter(),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+class _HeroBrainBoardPainter extends CustomPainter {
+  const _HeroBrainBoardPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final boardSize = size.shortestSide * 0.58;
+    final boardOrigin =
+        Offset(size.width - boardSize - 8, size.height - boardSize - 6);
+    final light = Paint()..color = AppColors.background.withValues(alpha: 0.18);
+    final dark = Paint()..color = AppColors.secondary.withValues(alpha: 0.22);
+    final cell = boardSize / 4;
+    for (var row = 0; row < 4; row++) {
+      for (var col = 0; col < 4; col++) {
+        final paint = (row + col).isEven ? light : dark;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(
+              boardOrigin.dx + col * cell,
+              boardOrigin.dy + row * cell,
+              cell,
+              cell,
+            ),
+            const Radius.circular(4),
+          ),
+          paint,
+        );
+      }
+    }
+
+    final nodePaint = Paint()
+      ..color = AppColors.secondaryContainer.withValues(alpha: 0.56)
+      ..style = PaintingStyle.fill;
+    final linePaint = Paint()
+      ..color = AppColors.secondaryContainer.withValues(alpha: 0.32)
+      ..strokeWidth = 2;
+    final nodes = [
+      Offset(size.width * 0.18, size.height * 0.28),
+      Offset(size.width * 0.38, size.height * 0.16),
+      Offset(size.width * 0.54, size.height * 0.32),
+      Offset(size.width * 0.35, size.height * 0.48),
+      Offset(size.width * 0.62, size.height * 0.55),
+    ];
+    for (var i = 0; i < nodes.length - 1; i++) {
+      canvas.drawLine(nodes[i], nodes[i + 1], linePaint);
+    }
+    canvas.drawLine(nodes[0], nodes[3], linePaint);
+    canvas.drawLine(nodes[2], nodes[4], linePaint);
+    for (final node in nodes) {
+      canvas.drawCircle(node, 7, nodePaint);
+      canvas.drawCircle(
+        node,
+        12,
+        Paint()
+          ..color = AppColors.secondaryContainer.withValues(alpha: 0.12)
+          ..style = PaintingStyle.fill,
+      );
+    }
+
+    final piecePaint = Paint()
+      ..color = AppColors.background.withValues(alpha: 0.42);
+    final center = Offset(
+        boardOrigin.dx + boardSize * 0.62, boardOrigin.dy + boardSize * 0.42);
+    canvas.drawCircle(center, boardSize * 0.12, piecePaint);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(center.dx, center.dy + boardSize * 0.2),
+          width: boardSize * 0.22,
+          height: boardSize * 0.28,
+        ),
+        const Radius.circular(18),
+      ),
+      piecePaint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(center.dx, center.dy + boardSize * 0.36),
+          width: boardSize * 0.44,
+          height: boardSize * 0.08,
+        ),
+        const Radius.circular(6),
+      ),
+      piecePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _HeroAction extends StatelessWidget {
+  const _HeroAction({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.primary = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground =
+        primary ? AppColors.primaryContainer : AppColors.background;
+    final background =
+        primary ? AppColors.background : Colors.white.withValues(alpha: 0.08);
+    return SizedBox(
+      height: 46,
+      child: primary
+          ? FilledButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 18),
+              label: Text(label),
+              style: FilledButton.styleFrom(
+                backgroundColor: background,
+                foregroundColor: foreground,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            )
+          : OutlinedButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 18),
+              label: Text(label),
+              style: OutlinedButton.styleFrom(
+                backgroundColor: background,
+                foregroundColor: foreground,
+                side: BorderSide(
+                  color: AppColors.background.withValues(alpha: 0.34),
+                ),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
     );
   }
 }
@@ -621,6 +1028,7 @@ class _PlayModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primaryCard = title == 'Instant Play';
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 120),
       opacity: onPressed == null ? 0.55 : 1,
@@ -631,9 +1039,15 @@ class _PlayModeCard extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 112),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppColors.surfaceLow,
-            border: Border.all(color: color.withValues(alpha: 0.65)),
-            borderRadius: BorderRadius.circular(8),
+            color: primaryCard
+                ? AppColors.primaryContainer
+                : AppColors.surfaceHigh.withValues(alpha: 0.7),
+            border: Border.all(
+              color: primaryCard
+                  ? AppColors.primary
+                  : AppColors.strongBorder.withValues(alpha: 0.55),
+            ),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -643,9 +1057,13 @@ class _PlayModeCard extends StatelessWidget {
                 height: 42,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, color: color),
+                child: Icon(
+                  icon,
+                  color:
+                      primaryCard ? AppColors.background : AppColors.secondary,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -654,17 +1072,21 @@ class _PlayModeCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: AppColors.text,
+                      style: TextStyle(
+                        color:
+                            primaryCard ? AppColors.background : AppColors.text,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       description,
-                      style: const TextStyle(
-                        color: AppColors.muted,
+                      style: TextStyle(
+                        color: primaryCard
+                            ? AppColors.background.withValues(alpha: 0.72)
+                            : AppColors.muted,
                         height: 1.3,
                         fontWeight: FontWeight.w700,
                       ),
@@ -672,7 +1094,11 @@ class _PlayModeCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.arrow_forward, color: color, size: 20),
+              Icon(
+                Icons.arrow_forward,
+                color: primaryCard ? AppColors.background : AppColors.secondary,
+                size: 20,
+              ),
             ],
           ),
         ),
@@ -692,41 +1118,93 @@ class _JoinMatchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 560;
-        final input = _TechField(
-          controller: inviteController,
-          label: 'INVITE CODE',
-          icon: Icons.key,
-          onChanged: (_) {},
-        );
-        final button = _ActionButton(
-          label: 'JOIN MATCH',
-          icon: Icons.login,
-          secondary: true,
-          onPressed: controller.loading
-              ? null
-              : () => controller.joinMatch(inviteController.text),
-        );
-        if (compact) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceBright,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Row(
             children: [
-              input,
-              const SizedBox(height: 10),
-              button,
+              Icon(Icons.key, color: AppColors.secondary, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'JOIN WITH CODE',
+                style: TextStyle(
+                  color: AppColors.secondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.5,
+                ),
+              ),
             ],
-          );
-        }
-        return Row(
-          children: [
-            Expanded(child: input),
-            const SizedBox(width: 10),
-            SizedBox(width: 172, child: button),
-          ],
-        );
-      },
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: inviteController,
+            textCapitalization: TextCapitalization.characters,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp('[a-zA-Z0-9]')),
+              LengthLimitingTextInputFormatter(6),
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                final upper = newValue.text.toUpperCase();
+                return newValue.copyWith(
+                  text: upper,
+                  selection: TextSelection.collapsed(offset: upper.length),
+                );
+              }),
+            ],
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 5,
+            ),
+            decoration: InputDecoration(
+              hintText: 'ABC123',
+              hintStyle: TextStyle(
+                color: AppColors.quiet.withValues(alpha: 0.42),
+                letterSpacing: 5,
+              ),
+              filled: true,
+              fillColor: AppColors.surfaceLow,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              enabledBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: AppColors.border),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide:
+                    const BorderSide(color: AppColors.secondary, width: 1.4),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Ask your friend for the 6-character invite code.',
+            style: TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _ActionButton(
+            label: 'JOIN MATCH',
+            icon: Icons.login,
+            secondary: true,
+            onPressed: controller.loading
+                ? null
+                : () => controller.joinMatch(inviteController.text),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -736,51 +1214,129 @@ class _RulesSnapshot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const rows = [
-      (Icons.grid_4x4, 'Chess is normal until a brain round starts.'),
-      (Icons.calculate, 'Answer fast math puzzles between chess phases.'),
-      (Icons.toll, 'Earn Brain Points from brain-round results.'),
-      (Icons.bolt, 'Spend points during your chess turn.'),
+    const steps = [
+      (Icons.grid_4x4, '1', 'Play chess', 'Normal legal chess moves.'),
+      (
+        Icons.calculate,
+        '2',
+        'Win brain rounds',
+        'Fast math battles pause play.'
+      ),
+      (Icons.bolt, '3', 'Spend BP', 'Use powerups during chess turns.'),
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final row in rows) ...[
-          _RuleLine(icon: row.$1, text: row.$2),
-          if (row != rows.last) const SizedBox(height: 12),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontal = constraints.maxWidth >= 620;
+        final cards = [
+          for (final step in steps)
+            _RuleStepCard(
+              icon: step.$1,
+              number: step.$2,
+              title: step.$3,
+              body: step.$4,
+            ),
+        ];
+        if (horizontal) {
+          return Row(
+            children: [
+              for (final card in cards) ...[
+                Expanded(child: card),
+                if (card != cards.last) const SizedBox(width: 10),
+              ],
+            ],
+          );
+        }
+        return Column(
+          children: [
+            for (final card in cards) ...[
+              card,
+              if (card != cards.last) const SizedBox(height: 10),
+            ],
+          ],
+        );
+      },
     );
   }
 }
 
-class _RuleLine extends StatelessWidget {
-  const _RuleLine({
+class _RuleStepCard extends StatelessWidget {
+  const _RuleStepCard({
     required this.icon,
-    required this.text,
+    required this.number,
+    required this.title,
+    required this.body,
   });
 
   final IconData icon;
-  final String text;
+  final String number;
+  final String title;
+  final String body;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: AppColors.primary, size: 20),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontWeight: FontWeight.w800,
-              height: 1.35,
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceBright,
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.8)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.secondaryContainer.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              Icon(icon, color: AppColors.secondary, size: 22),
+              Positioned(
+                right: 4,
+                bottom: 3,
+                child: Text(
+                  number,
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: 'Playfair Display',
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  body,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -793,7 +1349,7 @@ class _PowerupGuide extends StatelessWidget {
     return _Panel(
       title: 'POWERUPS',
       child: SizedBox(
-        height: 230,
+        height: 286,
         child: PageView(
           padEnds: false,
           children: const [
@@ -803,8 +1359,10 @@ class _PowerupGuide extends StatelessWidget {
               cost: '1 BP',
               color: AppColors.primary,
               description: 'Add 30 seconds to your clock during chess phase.',
+              timing: 'Any active chess phase',
               detail:
                   'Use it any time during active play when you have at least 1 Brain Point.',
+              rule: 'Does not consume your turn.',
             ),
             _PowerupSlide(
               icon: Icons.replay,
@@ -812,8 +1370,10 @@ class _PowerupGuide extends StatelessWidget {
               cost: '3 BP',
               color: AppColors.warning,
               description: 'Return one captured pawn to an empty square.',
+              timing: 'Only on your turn',
               detail:
                   'Choose an empty square from ranks 2 through 7. Placement uses your turn.',
+              rule: 'Cannot revive onto occupied or promotion-rank squares.',
             ),
             _PowerupSlide(
               icon: Icons.double_arrow,
@@ -821,8 +1381,10 @@ class _PowerupGuide extends StatelessWidget {
               cost: '4 BP',
               color: AppColors.secondary,
               description: 'Arm one extra turn after your next legal move.',
+              timing: 'Only before your move',
               detail:
                   'Only works on your turn, outside check, and not on a brain-round trigger move.',
+              rule: 'First move cannot give check or finish the game.',
             ),
           ],
         ),
@@ -838,7 +1400,9 @@ class _PowerupSlide extends StatelessWidget {
     required this.cost,
     required this.color,
     required this.description,
+    required this.timing,
     required this.detail,
+    required this.rule,
   });
 
   final IconData icon;
@@ -846,7 +1410,9 @@ class _PowerupSlide extends StatelessWidget {
   final String cost;
   final Color color;
   final String description;
+  final String timing;
   final String detail;
+  final String rule;
 
   @override
   Widget build(BuildContext context) {
@@ -855,9 +1421,9 @@ class _PowerupSlide extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surfaceLow,
-          border: Border.all(color: color.withValues(alpha: 0.65)),
-          borderRadius: BorderRadius.circular(8),
+          color: AppColors.surfaceBright,
+          border: Border.all(color: color.withValues(alpha: 0.48)),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -865,13 +1431,14 @@ class _PowerupSlide extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 58,
+                  height: 58,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(8),
+                    color: color.withValues(alpha: 0.14),
+                    border: Border.all(color: color.withValues(alpha: 0.32)),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(icon, color: color),
+                  child: Icon(icon, color: color, size: 30),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -882,6 +1449,7 @@ class _PowerupSlide extends StatelessWidget {
                       color: AppColors.text,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
+                      fontFamily: 'Playfair Display',
                     ),
                   ),
                 ),
@@ -898,6 +1466,12 @@ class _PowerupSlide extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
+            _PowerupMetaLine(
+              icon: Icons.schedule,
+              label: timing,
+              color: color,
+            ),
+            const SizedBox(height: 8),
             Text(
               detail,
               style: const TextStyle(
@@ -906,9 +1480,49 @@ class _PowerupSlide extends StatelessWidget {
                 height: 1.35,
               ),
             ),
+            const Spacer(),
+            _PowerupMetaLine(
+              icon: Icons.gavel,
+              label: rule,
+              color: AppColors.quiet,
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PowerupMetaLine extends StatelessWidget {
+  const _PowerupMetaLine({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              height: 1.25,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -1031,18 +1645,18 @@ class _BoardFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xff22201c),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.primaryContainer,
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 28,
-            offset: const Offset(0, 18),
+            color: AppColors.primary.withValues(alpha: 0.24),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         child: ChessBoard(controller: controller),
       ),
     );
@@ -1067,16 +1681,20 @@ class _PlayerBar extends StatelessWidget {
     final match = controller.match;
     final isTurn = player != null && match?.sideToMove == player!.side;
     final clockMs = _displayClockMs(match, player, isTurn);
-    final accent = isTurn ? AppColors.primary : AppColors.muted;
+    final accent = isTurn ? AppColors.secondary : AppColors.quiet;
+    final dark = player?.playerId == controller.playerId;
 
     return Container(
       constraints: const BoxConstraints(minHeight: 64),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border:
-            Border.all(color: isTurn ? AppColors.primary : AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        color: dark ? AppColors.primaryContainer : AppColors.surfaceLow,
+        border: Border.all(
+          color: isTurn
+              ? AppColors.secondary
+              : AppColors.strongBorder.withValues(alpha: 0.25),
+        ),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         textDirection: alignRight ? TextDirection.rtl : TextDirection.ltr,
@@ -1085,9 +1703,9 @@ class _PlayerBar extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: AppColors.surfaceHigh,
+              color: dark ? AppColors.surface : AppColors.surfaceBright,
               border: Border.all(color: accent),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(99),
             ),
             child: Icon(
               player?.side == 'BLACK' ? Icons.person_4 : Icons.person,
@@ -1109,8 +1727,8 @@ class _PlayerBar extends StatelessWidget {
                       child: Text(
                         (player?.playerName ?? fallbackName).toUpperCase(),
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.text,
+                        style: TextStyle(
+                          color: dark ? AppColors.background : AppColors.text,
                           fontWeight: FontWeight.w900,
                           fontSize: 15,
                         ),
@@ -1475,9 +2093,9 @@ class _TurnStrip extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.surfaceBright,
         border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
@@ -1485,7 +2103,7 @@ class _TurnStrip extends StatelessWidget {
             controller.canMove
                 ? Icons.radio_button_checked
                 : Icons.info_outline,
-            color: controller.canMove ? AppColors.primary : AppColors.muted,
+            color: controller.canMove ? AppColors.secondary : AppColors.quiet,
             size: 18,
           ),
           const SizedBox(width: 10),
@@ -1514,6 +2132,126 @@ class _TurnStrip extends StatelessWidget {
   }
 }
 
+class _HomeBottomNav extends StatelessWidget {
+  const _HomeBottomNav({
+    required this.onHome,
+    required this.onPlay,
+    required this.onPowerups,
+    required this.onProfile,
+  });
+
+  final VoidCallback onHome;
+  final VoidCallback onPlay;
+  final VoidCallback onPowerups;
+  final VoidCallback onProfile;
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.sizeOf(context).width >= 720) {
+      return const SizedBox.shrink();
+    }
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 0),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.primaryContainer,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.2),
+                blurRadius: 18,
+                offset: const Offset(0, -8),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _HomeNavItem(
+                label: 'Home',
+                icon: Icons.home_outlined,
+                active: true,
+                onPressed: onHome,
+              ),
+              _HomeNavItem(
+                label: 'Play',
+                icon: Icons.extension_outlined,
+                onPressed: onPlay,
+              ),
+              _HomeNavItem(
+                label: 'Power-ups',
+                icon: Icons.bolt_outlined,
+                onPressed: onPowerups,
+              ),
+              _HomeNavItem(
+                label: 'Profile',
+                icon: Icons.person_outline,
+                onPressed: onProfile,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeNavItem extends StatelessWidget {
+  const _HomeNavItem({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.active = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground =
+        active ? Colors.white : AppColors.background.withValues(alpha: 0.62);
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: EdgeInsets.symmetric(
+          horizontal: active ? 16 : 10,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: active ? AppColors.secondary : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: foreground, size: 22),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _PowerToolbar extends StatelessWidget {
   const _PowerToolbar({required this.controller});
 
@@ -1529,10 +2267,17 @@ class _PowerToolbar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Container(
-          height: 88,
-          decoration: const BoxDecoration(
-            color: AppColors.surfaceLow,
-            border: Border(top: BorderSide(color: AppColors.border)),
+          height: 98,
+          decoration: BoxDecoration(
+            color: AppColors.primaryContainer,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.2),
+                blurRadius: 18,
+                offset: const Offset(0, -8),
+              ),
+            ],
           ),
           child: Center(
             child: SingleChildScrollView(
@@ -1541,7 +2286,7 @@ class _PowerToolbar extends StatelessWidget {
               child: Row(
                 children: [
                   _PowerButton(
-                    label: 'EXTRA 4BP',
+                    label: 'EXTRA',
                     icon: Icons.double_arrow,
                     enabled: controller.canArmExtraMove,
                     primary: controller.me?.extraMoveArmed == true,
@@ -1601,26 +2346,31 @@ class _PowerButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = enabled
         ? primary
-            ? AppColors.background
-            : AppColors.text
-        : AppColors.muted;
-    final background =
-        primary && enabled ? AppColors.primary : AppColors.surface;
+            ? Colors.white
+            : AppColors.primary
+        : AppColors.quiet;
+    final background = primary && enabled
+        ? AppColors.secondary
+        : enabled
+            ? AppColors.surfaceLow
+            : AppColors.surfaceHigh;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 120),
       opacity: enabled ? 1 : 0.45,
       child: InkWell(
         onTap: enabled ? onPressed : null,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          width: 86,
-          height: 64,
+          width: 96,
+          height: 68,
           decoration: BoxDecoration(
             color: background,
             border: Border.all(
-              color: primary && enabled ? AppColors.primary : AppColors.border,
+              color: primary && enabled
+                  ? AppColors.secondary
+                  : AppColors.strongBorder.withValues(alpha: 0.32),
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1807,35 +2557,54 @@ class _EndGameCelebration extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
+            constraints: const BoxConstraints(maxWidth: 500),
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border.all(color: AppColors.primary, width: 1.5),
-                  borderRadius: BorderRadius.circular(10),
+                  color: AppColors.surfaceBright,
+                  border: Border.all(color: AppColors.border, width: 1.5),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 22,
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      blurRadius: 34,
+                      offset: const Offset(0, 18),
                     ),
                   ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.emoji_events,
-                        color: AppColors.primary, size: 48),
-                    const SizedBox(height: 12),
-                    Text(
+                    Container(
+                      width: 112,
+                      height: 112,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryContainer,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.secondary.withValues(alpha: 0.22),
+                            blurRadius: 26,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.emoji_events,
+                        color: AppColors.surfaceHigh,
+                        size: 58,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
                       'YOU WON',
                       style: TextStyle(
                         color: AppColors.primary,
-                        fontSize: 28,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1872,7 +2641,7 @@ class _EndGameCelebration extends StatelessWidget {
                             label: const Text('HOME'),
                             onPressed: onCommand,
                             style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primary,
+                              backgroundColor: AppColors.primaryContainer,
                               foregroundColor: AppColors.background,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
@@ -1922,7 +2691,7 @@ class _EndGameDefeat extends StatelessWidget {
         children: [
           // Subtle dimming overlay
           Container(
-            color: Colors.black.withValues(alpha: 0.85),
+            color: AppColors.primary.withValues(alpha: 0.38),
           ),
           _buildDefeatCard(context),
         ],
@@ -1937,19 +2706,20 @@ class _EndGameDefeat extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
+            constraints: const BoxConstraints(maxWidth: 500),
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: AppColors.surfaceBright,
                   border: Border.all(color: AppColors.warning, width: 1.5),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 22,
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      blurRadius: 34,
+                      offset: const Offset(0, 18),
                     ),
                   ],
                 ),
@@ -1957,15 +2727,16 @@ class _EndGameDefeat extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.sentiment_very_dissatisfied,
-                        color: AppColors.warning, size: 48),
+                        color: AppColors.warning, size: 58),
                     const SizedBox(height: 12),
                     Text(
                       'DEFEAT',
                       style: TextStyle(
                         color: AppColors.warning,
-                        fontSize: 28,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2002,7 +2773,7 @@ class _EndGameDefeat extends StatelessWidget {
                             label: const Text('HOME'),
                             onPressed: onCommand,
                             style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.warning,
+                              backgroundColor: AppColors.primaryContainer,
                               foregroundColor: AppColors.background,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
@@ -2052,7 +2823,7 @@ class _EndGameDraw extends StatelessWidget {
         children: [
           // Subtle overlay
           Container(
-            color: Colors.black.withValues(alpha: 0.85),
+            color: AppColors.primary.withValues(alpha: 0.38),
           ),
           _buildDrawCard(context),
         ],
@@ -2067,19 +2838,20 @@ class _EndGameDraw extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
+            constraints: const BoxConstraints(maxWidth: 500),
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: AppColors.surfaceBright,
                   border: Border.all(color: AppColors.secondary, width: 1.5),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 22,
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      blurRadius: 34,
+                      offset: const Offset(0, 18),
                     ),
                   ],
                 ),
@@ -2093,9 +2865,10 @@ class _EndGameDraw extends StatelessWidget {
                       'DRAW',
                       style: TextStyle(
                         color: AppColors.secondary,
-                        fontSize: 28,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2133,7 +2906,7 @@ class _EndGameDraw extends StatelessWidget {
                             label: const Text('HOME'),
                             onPressed: onCommand,
                             style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.secondary,
+                              backgroundColor: AppColors.primaryContainer,
                               foregroundColor: AppColors.background,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
@@ -2242,9 +3015,17 @@ class _Panel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.surface.withValues(alpha: 0.92),
+        border:
+            Border.all(color: AppColors.strongBorder.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2254,14 +3035,14 @@ class _Panel extends StatelessWidget {
             Text(
               title!,
               style: const TextStyle(
-                color: AppColors.muted,
+                color: AppColors.secondary,
                 fontWeight: FontWeight.w900,
                 fontSize: 12,
-                letterSpacing: 1.2,
+                letterSpacing: 2.2,
               ),
             ),
             const SizedBox(height: 12),
-            const Divider(color: AppColors.border, height: 1),
+            Divider(color: AppColors.border.withValues(alpha: 0.7), height: 1),
             const SizedBox(height: 14),
           ],
           child,
@@ -2292,15 +3073,15 @@ class _TechField extends StatelessWidget {
       style:
           const TextStyle(color: AppColors.text, fontWeight: FontWeight.w700),
       decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: AppColors.muted),
+        prefixIcon: Icon(icon, color: AppColors.secondary),
         labelText: label,
         labelStyle: const TextStyle(
-          color: AppColors.muted,
+          color: AppColors.quiet,
           fontWeight: FontWeight.w900,
-          letterSpacing: 0.8,
+          letterSpacing: 1.2,
         ),
         filled: true,
-        fillColor: AppColors.background,
+        fillColor: AppColors.surfaceBright,
         enabledBorder: OutlineInputBorder(
           borderSide: const BorderSide(color: AppColors.border),
           borderRadius: BorderRadius.circular(8),
@@ -2349,8 +3130,12 @@ class _ActionButton extends StatelessWidget {
               icon: Icon(icon),
               label: Text(label),
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: AppColors.primaryContainer,
                 foregroundColor: AppColors.background,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -2419,13 +3204,13 @@ class _TinyStat extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: AppColors.surfaceLow,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.8)),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: AppColors.muted),
+          Icon(icon, size: 14, color: AppColors.secondary),
           const SizedBox(width: 5),
           Text(
             value,
@@ -2455,8 +3240,8 @@ class _StatusTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        border: Border.all(color: color.withValues(alpha: 0.7)),
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
@@ -2482,13 +3267,13 @@ class _LiveChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: connected ? AppColors.primary : AppColors.surfaceHigh,
+        color: connected ? AppColors.secondary : AppColors.surfaceHigh,
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         connected ? 'LIVE' : 'SYNC',
         style: TextStyle(
-          color: connected ? AppColors.background : AppColors.muted,
+          color: connected ? Colors.white : AppColors.quiet,
           fontSize: 11,
           fontWeight: FontWeight.w900,
         ),
@@ -2511,12 +3296,60 @@ class _ErrorBanner extends StatelessWidget {
         border: Border.all(color: AppColors.error),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        message,
-        style: const TextStyle(
-          color: AppColors.error,
-          fontWeight: FontWeight.w800,
-        ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: AppColors.error,
+                fontWeight: FontWeight.w800,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoadingBanner extends StatelessWidget {
+  const _LoadingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.secondaryContainer.withValues(alpha: 0.32),
+        border: Border.all(color: AppColors.secondary.withValues(alpha: 0.32)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: AppColors.secondary,
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Preparing your table...',
+              style: TextStyle(
+                color: AppColors.text,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2554,35 +3387,74 @@ class _BackgroundGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.surfaceLow.withValues(alpha: 0.95),
-            AppColors.background,
-          ],
-        ),
-      ),
+    return CustomPaint(
+      painter: const _ParchmentPainter(),
       child: const SizedBox.expand(),
     );
   }
 }
 
+class _ParchmentPainter extends CustomPainter {
+  const _ParchmentPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final paint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppColors.background,
+          AppColors.surfaceLow,
+          AppColors.background,
+        ],
+      ).createShader(rect);
+    canvas.drawRect(rect, paint);
+
+    final squarePaint = Paint();
+    const cell = 56.0;
+    for (var y = 0.0; y < size.height; y += cell) {
+      for (var x = 0.0; x < size.width; x += cell) {
+        final even = ((x / cell).floor() + (y / cell).floor()).isEven;
+        squarePaint.color = (even ? AppColors.secondary : AppColors.primary)
+            .withValues(alpha: 0.018);
+        canvas.drawRect(Rect.fromLTWH(x, y, cell, cell), squarePaint);
+      }
+    }
+
+    final fleckPaint = Paint()
+      ..color = AppColors.strongBorder.withValues(alpha: 0.035);
+    final width = math.max(1, size.width.toInt());
+    final height = math.max(1, size.height.toInt());
+    for (var i = 0; i < 180; i++) {
+      final dx = (i * 37 % width).toDouble();
+      final dy = (i * 61 % height).toDouble();
+      canvas.drawCircle(Offset(dx, dy), i.isEven ? 0.8 : 0.45, fleckPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class AppColors {
-  static const background = Color(0xff0f1115);
-  static const surfaceLow = Color(0xff15181d);
-  static const surface = Color(0xff1d2026);
-  static const surfaceHigh = Color(0xff2a2f38);
-  static const border = Color(0xff333a45);
-  static const primary = Color(0xff81b64c);
-  static const secondary = Color(0xff4f8ddf);
-  static const warning = Color(0xfff4b942);
-  static const text = Color(0xfff0f3f5);
-  static const muted = Color(0xff9aa4b2);
-  static const error = Color(0xffff8a80);
+  static const background = Color(0xfffff8f1);
+  static const surfaceLow = Color(0xfffbf2e7);
+  static const surface = Color(0xfff5ede2);
+  static const surfaceHigh = Color(0xffe9e1d7);
+  static const surfaceBright = Color(0xffffffff);
+  static const border = Color(0xffd1c4bd);
+  static const strongBorder = Color(0xff8c6a50);
+  static const primary = Color(0xff170f0a);
+  static const primaryContainer = Color(0xff2d241e);
+  static const secondary = Color(0xff78583f);
+  static const secondaryContainer = Color(0xfffdd2b2);
+  static const warning = Color(0xffa69076);
+  static const text = Color(0xff1e1b15);
+  static const muted = Color(0xff4e4540);
+  static const quiet = Color(0xff7f756f);
+  static const error = Color(0xffba1a1a);
 }
 
 int maxInt(int a, int b) => a > b ? a : b;

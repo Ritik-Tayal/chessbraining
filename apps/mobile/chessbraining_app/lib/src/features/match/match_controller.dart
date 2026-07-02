@@ -216,10 +216,10 @@ class MatchController extends ChangeNotifier {
           return;
         }
       }
-      error = exception.message;
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     } catch (exception) {
-      error = exception.toString();
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     } finally {
       brainRoundLoading = false;
@@ -275,10 +275,10 @@ class MatchController extends ChangeNotifier {
       notifyListeners();
       return result;
     } on ApiException catch (exception) {
-      error = exception.message;
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     } catch (exception) {
-      error = exception.toString();
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     }
     notifyListeners();
@@ -340,10 +340,10 @@ class MatchController extends ChangeNotifier {
           return null;
         }
       }
-      error = exception.message;
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     } catch (exception) {
-      error = exception.toString();
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     }
     notifyListeners();
@@ -470,11 +470,11 @@ class MatchController extends ChangeNotifier {
       );
     } on ApiException catch (exception) {
       legalMoves = const [];
-      error = exception.message;
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     } catch (exception) {
       legalMoves = const [];
-      error = exception.toString();
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     }
   }
@@ -569,10 +569,10 @@ class MatchController extends ChangeNotifier {
     try {
       await action();
     } on ApiException catch (exception) {
-      error = exception.message;
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     } catch (exception) {
-      error = exception.toString();
+      error = _friendlyError(exception);
       SoundService.instance.playError();
     } finally {
       loading = false;
@@ -604,6 +604,39 @@ class MatchController extends ChangeNotifier {
       }
     }
     return null;
+  }
+
+  String _friendlyError(Object exception) {
+    if (exception is ApiException) {
+      return switch (exception.code) {
+        'REQUEST_TIMEOUT' =>
+          'Could not reach the match server. Render may be waking up, so try again in a few seconds.',
+        'MATCH_NOT_FOUND' =>
+          'That match could not be found. Check the invite code and try again.',
+        'CANNOT_JOIN_OWN_MATCH' =>
+          'Open this invite on a second device or share it with a friend.',
+        'MATCH_ALREADY_STARTED' =>
+          'That table already has two players. Create a new private match instead.',
+        'INVITE_CODE_REQUIRED' =>
+          'Enter the 6-character invite code from your friend.',
+        'INSUFFICIENT_BRAIN_POINTS' =>
+          'You need more Brain Points before using that powerup.',
+        'POWERUP_NOT_YOUR_TURN' => 'Powerups can only be used on your turn.',
+        'POWERUP_TARGET_OCCUPIED' =>
+          'Choose an empty square for the revived pawn.',
+        'NO_PAWN_TO_REVIVE' => 'You do not have a captured pawn to revive yet.',
+        _ => exception.message,
+      };
+    }
+
+    final raw = exception.toString().toLowerCase();
+    if (raw.contains('failed to fetch') ||
+        raw.contains('socketexception') ||
+        raw.contains('clientexception') ||
+        raw.contains('xmlhttprequest')) {
+      return 'Could not reach the match server. Check your connection and try again.';
+    }
+    return 'Something went wrong. Try again in a few seconds.';
   }
 
   @override
