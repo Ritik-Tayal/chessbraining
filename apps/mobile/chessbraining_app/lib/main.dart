@@ -53,16 +53,34 @@ class _ChessBrainingAppState extends State<ChessBrainingApp> {
       debugShowCheckedModeBanner: false,
       title: 'ChessBraining',
       theme: ThemeData(
-        colorScheme: const ColorScheme.dark(
-          primary: Color(0xff10b981),
-          secondary: Color(0xff3b82f6),
-          surface: Color(0xff171717),
-          error: Color(0xffffb4ab),
+        colorScheme: const ColorScheme.light(
+          primary: Color(0xff170f0a),
+          secondary: Color(0xff78583f),
+          surface: Color(0xfffff8f1),
+          error: Color(0xffba1a1a),
+          onPrimary: Color(0xffffffff),
+          onSecondary: Color(0xffffffff),
+          onSurface: Color(0xff1e1b15),
         ),
-        scaffoldBackgroundColor: const Color(0xff0a0a0a),
-        textTheme: GoogleFonts.getTextTheme(
-          'Geist',
-          ThemeData.dark().textTheme,
+        scaffoldBackgroundColor: const Color(0xfffff8f1),
+        textTheme: GoogleFonts.manropeTextTheme(
+          ThemeData.light().textTheme,
+        ).copyWith(
+          displayLarge: GoogleFonts.playfairDisplay(
+            fontWeight: FontWeight.w800,
+          ),
+          displayMedium: GoogleFonts.playfairDisplay(
+            fontWeight: FontWeight.w800,
+          ),
+          headlineLarge: GoogleFonts.playfairDisplay(
+            fontWeight: FontWeight.w800,
+          ),
+          headlineMedium: GoogleFonts.playfairDisplay(
+            fontWeight: FontWeight.w700,
+          ),
+          titleLarge: GoogleFonts.playfairDisplay(
+            fontWeight: FontWeight.w700,
+          ),
         ),
         useMaterial3: true,
       ),

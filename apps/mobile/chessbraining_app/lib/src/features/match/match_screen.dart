@@ -177,13 +177,22 @@ class _TopBar extends StatelessWidget {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+        border: Border(
+          bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.65)),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          const Icon(Icons.grid_4x4, color: AppColors.primary),
+          const Icon(Icons.menu, color: AppColors.primary, size: 26),
           const SizedBox(width: 10),
           const Flexible(
             child: Text(
@@ -191,8 +200,9 @@ class _TopBar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppColors.primary,
-                fontSize: 22,
+                fontSize: 24,
                 fontWeight: FontWeight.w900,
+                fontFamily: 'Playfair Display',
               ),
             ),
           ),
@@ -208,7 +218,7 @@ class _TopBar extends StatelessWidget {
             Text(
               match?.phase ?? 'HOME',
               style: const TextStyle(
-                color: AppColors.muted,
+                color: AppColors.quiet,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.8,
               ),
@@ -541,37 +551,40 @@ class _HomeHero extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(compact ? 18 : 22),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLow,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.primaryContainer,
+        border: Border.all(color: AppColors.primary),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 14),
+          ),
+        ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          Container(
-            width: compact ? 52 : 64,
-            height: compact ? 52 : 64,
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.psychology_alt,
-              color: AppColors.background,
-              size: 34,
+          Positioned(
+            right: -26,
+            top: -28,
+            child: Icon(
+              Icons.castle,
+              size: compact ? 118 : 156,
+              color: AppColors.background.withValues(alpha: 0.07),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
+          Padding(
+            padding: EdgeInsets.only(right: compact ? 28 : 96),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
                   'Chess Braining',
                   style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 30,
+                    color: AppColors.background,
+                    fontSize: 34,
                     fontWeight: FontWeight.w900,
+                    fontFamily: 'Playfair Display',
                     height: 1,
                   ),
                 ),
@@ -579,7 +592,7 @@ class _HomeHero extends StatelessWidget {
                 Text(
                   'Play chess, win brain rounds, spend Brain Points on tactical powerups.',
                   style: TextStyle(
-                    color: AppColors.muted,
+                    color: AppColors.background.withValues(alpha: 0.78),
                     fontSize: compact ? 14 : 16,
                     fontWeight: FontWeight.w700,
                     height: 1.35,
@@ -621,6 +634,7 @@ class _PlayModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primaryCard = title == 'Instant Play';
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 120),
       opacity: onPressed == null ? 0.55 : 1,
@@ -631,9 +645,15 @@ class _PlayModeCard extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 112),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppColors.surfaceLow,
-            border: Border.all(color: color.withValues(alpha: 0.65)),
-            borderRadius: BorderRadius.circular(8),
+            color: primaryCard
+                ? AppColors.primaryContainer
+                : AppColors.surfaceHigh.withValues(alpha: 0.7),
+            border: Border.all(
+              color: primaryCard
+                  ? AppColors.primary
+                  : AppColors.strongBorder.withValues(alpha: 0.55),
+            ),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -643,9 +663,13 @@ class _PlayModeCard extends StatelessWidget {
                 height: 42,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, color: color),
+                child: Icon(
+                  icon,
+                  color:
+                      primaryCard ? AppColors.background : AppColors.secondary,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -654,17 +678,21 @@ class _PlayModeCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: AppColors.text,
+                      style: TextStyle(
+                        color:
+                            primaryCard ? AppColors.background : AppColors.text,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       description,
-                      style: const TextStyle(
-                        color: AppColors.muted,
+                      style: TextStyle(
+                        color: primaryCard
+                            ? AppColors.background.withValues(alpha: 0.72)
+                            : AppColors.muted,
                         height: 1.3,
                         fontWeight: FontWeight.w700,
                       ),
@@ -672,7 +700,11 @@ class _PlayModeCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.arrow_forward, color: color, size: 20),
+              Icon(
+                Icons.arrow_forward,
+                color: primaryCard ? AppColors.background : AppColors.secondary,
+                size: 20,
+              ),
             ],
           ),
         ),
@@ -855,9 +887,9 @@ class _PowerupSlide extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surfaceLow,
-          border: Border.all(color: color.withValues(alpha: 0.65)),
-          borderRadius: BorderRadius.circular(8),
+          color: AppColors.surfaceBright,
+          border: Border.all(color: color.withValues(alpha: 0.48)),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -882,6 +914,7 @@ class _PowerupSlide extends StatelessWidget {
                       color: AppColors.text,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
+                      fontFamily: 'Playfair Display',
                     ),
                   ),
                 ),
@@ -1031,18 +1064,18 @@ class _BoardFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xff22201c),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.primaryContainer,
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 28,
-            offset: const Offset(0, 18),
+            color: AppColors.primary.withValues(alpha: 0.24),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         child: ChessBoard(controller: controller),
       ),
     );
@@ -1067,16 +1100,20 @@ class _PlayerBar extends StatelessWidget {
     final match = controller.match;
     final isTurn = player != null && match?.sideToMove == player!.side;
     final clockMs = _displayClockMs(match, player, isTurn);
-    final accent = isTurn ? AppColors.primary : AppColors.muted;
+    final accent = isTurn ? AppColors.secondary : AppColors.quiet;
+    final dark = player?.playerId == controller.playerId;
 
     return Container(
       constraints: const BoxConstraints(minHeight: 64),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border:
-            Border.all(color: isTurn ? AppColors.primary : AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        color: dark ? AppColors.primaryContainer : AppColors.surfaceLow,
+        border: Border.all(
+          color: isTurn
+              ? AppColors.secondary
+              : AppColors.strongBorder.withValues(alpha: 0.25),
+        ),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         textDirection: alignRight ? TextDirection.rtl : TextDirection.ltr,
@@ -1085,9 +1122,9 @@ class _PlayerBar extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: AppColors.surfaceHigh,
+              color: dark ? AppColors.surface : AppColors.surfaceBright,
               border: Border.all(color: accent),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(99),
             ),
             child: Icon(
               player?.side == 'BLACK' ? Icons.person_4 : Icons.person,
@@ -1109,8 +1146,8 @@ class _PlayerBar extends StatelessWidget {
                       child: Text(
                         (player?.playerName ?? fallbackName).toUpperCase(),
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.text,
+                        style: TextStyle(
+                          color: dark ? AppColors.background : AppColors.text,
                           fontWeight: FontWeight.w900,
                           fontSize: 15,
                         ),
@@ -1475,9 +1512,9 @@ class _TurnStrip extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: AppColors.surface,
+        color: AppColors.surfaceBright,
         border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
@@ -1485,7 +1522,7 @@ class _TurnStrip extends StatelessWidget {
             controller.canMove
                 ? Icons.radio_button_checked
                 : Icons.info_outline,
-            color: controller.canMove ? AppColors.primary : AppColors.muted,
+            color: controller.canMove ? AppColors.secondary : AppColors.quiet,
             size: 18,
           ),
           const SizedBox(width: 10),
@@ -1529,10 +1566,17 @@ class _PowerToolbar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Container(
-          height: 88,
-          decoration: const BoxDecoration(
-            color: AppColors.surfaceLow,
-            border: Border(top: BorderSide(color: AppColors.border)),
+          height: 98,
+          decoration: BoxDecoration(
+            color: AppColors.primaryContainer,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.2),
+                blurRadius: 18,
+                offset: const Offset(0, -8),
+              ),
+            ],
           ),
           child: Center(
             child: SingleChildScrollView(
@@ -1541,7 +1585,7 @@ class _PowerToolbar extends StatelessWidget {
               child: Row(
                 children: [
                   _PowerButton(
-                    label: 'EXTRA 4BP',
+                    label: 'EXTRA',
                     icon: Icons.double_arrow,
                     enabled: controller.canArmExtraMove,
                     primary: controller.me?.extraMoveArmed == true,
@@ -1601,26 +1645,31 @@ class _PowerButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = enabled
         ? primary
-            ? AppColors.background
-            : AppColors.text
-        : AppColors.muted;
-    final background =
-        primary && enabled ? AppColors.primary : AppColors.surface;
+            ? Colors.white
+            : AppColors.primary
+        : AppColors.quiet;
+    final background = primary && enabled
+        ? AppColors.secondary
+        : enabled
+            ? AppColors.surfaceLow
+            : AppColors.surfaceHigh;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 120),
       opacity: enabled ? 1 : 0.45,
       child: InkWell(
         onTap: enabled ? onPressed : null,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          width: 86,
-          height: 64,
+          width: 96,
+          height: 68,
           decoration: BoxDecoration(
             color: background,
             border: Border.all(
-              color: primary && enabled ? AppColors.primary : AppColors.border,
+              color: primary && enabled
+                  ? AppColors.secondary
+                  : AppColors.strongBorder.withValues(alpha: 0.32),
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1807,35 +1856,54 @@ class _EndGameCelebration extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
+            constraints: const BoxConstraints(maxWidth: 500),
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border.all(color: AppColors.primary, width: 1.5),
-                  borderRadius: BorderRadius.circular(10),
+                  color: AppColors.surfaceBright,
+                  border: Border.all(color: AppColors.border, width: 1.5),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 22,
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      blurRadius: 34,
+                      offset: const Offset(0, 18),
                     ),
                   ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.emoji_events,
-                        color: AppColors.primary, size: 48),
-                    const SizedBox(height: 12),
-                    Text(
+                    Container(
+                      width: 112,
+                      height: 112,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryContainer,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.secondary.withValues(alpha: 0.22),
+                            blurRadius: 26,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.emoji_events,
+                        color: AppColors.surfaceHigh,
+                        size: 58,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
                       'YOU WON',
                       style: TextStyle(
                         color: AppColors.primary,
-                        fontSize: 28,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1872,7 +1940,7 @@ class _EndGameCelebration extends StatelessWidget {
                             label: const Text('HOME'),
                             onPressed: onCommand,
                             style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primary,
+                              backgroundColor: AppColors.primaryContainer,
                               foregroundColor: AppColors.background,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
@@ -1922,7 +1990,7 @@ class _EndGameDefeat extends StatelessWidget {
         children: [
           // Subtle dimming overlay
           Container(
-            color: Colors.black.withValues(alpha: 0.85),
+            color: AppColors.primary.withValues(alpha: 0.38),
           ),
           _buildDefeatCard(context),
         ],
@@ -1937,19 +2005,20 @@ class _EndGameDefeat extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
+            constraints: const BoxConstraints(maxWidth: 500),
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: AppColors.surfaceBright,
                   border: Border.all(color: AppColors.warning, width: 1.5),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 22,
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      blurRadius: 34,
+                      offset: const Offset(0, 18),
                     ),
                   ],
                 ),
@@ -1957,15 +2026,16 @@ class _EndGameDefeat extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.sentiment_very_dissatisfied,
-                        color: AppColors.warning, size: 48),
+                        color: AppColors.warning, size: 58),
                     const SizedBox(height: 12),
                     Text(
                       'DEFEAT',
                       style: TextStyle(
                         color: AppColors.warning,
-                        fontSize: 28,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2002,7 +2072,7 @@ class _EndGameDefeat extends StatelessWidget {
                             label: const Text('HOME'),
                             onPressed: onCommand,
                             style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.warning,
+                              backgroundColor: AppColors.primaryContainer,
                               foregroundColor: AppColors.background,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
@@ -2052,7 +2122,7 @@ class _EndGameDraw extends StatelessWidget {
         children: [
           // Subtle overlay
           Container(
-            color: Colors.black.withValues(alpha: 0.85),
+            color: AppColors.primary.withValues(alpha: 0.38),
           ),
           _buildDrawCard(context),
         ],
@@ -2067,19 +2137,20 @@ class _EndGameDraw extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
+            constraints: const BoxConstraints(maxWidth: 500),
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: AppColors.surfaceBright,
                   border: Border.all(color: AppColors.secondary, width: 1.5),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 22,
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      blurRadius: 34,
+                      offset: const Offset(0, 18),
                     ),
                   ],
                 ),
@@ -2093,9 +2164,10 @@ class _EndGameDraw extends StatelessWidget {
                       'DRAW',
                       style: TextStyle(
                         color: AppColors.secondary,
-                        fontSize: 28,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2133,7 +2205,7 @@ class _EndGameDraw extends StatelessWidget {
                             label: const Text('HOME'),
                             onPressed: onCommand,
                             style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.secondary,
+                              backgroundColor: AppColors.primaryContainer,
                               foregroundColor: AppColors.background,
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
@@ -2242,9 +2314,17 @@ class _Panel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.surface.withValues(alpha: 0.92),
+        border:
+            Border.all(color: AppColors.strongBorder.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2254,14 +2334,14 @@ class _Panel extends StatelessWidget {
             Text(
               title!,
               style: const TextStyle(
-                color: AppColors.muted,
+                color: AppColors.secondary,
                 fontWeight: FontWeight.w900,
                 fontSize: 12,
-                letterSpacing: 1.2,
+                letterSpacing: 2.2,
               ),
             ),
             const SizedBox(height: 12),
-            const Divider(color: AppColors.border, height: 1),
+            Divider(color: AppColors.border.withValues(alpha: 0.7), height: 1),
             const SizedBox(height: 14),
           ],
           child,
@@ -2292,15 +2372,15 @@ class _TechField extends StatelessWidget {
       style:
           const TextStyle(color: AppColors.text, fontWeight: FontWeight.w700),
       decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: AppColors.muted),
+        prefixIcon: Icon(icon, color: AppColors.secondary),
         labelText: label,
         labelStyle: const TextStyle(
-          color: AppColors.muted,
+          color: AppColors.quiet,
           fontWeight: FontWeight.w900,
-          letterSpacing: 0.8,
+          letterSpacing: 1.2,
         ),
         filled: true,
-        fillColor: AppColors.background,
+        fillColor: AppColors.surfaceBright,
         enabledBorder: OutlineInputBorder(
           borderSide: const BorderSide(color: AppColors.border),
           borderRadius: BorderRadius.circular(8),
@@ -2349,8 +2429,12 @@ class _ActionButton extends StatelessWidget {
               icon: Icon(icon),
               label: Text(label),
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: AppColors.primaryContainer,
                 foregroundColor: AppColors.background,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -2419,13 +2503,13 @@ class _TinyStat extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: AppColors.surfaceLow,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.8)),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: AppColors.muted),
+          Icon(icon, size: 14, color: AppColors.secondary),
           const SizedBox(width: 5),
           Text(
             value,
@@ -2455,8 +2539,8 @@ class _StatusTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        border: Border.all(color: color.withValues(alpha: 0.7)),
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
@@ -2482,13 +2566,13 @@ class _LiveChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: connected ? AppColors.primary : AppColors.surfaceHigh,
+        color: connected ? AppColors.secondary : AppColors.surfaceHigh,
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         connected ? 'LIVE' : 'SYNC',
         style: TextStyle(
-          color: connected ? AppColors.background : AppColors.muted,
+          color: connected ? Colors.white : AppColors.quiet,
           fontSize: 11,
           fontWeight: FontWeight.w900,
         ),
@@ -2554,35 +2638,74 @@ class _BackgroundGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.surfaceLow.withValues(alpha: 0.95),
-            AppColors.background,
-          ],
-        ),
-      ),
+    return CustomPaint(
+      painter: const _ParchmentPainter(),
       child: const SizedBox.expand(),
     );
   }
 }
 
+class _ParchmentPainter extends CustomPainter {
+  const _ParchmentPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final paint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppColors.background,
+          AppColors.surfaceLow,
+          AppColors.background,
+        ],
+      ).createShader(rect);
+    canvas.drawRect(rect, paint);
+
+    final squarePaint = Paint();
+    const cell = 56.0;
+    for (var y = 0.0; y < size.height; y += cell) {
+      for (var x = 0.0; x < size.width; x += cell) {
+        final even = ((x / cell).floor() + (y / cell).floor()).isEven;
+        squarePaint.color = (even ? AppColors.secondary : AppColors.primary)
+            .withValues(alpha: 0.018);
+        canvas.drawRect(Rect.fromLTWH(x, y, cell, cell), squarePaint);
+      }
+    }
+
+    final fleckPaint = Paint()
+      ..color = AppColors.strongBorder.withValues(alpha: 0.035);
+    final width = math.max(1, size.width.toInt());
+    final height = math.max(1, size.height.toInt());
+    for (var i = 0; i < 180; i++) {
+      final dx = (i * 37 % width).toDouble();
+      final dy = (i * 61 % height).toDouble();
+      canvas.drawCircle(Offset(dx, dy), i.isEven ? 0.8 : 0.45, fleckPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class AppColors {
-  static const background = Color(0xff0f1115);
-  static const surfaceLow = Color(0xff15181d);
-  static const surface = Color(0xff1d2026);
-  static const surfaceHigh = Color(0xff2a2f38);
-  static const border = Color(0xff333a45);
-  static const primary = Color(0xff81b64c);
-  static const secondary = Color(0xff4f8ddf);
-  static const warning = Color(0xfff4b942);
-  static const text = Color(0xfff0f3f5);
-  static const muted = Color(0xff9aa4b2);
-  static const error = Color(0xffff8a80);
+  static const background = Color(0xfffff8f1);
+  static const surfaceLow = Color(0xfffbf2e7);
+  static const surface = Color(0xfff5ede2);
+  static const surfaceHigh = Color(0xffe9e1d7);
+  static const surfaceBright = Color(0xffffffff);
+  static const border = Color(0xffd1c4bd);
+  static const strongBorder = Color(0xff8c6a50);
+  static const primary = Color(0xff170f0a);
+  static const primaryContainer = Color(0xff2d241e);
+  static const secondary = Color(0xff78583f);
+  static const secondaryContainer = Color(0xfffdd2b2);
+  static const warning = Color(0xffa69076);
+  static const text = Color(0xff1e1b15);
+  static const muted = Color(0xff4e4540);
+  static const quiet = Color(0xff7f756f);
+  static const error = Color(0xffba1a1a);
 }
 
 int maxInt(int a, int b) => a > b ? a : b;
