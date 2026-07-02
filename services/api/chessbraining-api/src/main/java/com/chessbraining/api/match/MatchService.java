@@ -14,6 +14,7 @@ import com.chessbraining.api.common.ApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class MatchService {
@@ -21,9 +22,11 @@ public class MatchService {
 	private static final int DEFAULT_TIME_CONTROL_SECONDS = 300;
 	private static final int DEFAULT_BRAIN_ROUND_INTERVAL_MOVES = 5;
 	private static final int DEFAULT_BRAIN_ROUND_SECONDS = 30;
+	private static final int QUICKPLAY_WAITING_TTL_SECONDS = 600;
 	private static final String BRAIN_ROUND_ACTIVE = "ACTIVE";
 	private static final String INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 	private static final SecureRandom RANDOM = new SecureRandom();
+	private final Object quickplayLock = new Object();
 
 	private final MatchRepository matchRepository;
 	private final MatchMoveRepository moveRepository;
@@ -32,6 +35,7 @@ public class MatchService {
 	private final ClockService clockService;
 	private final MathPuzzleService mathPuzzleService;
 	private final tools.jackson.databind.ObjectMapper objectMapper;
+	private final TransactionTemplate transactionTemplate;
 
 	public MatchService(
 			MatchRepository matchRepository,
@@ -40,7 +44,8 @@ public class MatchService {
 			ChessService chessService,
 			ClockService clockService,
 			MathPuzzleService mathPuzzleService,
-			tools.jackson.databind.ObjectMapper objectMapper) {
+			tools.jackson.databind.ObjectMapper objectMapper,
+			TransactionTemplate transactionTemplate) {
 		this.matchRepository = matchRepository;
 		this.moveRepository = moveRepository;
 		this.brainRoundRepository = brainRoundRepository;
@@ -48,14 +53,54 @@ public class MatchService {
 		this.clockService = clockService;
 		this.mathPuzzleService = mathPuzzleService;
 		this.objectMapper = objectMapper;
+		this.transactionTemplate = transactionTemplate;
 	}
 
 	@Transactional
 	public MatchResponse createMatch(CreateMatchRequest request) {
+		return createWaitingMatch(request, MatchmakingMode.PRIVATE);
+	}
+
+	public MatchResponse quickplay(CreateMatchRequest request) {
+		synchronized (quickplayLock) {
+			return transactionTemplate.execute(status -> quickplayInTransaction(request));
+		}
+	}
+
+	private MatchResponse quickplayInTransaction(CreateMatchRequest request) {
+		String playerId = playerIdOrNew(request == null ? null : request.playerId());
+		CreateMatchRequest normalizedRequest = new CreateMatchRequest(
+				playerId,
+				request == null ? null : request.playerName(),
+				request == null ? null : request.timeControlSeconds(),
+				request == null ? null : request.brainRoundIntervalMoves());
+		Instant activeSince = Instant.now().minusSeconds(QUICKPLAY_WAITING_TTL_SECONDS);
+
+		return matchRepository
+				.findFirstByStatusAndMatchmakingModeAndWhitePlayerIdAndCreatedAtAfterOrderByCreatedAtAsc(
+						MatchStatus.WAITING_FOR_OPPONENT,
+						MatchmakingMode.QUICKPLAY,
+						playerId,
+						activeSince)
+				.map(match -> toResponse(match, List.of()))
+				.or(() -> matchRepository
+						.findFirstByStatusAndMatchmakingModeAndWhitePlayerIdNotAndCreatedAtAfterOrderByCreatedAtAsc(
+								MatchStatus.WAITING_FOR_OPPONENT,
+								MatchmakingMode.QUICKPLAY,
+								playerId,
+								activeSince)
+						.map(match -> joinExistingMatch(match, new JoinMatchRequest(match.getInviteCode(),
+								playerId,
+								normalizedRequest.playerName()))))
+				.orElseGet(() -> createWaitingMatch(normalizedRequest, MatchmakingMode.QUICKPLAY));
+	}
+
+	private MatchResponse createWaitingMatch(CreateMatchRequest request, MatchmakingMode matchmakingMode) {
 		MatchEntity match = new MatchEntity();
 		match.setInviteCode(generateInviteCode());
 		match.setStatus(MatchStatus.WAITING_FOR_OPPONENT);
 		match.setPhase(MatchPhase.WAITING_FOR_OPPONENT);
+		match.setMatchmakingMode(matchmakingMode);
 		match.setFen(ChessService.STARTING_FEN);
 		match.setSideToMove("WHITE");
 		match.setWhitePlayerId(playerIdOrNew(request == null ? null : request.playerId()));
@@ -65,18 +110,6 @@ public class MatchService {
 		match.setBlackClockMs(match.getTimeControlSeconds() * 1000);
 		match.setBrainRoundIntervalMoves(resolveBrainRoundInterval(request == null ? null : request.brainRoundIntervalMoves()));
 		return toResponse(matchRepository.save(match), List.of());
-	}
-
-	@Transactional
-	public MatchResponse quickplay(CreateMatchRequest request) {
-		String playerId = playerIdOrEmpty(request == null ? null : request.playerId());
-		return matchRepository.findFirstByStatusAndWhitePlayerIdNotOrderByCreatedAtAsc(
-						MatchStatus.WAITING_FOR_OPPONENT,
-						playerId)
-				.map(match -> joinExistingMatch(match, new JoinMatchRequest(match.getInviteCode(),
-						request == null ? null : request.playerId(),
-						request == null ? null : request.playerName())))
-				.orElseGet(() -> createMatch(request));
 	}
 
 	@Transactional
@@ -418,6 +451,7 @@ public class MatchService {
 				move.getFromSquare(),
 				move.getToSquare(),
 				move.getPromotion(),
+				move.getFenBefore(),
 				move.getFenAfter(),
 				move.getCreatedAt());
 	}
@@ -464,10 +498,6 @@ public class MatchService {
 			return playerId.trim();
 		}
 		return "player_" + UUID.randomUUID();
-	}
-
-	private String playerIdOrEmpty(String playerId) {
-		return isBlank(playerId) ? "" : playerId.trim();
 	}
 
 	private String playerNameOrDefault(String playerName, String fallback) {

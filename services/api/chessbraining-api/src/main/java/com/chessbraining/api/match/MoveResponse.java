@@ -9,6 +9,7 @@ public record MoveResponse(
 		String from,
 		String to,
 		String promotion,
+		String fenBefore,
 		String fenAfter,
 		Instant createdAt) {
 }

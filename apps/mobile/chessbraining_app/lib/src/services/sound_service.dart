@@ -2,16 +2,16 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
 enum GameSound {
-  move('sounds/move.mp3'),
-  matchStart('sounds/match_start.mp3'),
-  matchEndWin('sounds/match_end_win.mp3'),
-  matchEndLoss('sounds/match_end_loss.mp3'),
-  matchEndDraw('sounds/match_end_draw.mp3'),
-  brainRoundStart('sounds/brain_round_start.mp3'),
-  brainRoundEnd('sounds/brain_round_end.mp3'),
-  powerup('sounds/powerup.mp3'),
-  error('sounds/error.mp3'),
-  notify('sounds/notify.mp3');
+  move('sounds/move.wav'),
+  matchStart('sounds/match_start.wav'),
+  matchEndWin('sounds/match_end_win.wav'),
+  matchEndLoss('sounds/match_end_loss.wav'),
+  matchEndDraw('sounds/match_end_draw.wav'),
+  brainRoundStart('sounds/brain_round_start.wav'),
+  brainRoundEnd('sounds/brain_round_end.wav'),
+  powerup('sounds/powerup.wav'),
+  error('sounds/error.wav'),
+  notify('sounds/notify.wav');
 
   const GameSound(this.assetPath);
   final String assetPath;
@@ -22,6 +22,7 @@ class SoundService {
   static final SoundService instance = SoundService._();
 
   final AudioPlayer _player = AudioPlayer();
+  bool _configured = false;
   bool _enabled = true;
   double _volume = 0.6;
 
@@ -40,6 +41,12 @@ class SoundService {
   Future<void> play(GameSound sound) async {
     if (!_enabled) return;
     try {
+      if (!_configured) {
+        await _player.setPlayerMode(PlayerMode.lowLatency);
+        await _player.setReleaseMode(ReleaseMode.stop);
+        await _player.setVolume(_volume);
+        _configured = true;
+      }
       await _player.play(AssetSource(sound.assetPath));
     } catch (e) {
       if (kDebugMode) {

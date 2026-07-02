@@ -49,6 +49,32 @@ class MatchModel {
     return null;
   }
 
+  MatchModel copyWith({
+    String? fen,
+    String? sideToMove,
+    int? plyCount,
+    List<MoveModel>? moves,
+    DateTime? clockDeadlineAt,
+  }) {
+    return MatchModel(
+      matchId: matchId,
+      inviteCode: inviteCode,
+      status: status,
+      phase: phase,
+      fen: fen ?? this.fen,
+      sideToMove: sideToMove ?? this.sideToMove,
+      plyCount: plyCount ?? this.plyCount,
+      brainRoundIntervalMoves: brainRoundIntervalMoves,
+      brainRoundCount: brainRoundCount,
+      white: white,
+      black: black,
+      winnerPlayerId: winnerPlayerId,
+      resultReason: resultReason,
+      moves: moves ?? this.moves,
+      clockDeadlineAt: clockDeadlineAt ?? this.clockDeadlineAt,
+    );
+  }
+
   factory MatchModel.fromJson(Map<String, dynamic> json) {
     return MatchModel(
       matchId: json['matchId'] as String,
@@ -119,6 +145,7 @@ class MoveModel {
     required this.from,
     required this.to,
     required this.promotion,
+    required this.fenBefore,
     required this.fenAfter,
   });
 
@@ -128,9 +155,11 @@ class MoveModel {
   final String from;
   final String to;
   final String? promotion;
+  final String fenBefore;
   final String fenAfter;
 
   factory MoveModel.fromJson(Map<String, dynamic> json) {
+    final fenAfter = json['fenAfter'] as String;
     return MoveModel(
       plyNumber: json['plyNumber'] as int,
       playerId: json['playerId'] as String,
@@ -138,7 +167,8 @@ class MoveModel {
       from: json['from'] as String,
       to: json['to'] as String,
       promotion: json['promotion'] as String?,
-      fenAfter: json['fenAfter'] as String,
+      fenBefore: json['fenBefore'] as String? ?? '',
+      fenAfter: fenAfter,
     );
   }
 }
@@ -177,6 +207,7 @@ class BrainRoundModel {
     required this.winnerPlayerId,
     required this.startedAt,
     required this.expiresAt,
+    required this.completedAt,
   });
 
   final String roundId;
@@ -191,6 +222,9 @@ class BrainRoundModel {
   final String? winnerPlayerId;
   final DateTime startedAt;
   final DateTime expiresAt;
+  final DateTime? completedAt;
+
+  bool get isCompleted => status == 'COMPLETED';
 
   factory BrainRoundModel.fromJson(Map<String, dynamic> json) {
     return BrainRoundModel(
@@ -208,6 +242,9 @@ class BrainRoundModel {
       winnerPlayerId: json['winnerPlayerId'] as String?,
       startedAt: DateTime.parse(json['startedAt'] as String),
       expiresAt: DateTime.parse(json['expiresAt'] as String),
+      completedAt: json['completedAt'] == null
+          ? null
+          : DateTime.parse(json['completedAt'] as String),
     );
   }
 }

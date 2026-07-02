@@ -52,6 +52,16 @@ public class BrainRoundService {
 		return toResponse(round, puzzles);
 	}
 
+	@Transactional(readOnly = true)
+	public BrainRoundResponse getLatestResult(String matchId) {
+		BrainRoundEntity round = brainRoundRepository
+				.findFirstByMatchIdAndStatusOrderByRoundNumberDesc(matchId, BRAIN_ROUND_COMPLETED)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BRAIN_ROUND_RESULT_NOT_FOUND",
+						"No completed brain round found."));
+		List<String> puzzles = parseExpressions(round.getPuzzleExpressions());
+		return toResponse(round, puzzles);
+	}
+
 	@Transactional
 	public AnswerResultResponse submitAnswer(String matchId, SubmitAnswerRequest request) {
 		if (request == null) {
