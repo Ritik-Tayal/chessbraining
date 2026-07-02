@@ -128,16 +128,17 @@ class _MatchScreenState extends State<MatchScreen> {
               SafeArea(
                 child: Column(
                   children: [
-                    _TopBar(
-                      controller: controller,
-                      selectedPage: page,
-                      onCommand: () =>
-                          setState(() => selectedPage = _ScreenPage.command),
-                      onPlay: match == null
-                          ? null
-                          : () =>
-                              setState(() => selectedPage = _ScreenPage.play),
-                    ),
+                    if (page == _ScreenPage.command)
+                      _TopBar(
+                        controller: controller,
+                        selectedPage: page,
+                        onCommand: () =>
+                            setState(() => selectedPage = _ScreenPage.command),
+                        onPlay: match == null
+                            ? null
+                            : () =>
+                                setState(() => selectedPage = _ScreenPage.play),
+                      ),
                     Expanded(
                       child: page == _ScreenPage.command
                           ? _CommandPage(
@@ -1599,6 +1600,8 @@ class _BoardColumn extends StatelessWidget {
         constraints: BoxConstraints(maxWidth: boardMax),
         child: Column(
           children: [
+            _GameTopStrip(controller: controller),
+            const SizedBox(height: 10),
             _PlayerBar(
               controller: controller,
               player: opponent,
@@ -1620,8 +1623,6 @@ class _BoardColumn extends StatelessWidget {
               fallbackName: controller.playerName,
               alignRight: false,
             ),
-            const SizedBox(height: 12),
-            _TurnStrip(controller: controller),
           ],
         ),
       ),
@@ -1633,6 +1634,149 @@ class _BoardColumn extends StatelessWidget {
       return match?.black;
     }
     return me.side == 'WHITE' ? match.black : match.white;
+  }
+}
+
+class _GameTopStrip extends StatelessWidget {
+  const _GameTopStrip({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    if (match == null) {
+      return const SizedBox.shrink();
+    }
+    final turnText = controller.isRevivePawnTargeting
+        ? 'Place revived pawn'
+        : match.isWaiting
+            ? 'Waiting for opponent'
+            : controller.canMove
+                ? 'Your move'
+                : '${match.sideToMove} to move';
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Container(
+            height: 58,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceBright.withValues(alpha: 0.9),
+              border: Border.all(color: AppColors.border),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  controller.canMove
+                      ? Icons.radio_button_checked
+                      : Icons.info_outline,
+                  color: controller.canMove
+                      ? AppColors.secondary
+                      : AppColors.quiet,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    turnText.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.9,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: MediaQuery.sizeOf(context).width < 430 ? 176 : 220,
+          child: _BrainRoundToGo(controller: controller),
+        ),
+      ],
+    );
+  }
+}
+
+class _BrainRoundToGo extends StatelessWidget {
+  const _BrainRoundToGo({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    final interval = maxInt(1, match?.brainRoundIntervalMoves ?? 5) * 2;
+    final ply = match?.plyCount ?? 0;
+    final progress = match?.isBrainRound == true ? interval : ply % interval;
+    final movesLeft = maxInt(0, interval - progress);
+    final value = interval == 0 ? 0.0 : progress / interval;
+
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: AppColors.primaryContainer,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'BRAIN ROUND TO GO',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.background,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              Text(
+                match?.isBrainRound == true ? 'NOW' : '$movesLeft',
+                style: const TextStyle(
+                  color: AppColors.secondaryContainer,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: value.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: AppColors.background.withValues(alpha: 0.18),
+              color: AppColors.secondaryContainer,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
@@ -1811,8 +1955,6 @@ class _GameInfoRail extends StatelessWidget {
       children: [
         _InvitePanel(controller: controller),
         const SizedBox(height: 14),
-        _BrainProgress(controller: controller),
-        const SizedBox(height: 14),
         _MoveLog(controller: controller),
         const SizedBox(height: 14),
         _EvaluationPanel(controller: controller),
@@ -1865,60 +2007,6 @@ class _InvitePanel extends StatelessWidget {
             ),
           ),
           _LiveChip(connected: controller.realtimeConnected),
-        ],
-      ),
-    );
-  }
-}
-
-class _BrainProgress extends StatelessWidget {
-  const _BrainProgress({required this.controller});
-
-  final MatchController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final match = controller.match;
-    final interval = maxInt(1, match?.brainRoundIntervalMoves ?? 5) * 2;
-    final ply = match?.plyCount ?? 0;
-    final progress = match?.isBrainRound == true ? interval : ply % interval;
-
-    return _Panel(
-      title: 'BRAIN ROUND',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text(
-                match?.isBrainRound == true ? 'ACTIVE' : 'NEXT CHECKPOINT',
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '$progress / $interval',
-                style: const TextStyle(
-                  color: AppColors.text,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: interval == 0 ? 0 : progress / interval,
-              minHeight: 12,
-              backgroundColor: AppColors.surfaceHigh,
-              color: AppColors.primary,
-            ),
-          ),
         ],
       ),
     );
@@ -2065,69 +2153,6 @@ class _PointRow extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _TurnStrip extends StatelessWidget {
-  const _TurnStrip({required this.controller});
-
-  final MatchController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final match = controller.match;
-    if (match == null) {
-      return const SizedBox.shrink();
-    }
-    final text = controller.isRevivePawnTargeting
-        ? 'Choose an empty square for revived pawn'
-        : match.isCompleted
-            ? match.resultReason ?? 'Completed'
-            : controller.canMove
-                ? 'Your move'
-                : match.isWaiting
-                    ? 'Waiting for opponent'
-                    : '${match.sideToMove} to move';
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceBright,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            controller.canMove
-                ? Icons.radio_button_checked
-                : Icons.info_outline,
-            color: controller.canMove ? AppColors.secondary : AppColors.quiet,
-            size: 18,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text.toUpperCase(),
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.text,
-                fontWeight: FontWeight.w900,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ),
-          const SizedBox(width: 10),
-          SelectableText(
-            match.inviteCode,
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
