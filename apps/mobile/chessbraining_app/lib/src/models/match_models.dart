@@ -49,6 +49,32 @@ class MatchModel {
     return null;
   }
 
+  MatchModel copyWith({
+    String? fen,
+    String? sideToMove,
+    int? plyCount,
+    List<MoveModel>? moves,
+    DateTime? clockDeadlineAt,
+  }) {
+    return MatchModel(
+      matchId: matchId,
+      inviteCode: inviteCode,
+      status: status,
+      phase: phase,
+      fen: fen ?? this.fen,
+      sideToMove: sideToMove ?? this.sideToMove,
+      plyCount: plyCount ?? this.plyCount,
+      brainRoundIntervalMoves: brainRoundIntervalMoves,
+      brainRoundCount: brainRoundCount,
+      white: white,
+      black: black,
+      winnerPlayerId: winnerPlayerId,
+      resultReason: resultReason,
+      moves: moves ?? this.moves,
+      clockDeadlineAt: clockDeadlineAt ?? this.clockDeadlineAt,
+    );
+  }
+
   factory MatchModel.fromJson(Map<String, dynamic> json) {
     return MatchModel(
       matchId: json['matchId'] as String,

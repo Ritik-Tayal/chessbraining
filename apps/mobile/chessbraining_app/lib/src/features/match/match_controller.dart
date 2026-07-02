@@ -8,6 +8,7 @@ import '../../api/match_socket_client.dart';
 import '../../models/match_models.dart';
 import '../../session/guest_session.dart';
 import '../../services/sound_service.dart';
+import 'fen.dart';
 
 typedef MatchSocketFactory = MatchSocketClient Function({
   required String apiBaseUrl,
@@ -19,6 +20,20 @@ typedef MatchSocketFactory = MatchSocketClient Function({
 enum PowerupTargetMode {
   none,
   revivePawn,
+}
+
+class BoardMoveAnimation {
+  const BoardMoveAnimation({
+    required this.id,
+    required this.from,
+    required this.to,
+    required this.piece,
+  });
+
+  final int id;
+  final String from;
+  final String to;
+  final String piece;
 }
 
 class MatchController extends ChangeNotifier {
@@ -47,11 +62,14 @@ class MatchController extends ChangeNotifier {
   bool loading = false;
   bool brainRoundLoading = false;
   bool realtimeConnected = false;
+  bool movePending = false;
+  BoardMoveAnimation? boardMoveAnimation;
   PowerupTargetMode powerupTargetMode = PowerupTargetMode.none;
+  int _boardAnimationSequence = 0;
 
   PlayerModel? get me => match?.playerById(playerId);
   bool get isMyTurn => me != null && match?.sideToMove == me!.side;
-  bool get canMove => match?.isChessPhase == true && isMyTurn;
+  bool get canMove => match?.isChessPhase == true && isMyTurn && !movePending;
   bool get canUseClockBoost {
     final current = match;
     final currentPlayer = me;
@@ -180,16 +198,78 @@ class MatchController extends ChangeNotifier {
       return;
     }
 
-    await _run(() async {
-      _setMatch(await _api.submitMove(
-        matchId: match!.matchId,
+    final current = match!;
+    final previousMatch = current;
+    final previousLegalMoves = legalMoves;
+    final piece = parseFenBoard(current.fen)[move.from];
+    if (piece == null) {
+      selectedSquare = square;
+      notifyListeners();
+      return;
+    }
+
+    final optimisticFen = applyMoveToFen(
+      fen: current.fen,
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion,
+    );
+    final optimisticMove = MoveModel(
+      plyNumber: current.plyCount + 1,
+      playerId: playerId,
+      side: current.sideToMove,
+      from: move.from,
+      to: move.to,
+      promotion: move.promotion,
+      fenAfter: optimisticFen,
+    );
+
+    match = current.copyWith(
+      fen: optimisticFen,
+      sideToMove: _oppositeSide(current.sideToMove),
+      plyCount: current.plyCount + 1,
+      moves: List.unmodifiable([...current.moves, optimisticMove]),
+    );
+    selectedSquare = null;
+    legalMoves = const [];
+    movePending = true;
+    error = null;
+    boardMoveAnimation = BoardMoveAnimation(
+      id: ++_boardAnimationSequence,
+      from: move.from,
+      to: move.to,
+      piece: piece,
+    );
+    notifyListeners();
+    unawaited(SoundService.instance.playMove());
+
+    try {
+      final confirmed = await _api.submitMove(
+        matchId: current.matchId,
         playerId: playerId,
         from: move.from,
         to: move.to,
         promotion: move.promotion,
-      ));
-      SoundService.instance.playMove();
-    });
+      );
+      movePending = false;
+      _setMatch(confirmed);
+    } on ApiException catch (exception) {
+      match = previousMatch;
+      legalMoves = previousLegalMoves;
+      movePending = false;
+      boardMoveAnimation = null;
+      error = _friendlyError(exception);
+      SoundService.instance.playError();
+      notifyListeners();
+    } catch (exception) {
+      match = previousMatch;
+      legalMoves = previousLegalMoves;
+      movePending = false;
+      boardMoveAnimation = null;
+      error = _friendlyError(exception);
+      SoundService.instance.playError();
+      notifyListeners();
+    }
   }
 
   Future<void> loadCurrentBrainRound() async {
@@ -480,6 +560,14 @@ class MatchController extends ChangeNotifier {
   }
 
   void _setMatch(MatchModel value) {
+    final currentMatch = match;
+    if (movePending &&
+        currentMatch != null &&
+        value.matchId == currentMatch.matchId &&
+        value.plyCount < currentMatch.plyCount) {
+      return;
+    }
+
     final previousMatch = match;
     final previousMatchId = previousMatch?.matchId;
     final previousPlyCount = previousMatch?.plyCount ?? 0;
@@ -489,12 +577,17 @@ class MatchController extends ChangeNotifier {
     match = value;
     selectedSquare = null;
     powerupTargetMode = PowerupTargetMode.none;
+    movePending = false;
     if (!value.isBrainRound) {
       brainRound = null;
     }
     _connectRealtimeIfNeeded(previousMatchId);
 
     final plyIncreased = value.plyCount > previousPlyCount;
+    final moveForAnimation = _animationForServerMove(previousMatch, value);
+    if (moveForAnimation != null) {
+      boardMoveAnimation = moveForAnimation;
+    }
     final matchJustStarted = previousMatch == null && value.isChessPhase;
     final matchJustCompleted = !previousIsCompleted && value.isCompleted;
     final brainRoundJustStarted = !previousIsBrainRound && value.isBrainRound;
@@ -522,10 +615,11 @@ class MatchController extends ChangeNotifier {
     }
 
     if (value.isBrainRound) {
-      loadCurrentBrainRound();
       notifyListeners();
+      unawaited(loadCurrentBrainRound());
     } else {
-      _loadLegalMoves().then((_) => notifyListeners());
+      notifyListeners();
+      unawaited(_loadLegalMoves().then((_) => notifyListeners()));
     }
   }
 
@@ -539,18 +633,7 @@ class MatchController extends ChangeNotifier {
       apiBaseUrl: apiBaseUrl,
       matchId: current.matchId,
       onMatch: (value) {
-        match = value;
-        selectedSquare = null;
-        powerupTargetMode = PowerupTargetMode.none;
-        if (!value.isBrainRound) {
-          brainRound = null;
-        }
-        if (value.isBrainRound) {
-          loadCurrentBrainRound();
-          notifyListeners();
-        } else {
-          _loadLegalMoves().then((_) => notifyListeners());
-        }
+        _setMatch(value);
       },
       onConnectionChanged: (value) {
         realtimeConnected = value;
@@ -561,6 +644,32 @@ class MatchController extends ChangeNotifier {
       },
     )..connect();
   }
+
+  BoardMoveAnimation? _animationForServerMove(
+    MatchModel? previous,
+    MatchModel next,
+  ) {
+    if (previous == null || next.plyCount <= previous.plyCount) {
+      return null;
+    }
+    if (next.moves.isEmpty) {
+      return null;
+    }
+    final move = next.moves.last;
+    final piece = parseFenBoard(previous.fen)[move.from] ??
+        parseFenBoard(next.fen)[move.to];
+    if (piece == null) {
+      return null;
+    }
+    return BoardMoveAnimation(
+      id: ++_boardAnimationSequence,
+      from: move.from,
+      to: move.to,
+      piece: piece,
+    );
+  }
+
+  String _oppositeSide(String side) => side == 'WHITE' ? 'BLACK' : 'WHITE';
 
   Future<void> _run(Future<void> Function() action) async {
     loading = true;

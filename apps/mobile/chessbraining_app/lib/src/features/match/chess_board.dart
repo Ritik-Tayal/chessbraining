@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'fen.dart';
 import 'match_controller.dart';
 
-class ChessBoard extends StatelessWidget {
+class ChessBoard extends StatefulWidget {
   const ChessBoard({
     required this.controller,
     super.key,
@@ -13,14 +13,63 @@ class ChessBoard extends StatelessWidget {
   final MatchController controller;
 
   @override
+  State<ChessBoard> createState() => _ChessBoardState();
+}
+
+class _ChessBoardState extends State<ChessBoard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _moveController;
+  BoardMoveAnimation? _activeMove;
+  int? _seenMoveAnimationId;
+
+  @override
+  void initState() {
+    super.initState();
+    _moveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 170),
+    );
+    _syncMoveAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChessBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncMoveAnimation();
+  }
+
+  @override
+  void dispose() {
+    _moveController.dispose();
+    super.dispose();
+  }
+
+  void _syncMoveAnimation() {
+    final move = widget.controller.boardMoveAnimation;
+    if (move == null || move.id == _seenMoveAnimationId) {
+      return;
+    }
+    _seenMoveAnimationId = move.id;
+    _activeMove = move;
+    _moveController
+      ..stop()
+      ..forward(from: 0).whenComplete(() {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _activeMove = null);
+      });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final match = controller.match;
+    final match = widget.controller.match;
     if (match == null) {
       return const SizedBox.shrink();
     }
 
     final board = parseFenBoard(match.fen);
-    final isBlackPerspective = controller.me?.side == 'BLACK';
+    final isBlackPerspective = widget.controller.me?.side == 'BLACK';
     final files = isBlackPerspective
         ? const ['h', 'g', 'f', 'e', 'd', 'c', 'b', 'a']
         : const ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
@@ -45,45 +94,137 @@ class ChessBoard extends StatelessWidget {
       ),
       child: AspectRatio(
         aspectRatio: 1,
-        child: GridView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 8,
-          ),
-          itemCount: 64,
-          itemBuilder: (context, index) {
-            final fileIndex = index % 8;
-            final rankIndex = index ~/ 8;
-            final square = '${files[fileIndex]}${ranks[rankIndex]}';
-            final piece = board[square];
-            final isLight = (fileIndex + rankIndex).isEven;
-            final isSelected = controller.selectedSquare == square;
-            final isTarget = controller.isLegalTarget(square);
-            final isPowerupTarget = controller.isPowerupTarget(square);
-            final isLastMove =
-                lastMove?.from == square || lastMove?.to == square;
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final squareSize = constraints.biggest.shortestSide / 8;
+            final children = <Widget>[];
+            for (var index = 0; index < 64; index++) {
+              final fileIndex = index % 8;
+              final rankIndex = index ~/ 8;
+              final square = '${files[fileIndex]}${ranks[rankIndex]}';
+              final isLight = (fileIndex + rankIndex).isEven;
+              final isSelected = widget.controller.selectedSquare == square;
+              final isTarget = widget.controller.isLegalTarget(square);
+              final isPowerupTarget = widget.controller.isPowerupTarget(square);
+              final isLastMove =
+                  lastMove?.from == square || lastMove?.to == square;
 
-            return _BoardSquare(
-              square: square,
-              piece: piece,
-              isLight: isLight,
-              isSelected: isSelected,
-              isTarget: isTarget,
-              isPowerupTarget: isPowerupTarget,
-              isLastMove: isLastMove,
-              onTap: () => controller.selectSquare(square),
-            );
+              children.add(
+                Positioned(
+                  left: fileIndex * squareSize,
+                  top: rankIndex * squareSize,
+                  width: squareSize,
+                  height: squareSize,
+                  child: _BoardSquare(
+                    square: square,
+                    isLight: isLight,
+                    isSelected: isSelected,
+                    isTarget: isTarget,
+                    isPowerupTarget: isPowerupTarget,
+                    isLastMove: isLastMove,
+                    onTap: () => widget.controller.selectSquare(square),
+                  ),
+                ),
+              );
+            }
+
+            final activeMove = _activeMove;
+            for (final entry in board.entries) {
+              if (activeMove != null && entry.key == activeMove.to) {
+                continue;
+              }
+              final offset = _squareOffset(
+                entry.key,
+                files,
+                ranks,
+                squareSize,
+              );
+              children.add(
+                Positioned(
+                  left: offset.dx,
+                  top: offset.dy,
+                  width: squareSize,
+                  height: squareSize,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: _PieceVector(
+                        piece: entry.value,
+                        size: squareSize * 0.82,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            if (activeMove != null) {
+              children.add(
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _moveController,
+                      builder: (context, child) {
+                        final from = _squareOffset(
+                          activeMove.from,
+                          files,
+                          ranks,
+                          squareSize,
+                        );
+                        final to = _squareOffset(
+                          activeMove.to,
+                          files,
+                          ranks,
+                          squareSize,
+                        );
+                        final progress = Curves.easeOutCubic
+                            .transform(_moveController.value);
+                        final offset = Offset.lerp(from, to, progress)!;
+                        return Transform.translate(
+                          offset: offset,
+                          child: Align(
+                            alignment: Alignment.topLeft,
+                            child: SizedBox(
+                              width: squareSize,
+                              height: squareSize,
+                              child: child,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Center(
+                        child: _PieceVector(
+                          piece: activeMove.piece,
+                          size: squareSize * 0.82,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return Stack(children: children);
           },
         ),
       ),
     );
+  }
+
+  Offset _squareOffset(
+    String square,
+    List<String> files,
+    List<int> ranks,
+    double squareSize,
+  ) {
+    final fileIndex = files.indexOf(square[0]);
+    final rankIndex = ranks.indexOf(int.parse(square.substring(1)));
+    return Offset(fileIndex * squareSize, rankIndex * squareSize);
   }
 }
 
 class _BoardSquare extends StatelessWidget {
   const _BoardSquare({
     required this.square,
-    required this.piece,
     required this.isLight,
     required this.isSelected,
     required this.isTarget,
@@ -93,7 +234,6 @@ class _BoardSquare extends StatelessWidget {
   });
 
   final String square;
-  final String? piece;
   final bool isLight;
   final bool isSelected;
   final bool isTarget;
@@ -104,7 +244,6 @@ class _BoardSquare extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final base = isLight ? const Color(0xfff5ede2) : const Color(0xff8c6a50);
-    final pieceValue = piece;
 
     return Material(
       color: Colors.transparent,
@@ -151,15 +290,6 @@ class _BoardSquare extends StatelessWidget {
                             : const Color(0xff2d241e),
                       ),
                     ),
-                  ),
-                ),
-              if (pieceValue != null)
-                Center(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final size = constraints.biggest.shortestSide * 0.82;
-                      return _PieceVector(piece: pieceValue, size: size);
-                    },
                   ),
                 ),
             ],
