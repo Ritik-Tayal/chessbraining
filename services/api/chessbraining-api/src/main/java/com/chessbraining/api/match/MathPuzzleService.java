@@ -9,7 +9,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class MathPuzzleService {
 
-	private static final int PUZZLE_COUNT = 10;
+	private static final int PUZZLE_COUNT = 30;
 	private static final SecureRandom RANDOM = new SecureRandom();
 
 	public record Puzzle(String expression, int answer) {}

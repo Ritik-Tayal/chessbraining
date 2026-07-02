@@ -139,7 +139,7 @@ class _MatchScreenState extends State<MatchScreen> {
               if (controller.match?.isBrainRound == true)
                 BrainRoundOverlay(controller: controller),
               if (showCelebration)
-                _EndGameCelebration(
+                _EndGameResult(
                   match: match,
                   playerId: controller.playerId,
                   onReview: () => setState(
@@ -1644,8 +1644,8 @@ class _PowerButton extends StatelessWidget {
   }
 }
 
-class _EndGameCelebration extends StatefulWidget {
-  const _EndGameCelebration({
+class _EndGameResult extends StatefulWidget {
+  const _EndGameResult({
     required this.match,
     required this.playerId,
     required this.onReview,
@@ -1658,31 +1658,47 @@ class _EndGameCelebration extends StatefulWidget {
   final VoidCallback onCommand;
 
   @override
-  State<_EndGameCelebration> createState() => _EndGameCelebrationState();
+  State<_EndGameResult> createState() => _EndGameResultState();
 }
 
-class _EndGameCelebrationState extends State<_EndGameCelebration>
+class _EndGameResultState extends State<_EndGameResult>
     with SingleTickerProviderStateMixin {
   late final AnimationController controller;
   late List<_ConfettiParticle> particles;
+  late _GameResult result;
 
   @override
   void initState() {
     super.initState();
+    result = _calculateResult();
     controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3200),
     )..forward();
-    particles = _makeParticles(widget.match.matchId.hashCode);
+    if (result == _GameResult.win) {
+      particles = _makeParticles(widget.match.matchId.hashCode);
+    }
   }
 
   @override
-  void didUpdateWidget(covariant _EndGameCelebration oldWidget) {
+  void didUpdateWidget(covariant _EndGameResult oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.match.matchId != widget.match.matchId) {
-      particles = _makeParticles(widget.match.matchId.hashCode);
+      result = _calculateResult();
+      if (result == _GameResult.win) {
+        particles = _makeParticles(widget.match.matchId.hashCode);
+      }
       controller.forward(from: 0);
     }
+  }
+
+  _GameResult _calculateResult() {
+    if (widget.match.isDraw) {
+      return _GameResult.draw;
+    }
+    return widget.match.winnerPlayerId == widget.playerId
+        ? _GameResult.win
+        : _GameResult.loss;
   }
 
   @override
@@ -1693,7 +1709,52 @@ class _EndGameCelebrationState extends State<_EndGameCelebration>
 
   @override
   Widget build(BuildContext context) {
-    final winner = _winnerLabel();
+    return switch (result) {
+      _GameResult.win => _EndGameCelebration(
+          match: widget.match,
+          playerId: widget.playerId,
+          onReview: widget.onReview,
+          onCommand: widget.onCommand,
+          controller: controller,
+          particles: particles,
+        ),
+      _GameResult.loss => _EndGameDefeat(
+          match: widget.match,
+          playerId: widget.playerId,
+          onReview: widget.onReview,
+          onCommand: widget.onCommand,
+        ),
+      _GameResult.draw => _EndGameDraw(
+          match: widget.match,
+          playerId: widget.playerId,
+          onReview: widget.onReview,
+          onCommand: widget.onCommand,
+        ),
+    };
+  }
+}
+
+enum _GameResult { win, loss, draw }
+
+class _EndGameCelebration extends StatelessWidget {
+  const _EndGameCelebration({
+    required this.match,
+    required this.playerId,
+    required this.onReview,
+    required this.onCommand,
+    required this.controller,
+    required this.particles,
+  });
+
+  final MatchModel match;
+  final String playerId;
+  final VoidCallback onReview;
+  final VoidCallback onCommand;
+  final AnimationController controller;
+  final List<_ConfettiParticle> particles;
+
+  @override
+  Widget build(BuildContext context) {
     return Positioned.fill(
       child: Stack(
         children: [
@@ -1711,32 +1772,377 @@ class _EndGameCelebrationState extends State<_EndGameCelebration>
               },
             ),
           ),
-          Align(
-            alignment: Alignment.topCenter,
-            child: SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: Material(
-                    color: Colors.transparent,
-                    child: Container(
-                      padding: const EdgeInsets.all(18),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        border:
-                            Border.all(color: AppColors.primary, width: 1.5),
-                        borderRadius: BorderRadius.circular(10),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.35),
-                            blurRadius: 22,
-                          ),
-                        ],
+          _buildCelebrationCard(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCelebrationCard(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.primary, width: 1.5),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 22,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.emoji_events,
+                        color: AppColors.primary, size: 48),
+                    const SizedBox(height: 12),
+                    Text(
+                      'YOU WON',
+                      style: TextStyle(
+                        color: AppColors.primary,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
                       ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _resultReason(),
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.replay, size: 18),
+                            label: const Text('REVIEW'),
+                            onPressed: onReview,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.primary,
+                              side: const BorderSide(color: AppColors.primary),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.home, size: 18),
+                            label: const Text('HOME'),
+                            onPressed: onCommand,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.primary,
+                              foregroundColor: AppColors.background,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _resultReason() {
+    final reason = match.resultReason;
+    if (reason != null && reason.isNotEmpty) {
+      return reason;
+    }
+    return match.winnerPlayerId == playerId
+        ? 'Checkmate'
+        : 'Game over';
+  }
+}
+
+class _EndGameDefeat extends StatelessWidget {
+  const _EndGameDefeat({
+    required this.match,
+    required this.playerId,
+    required this.onReview,
+    required this.onCommand,
+  });
+
+  final MatchModel match;
+  final String playerId;
+  final VoidCallback onReview;
+  final VoidCallback onCommand;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          // Subtle dimming overlay
+          Container(
+            color: Colors.black.withValues(alpha: 0.85),
+          ),
+          _buildDefeatCard(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDefeatCard(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.warning, width: 1.5),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 22,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.sentiment_very_dissatisfied,
+                        color: AppColors.warning, size: 48),
+                    const SizedBox(height: 12),
+                    Text(
+                      'DEFEAT',
+                      style: TextStyle(
+                        color: AppColors.warning,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _resultReason(),
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.replay, size: 18),
+                            label: const Text('REVIEW'),
+                            onPressed: onReview,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.warning,
+                              side: const BorderSide(color: AppColors.warning),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.home, size: 18),
+                            label: const Text('HOME'),
+                            onPressed: onCommand,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.warning,
+                              foregroundColor: AppColors.background,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _resultReason() {
+    final reason = match.resultReason;
+    if (reason != null && reason.isNotEmpty) {
+      return reason;
+    }
+    return match.winnerPlayerId == playerId
+        ? 'Checkmate'
+        : 'Game over';
+  }
+}
+
+class _EndGameDraw extends StatelessWidget {
+  const _EndGameDraw({
+    required this.match,
+    required this.playerId,
+    required this.onReview,
+    required this.onCommand,
+  });
+
+  final MatchModel match;
+  final String playerId;
+  final VoidCallback onReview;
+  final VoidCallback onCommand;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned.fill(
+      child: Stack(
+        children: [
+          // Subtle overlay
+          Container(
+            color: Colors.black.withValues(alpha: 0.85),
+          ),
+          _buildDrawCard(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawCard(BuildContext context) {
+    return Align(
+      alignment: Alignment.topCenter,
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: Material(
+              color: Colors.transparent,
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  border: Border.all(color: AppColors.secondary, width: 1.5),
+                  borderRadius: BorderRadius.circular(10),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.35),
+                      blurRadius: 22,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.handshake,
+                        color: AppColors.secondary, size: 48),
+                    const SizedBox(height: 12),
+                    Text(
+                      'DRAW',
+                      style: TextStyle(
+                        color: AppColors.secondary,
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 2,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      _resultReason(),
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w800,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            icon: const Icon(Icons.replay, size: 18),
+                            label: const Text('REVIEW'),
+                            onPressed: onReview,
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.secondary,
+                              side: const BorderSide(color: AppColors.secondary),
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton.icon(
+                            icon: const Icon(Icons.home, size: 18),
+                            label: const Text('HOME'),
+                            onPressed: onCommand,
+                            style: FilledButton.styleFrom(
+                              backgroundColor: AppColors.secondary,
+                              foregroundColor: AppColors.background,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _resultReason() {
+    final reason = match.resultReason;
+    if (reason != null && reason.isNotEmpty) {
+      return reason;
+    }
+    return 'Stalemate / Insufficient material';
+  }
+}
                           const Icon(
                             Icons.emoji_events,
                             color: AppColors.warning,

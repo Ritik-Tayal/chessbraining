@@ -5,6 +5,7 @@ import 'src/api/chessbraining_api.dart';
 import 'src/api/match_socket_client.dart';
 import 'src/features/match/match_controller.dart';
 import 'src/features/match/match_screen.dart';
+import 'src/services/sound_service.dart';
 import 'src/session/guest_session.dart';
 
 Future<void> main() async {
@@ -36,11 +37,13 @@ class _ChessBrainingAppState extends State<ChessBrainingApp> {
       socketFactory: MatchSocketClient.new,
       guestSession: widget.guestSession,
     );
+    SoundService.instance.setVolume(0.6);
   }
 
   @override
   void dispose() {
     controller.dispose();
+    SoundService.instance.dispose();
     super.dispose();
   }
 
