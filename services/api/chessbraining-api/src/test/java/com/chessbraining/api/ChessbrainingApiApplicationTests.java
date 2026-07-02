@@ -673,7 +673,40 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.white.brainPoints").value(0))
 				.andExpect(jsonPath("$.white.revivablePawns").value(0))
+				.andExpect(jsonPath("$.sideToMove").value("BLACK"))
+				.andExpect(jsonPath("$.plyCount").value(1))
+				.andExpect(jsonPath("$.moves.length()").value(0))
 				.andExpect(jsonPath("$.fen").value(org.hamcrest.Matchers.startsWith("rnbqkbnr/pppppppp/8/8/8/P7/1PPPPPPP/RNBQKBNR")));
+	}
+
+	@Test
+	void revivePawnPowerupCanTriggerBrainRoundAsTurn() throws Exception {
+		JsonNode joined = createJoinedMatch(1);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+
+		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+		match.setFen("rnbqkbnr/ppppppp1/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1");
+		match.setBlackBrainPoints(3);
+		matchRepository.save(match);
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/powerups", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "black-player",
+								  "type": "REVIVE_PAWN",
+								  "targetSquare": "h6"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.black.brainPoints").value(0))
+				.andExpect(jsonPath("$.black.revivablePawns").value(0))
+				.andExpect(jsonPath("$.sideToMove").value("WHITE"))
+				.andExpect(jsonPath("$.plyCount").value(2))
+				.andExpect(jsonPath("$.phase").value("BRAIN_ROUND"))
+				.andExpect(jsonPath("$.brainRoundCount").value(1));
 	}
 
 	@Test

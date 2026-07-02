@@ -813,7 +813,7 @@ class _PowerupGuide extends StatelessWidget {
               color: AppColors.warning,
               description: 'Return one captured pawn to an empty square.',
               detail:
-                  'Tap Revive, then choose an empty square from ranks 2 through 7.',
+                  'Choose an empty square from ranks 2 through 7. Placement uses your turn.',
             ),
             _PowerupSlide(
               icon: Icons.double_arrow,

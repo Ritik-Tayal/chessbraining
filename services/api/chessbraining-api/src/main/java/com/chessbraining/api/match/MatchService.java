@@ -278,6 +278,27 @@ public class MatchService {
 		return intervalPlyCount > 0 && nextPly > 0 && nextPly % intervalPlyCount == 0;
 	}
 
+	void completePowerupTurn(MatchEntity match, String movingSide, String fenAfterPowerup) {
+		String nextSide = oppositeSide(movingSide);
+		match.setFen(chessService.withSideToMove(fenAfterPowerup, nextSide));
+		match.setSideToMove(nextSide);
+		match.setPlyCount(match.getPlyCount() + 1);
+		clearExtraMoveState(match, movingSide);
+
+		String timedOutWinner = clockService.tickAfterMove(match);
+		if (timedOutWinner != null) {
+			completeMatch(match, timedOutWinner, "TIMEOUT");
+		}
+		else if (shouldStartBrainRound(match)) {
+			clockService.pauseForBrainRound(match);
+			startBrainRound(match);
+		}
+	}
+
+	private String oppositeSide(String side) {
+		return "WHITE".equals(side) ? "BLACK" : "WHITE";
+	}
+
 	private boolean isExtraMoveArmed(MatchEntity match, String side) {
 		return "WHITE".equals(side) ? match.isWhiteExtraMoveArmed() : match.isBlackExtraMoveArmed();
 	}
