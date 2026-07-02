@@ -64,17 +64,37 @@ class MatchController extends ChangeNotifier {
   bool realtimeConnected = false;
   bool movePending = false;
   BoardMoveAnimation? boardMoveAnimation;
+  String? reviewFen;
+  MoveModel? reviewMove;
   PowerupTargetMode powerupTargetMode = PowerupTargetMode.none;
   int _boardAnimationSequence = 0;
 
   PlayerModel? get me => match?.playerById(playerId);
   bool get isMyTurn => me != null && match?.sideToMove == me!.side;
-  bool get canMove => match?.isChessPhase == true && isMyTurn && !movePending;
+  bool get isReviewingMove => reviewFen != null;
+  String? get boardFen => reviewFen ?? match?.fen;
+  MoveModel? get boardLastMove {
+    if (reviewMove != null) {
+      return reviewMove;
+    }
+    final moves = match?.moves;
+    if (moves == null || moves.isEmpty) {
+      return null;
+    }
+    return moves.last;
+  }
+
+  bool get canMove =>
+      !isReviewingMove &&
+      match?.isChessPhase == true &&
+      isMyTurn &&
+      !movePending;
   bool get canUseClockBoost {
     final current = match;
     final currentPlayer = me;
     return current != null &&
         current.isChessPhase &&
+        !isReviewingMove &&
         currentPlayer != null &&
         currentPlayer.brainPoints >= 1;
   }
@@ -84,6 +104,7 @@ class MatchController extends ChangeNotifier {
     final currentPlayer = me;
     if (current == null ||
         !current.isChessPhase ||
+        isReviewingMove ||
         currentPlayer == null ||
         !isMyTurn ||
         currentPlayer.brainPoints < 4 ||
@@ -100,6 +121,7 @@ class MatchController extends ChangeNotifier {
     final currentPlayer = me;
     return current != null &&
         current.isChessPhase &&
+        !isReviewingMove &&
         currentPlayer != null &&
         isMyTurn &&
         currentPlayer.brainPoints >= 3 &&
@@ -130,6 +152,27 @@ class MatchController extends ChangeNotifier {
     playerName = value.trim().isEmpty ? 'Player' : value.trim();
     unawaited(GuestSession.saveName(playerName));
     notifyListeners();
+  }
+
+  void viewMovePosition(MoveModel move) {
+    reviewFen = move.fenAfter;
+    reviewMove = move;
+    selectedSquare = null;
+    legalMoves = const [];
+    powerupTargetMode = PowerupTargetMode.none;
+    boardMoveAnimation = null;
+    notifyListeners();
+  }
+
+  void returnToLivePosition() {
+    if (!isReviewingMove) {
+      return;
+    }
+    reviewFen = null;
+    reviewMove = null;
+    selectedSquare = null;
+    notifyListeners();
+    unawaited(_loadLegalMoves().then((_) => notifyListeners()));
   }
 
   Future<void> createMatch() {
@@ -174,6 +217,10 @@ class MatchController extends ChangeNotifier {
   }
 
   Future<void> selectSquare(String square) async {
+    if (isReviewingMove) {
+      returnToLivePosition();
+      return;
+    }
     if (powerupTargetMode == PowerupTargetMode.revivePawn) {
       await applyRevivePawn(square);
       return;
@@ -221,6 +268,7 @@ class MatchController extends ChangeNotifier {
       from: move.from,
       to: move.to,
       promotion: move.promotion,
+      fenBefore: current.fen,
       fenAfter: optimisticFen,
     );
 
@@ -530,7 +578,7 @@ class MatchController extends ChangeNotifier {
   }
 
   bool isPowerupTarget(String square) {
-    if (!isRevivePawnTargeting || _pieceAt(square) != null) {
+    if (isReviewingMove || !isRevivePawnTargeting || _pieceAt(square) != null) {
       return false;
     }
     final rank = int.tryParse(square.substring(1));
@@ -574,7 +622,17 @@ class MatchController extends ChangeNotifier {
     final previousIsBrainRound = previousMatch?.isBrainRound ?? false;
     final previousIsCompleted = previousMatch?.isCompleted ?? false;
 
+    final shouldClearReview = isReviewingMove &&
+        (previousMatchId != value.matchId ||
+            previousMatch?.plyCount != value.plyCount ||
+            previousMatch?.fen != value.fen ||
+            previousMatch?.phase != value.phase);
+
     match = value;
+    if (shouldClearReview) {
+      reviewFen = null;
+      reviewMove = null;
+    }
     selectedSquare = null;
     powerupTargetMode = PowerupTargetMode.none;
     movePending = false;

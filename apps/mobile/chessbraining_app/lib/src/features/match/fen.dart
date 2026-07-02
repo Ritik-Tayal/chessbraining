@@ -1,3 +1,5 @@
+const startingFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
 Map<String, String> parseFenBoard(String fen) {
   final board = <String, String>{};
   final placement = fen.split(' ').first;
@@ -33,6 +35,43 @@ String pieceLabel(String piece) {
 
 bool isWhitePiece(String piece) {
   return piece.toUpperCase() == piece;
+}
+
+String moveNotationFromFen({
+  required String fenBefore,
+  required String from,
+  required String to,
+  String? promotion,
+}) {
+  final board = parseFenBoard(fenBefore.isEmpty ? startingFen : fenBefore);
+  final piece = board[from];
+  if (piece == null) {
+    return '$from-$to';
+  }
+
+  final pieceType = piece.toLowerCase();
+  final fromFile = _fileIndex(from);
+  final toFile = _fileIndex(to);
+  final targetPiece = board[to];
+  final isPawn = pieceType == 'p';
+  final isCastle = pieceType == 'k' && (fromFile - toFile).abs() == 2;
+  if (isCastle) {
+    return toFile > fromFile ? 'O-O' : 'O-O-O';
+  }
+
+  final enPassant = _fenField(fenBefore, 3, '-');
+  final isCapture =
+      targetPiece != null || (isPawn && fromFile != toFile && to == enPassant);
+  final promotionSuffix = _promotionSuffix(promotion);
+
+  if (isPawn) {
+    final capturePrefix = isCapture ? '${from[0]}x' : '';
+    return '$capturePrefix$to$promotionSuffix';
+  }
+
+  final disambiguation = _disambiguation(board, piece, from, to);
+  final captureMarker = isCapture ? 'x' : '';
+  return '${pieceLabel(piece)}$disambiguation$captureMarker$to';
 }
 
 String applyMoveToFen({
@@ -110,6 +149,94 @@ String applyMoveToFen({
   final nextFullMove = sideToMove == 'b' ? fullMove + 1 : fullMove;
 
   return '${_boardToPlacement(board)} $nextSide $nextCastling $nextEnPassant $nextHalfMove $nextFullMove';
+}
+
+String _fenField(String fen, int index, String fallback) {
+  final parts = fen.split(' ');
+  return parts.length > index ? parts[index] : fallback;
+}
+
+String _promotionSuffix(String? promotion) {
+  if (promotion == null || promotion.trim().isEmpty) {
+    return '';
+  }
+  return '=${promotion.trim().toUpperCase()}';
+}
+
+String _disambiguation(
+  Map<String, String> board,
+  String piece,
+  String from,
+  String to,
+) {
+  final alternatives = board.entries
+      .where((entry) =>
+          entry.key != from &&
+          entry.value.toLowerCase() == piece.toLowerCase() &&
+          isWhitePiece(entry.value) == isWhitePiece(piece) &&
+          _pieceCanReach(board, entry.value, entry.key, to))
+      .map((entry) => entry.key)
+      .toList();
+  if (alternatives.isEmpty) {
+    return '';
+  }
+
+  final sameFile = alternatives.any((square) => square[0] == from[0]);
+  final sameRank =
+      alternatives.any((square) => square.substring(1) == from.substring(1));
+  if (!sameFile) {
+    return from[0];
+  }
+  if (!sameRank) {
+    return from.substring(1);
+  }
+  return from;
+}
+
+bool _pieceCanReach(
+  Map<String, String> board,
+  String piece,
+  String from,
+  String to,
+) {
+  final target = board[to];
+  if (target != null && isWhitePiece(target) == isWhitePiece(piece)) {
+    return false;
+  }
+
+  final fileDelta = _fileIndex(to) - _fileIndex(from);
+  final rankDelta = _rank(to) - _rank(from);
+  final absFileDelta = fileDelta.abs();
+  final absRankDelta = rankDelta.abs();
+
+  return switch (piece.toLowerCase()) {
+    'n' => (absFileDelta == 1 && absRankDelta == 2) ||
+        (absFileDelta == 2 && absRankDelta == 1),
+    'b' => absFileDelta == absRankDelta && _pathClear(board, from, to),
+    'r' => (fileDelta == 0 || rankDelta == 0) && _pathClear(board, from, to),
+    'q' =>
+      ((absFileDelta == absRankDelta) || (fileDelta == 0 || rankDelta == 0)) &&
+          _pathClear(board, from, to),
+    'k' => absFileDelta <= 1 && absRankDelta <= 1,
+    _ => false,
+  };
+}
+
+bool _pathClear(Map<String, String> board, String from, String to) {
+  final fileStep = (_fileIndex(to) - _fileIndex(from)).sign;
+  final rankStep = (_rank(to) - _rank(from)).sign;
+  var file = _fileIndex(from) + fileStep;
+  var rank = _rank(from) + rankStep;
+
+  while (file != _fileIndex(to) || rank != _rank(to)) {
+    final square = '${String.fromCharCode('a'.codeUnitAt(0) + file)}$rank';
+    if (board.containsKey(square)) {
+      return false;
+    }
+    file += fileStep;
+    rank += rankStep;
+  }
+  return true;
 }
 
 String _boardToPlacement(Map<String, String> board) {

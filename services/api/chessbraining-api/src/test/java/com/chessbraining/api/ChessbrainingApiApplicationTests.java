@@ -3,6 +3,11 @@ package com.chessbraining.api;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -15,6 +20,10 @@ import com.chessbraining.api.match.BrainRoundEntity;
 import com.chessbraining.api.match.BrainRoundRepository;
 import com.chessbraining.api.match.MatchEntity;
 import com.chessbraining.api.match.MatchRepository;
+import com.chessbraining.api.match.MatchResponse;
+import com.chessbraining.api.match.MatchService;
+import com.chessbraining.api.match.MatchStatus;
+import com.chessbraining.api.match.CreateMatchRequest;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -38,6 +47,9 @@ class ChessbrainingApiApplicationTests {
 
 	@Autowired
 	private MatchRepository matchRepository;
+
+	@Autowired
+	private MatchService matchService;
 
 	@Test
 	void contextLoads() {
@@ -71,54 +83,93 @@ class ChessbrainingApiApplicationTests {
 	}
 
 	@Test
-	void quickplayJoinsWaitingOpponentMatch() throws Exception {
+	void quickplayJoinsFreshQuickplayOpponentMatch() throws Exception {
 		matchRepository.deleteAll();
-		JsonNode created = createMatch("white-player", "Ritik", 5);
+		JsonNode waiting = quickplay("white-player", "Ritik");
+		org.junit.jupiter.api.Assertions.assertEquals("WAITING_FOR_OPPONENT", waiting.get("status").asText());
 
-		JsonNode quickplay = objectMapper.readTree(
-				mockMvc.perform(post("/api/v1/matches/quickplay")
-								.contentType(MediaType.APPLICATION_JSON)
-								.content("""
-										{
-										  "playerId": "black-player",
-										  "playerName": "Teammate"
-										}
-										"""))
-						.andExpect(status().isOk())
-						.andExpect(jsonPath("$.status").value("ACTIVE"))
-						.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
-						.andReturn()
-						.getResponse()
-						.getContentAsString());
+		JsonNode quickplay = quickplay("black-player", "Teammate");
 
 		org.junit.jupiter.api.Assertions.assertEquals(
-				created.get("matchId").asText(),
+				waiting.get("matchId").asText(),
 				quickplay.get("matchId").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("ACTIVE", quickplay.get("status").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("CHESS_PHASE", quickplay.get("phase").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("white-player", quickplay.get("white").get("playerId").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("black-player", quickplay.get("black").get("playerId").asText());
 	}
 
 	@Test
-	void quickplayDoesNotJoinOwnWaitingMatch() throws Exception {
+	void quickplayDoesNotJoinPrivateInviteMatch() throws Exception {
 		matchRepository.deleteAll();
-		JsonNode created = createMatch("white-player", "Ritik", 5);
+		JsonNode privateInvite = createMatch("white-player", "Ritik", 5);
 
-		JsonNode quickplay = objectMapper.readTree(
-				mockMvc.perform(post("/api/v1/matches/quickplay")
-								.contentType(MediaType.APPLICATION_JSON)
-								.content("""
-										{
-										  "playerId": "white-player",
-										  "playerName": "Ritik"
-										}
-										"""))
-						.andExpect(status().isOk())
-						.andExpect(jsonPath("$.status").value("WAITING_FOR_OPPONENT"))
-						.andReturn()
-						.getResponse()
-						.getContentAsString());
+		JsonNode quickplay = quickplay("black-player", "Teammate");
 
 		org.junit.jupiter.api.Assertions.assertNotEquals(
-				created.get("matchId").asText(),
+				privateInvite.get("matchId").asText(),
 				quickplay.get("matchId").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("WAITING_FOR_OPPONENT", quickplay.get("status").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("black-player", quickplay.get("white").get("playerId").asText());
+	}
+
+	@Test
+	void quickplayReturnsOwnWaitingTableInsteadOfCreatingDuplicates() throws Exception {
+		matchRepository.deleteAll();
+		JsonNode first = quickplay("white-player", "Ritik");
+
+		JsonNode second = quickplay("white-player", "Ritik");
+
+		org.junit.jupiter.api.Assertions.assertEquals(
+				first.get("matchId").asText(),
+				second.get("matchId").asText());
+		org.junit.jupiter.api.Assertions.assertEquals(1, matchRepository.count());
+	}
+
+	@Test
+	void quickplayIgnoresStaleWaitingTables() throws Exception {
+		matchRepository.deleteAll();
+		JsonNode staleWaiting = quickplay("white-player", "Ritik");
+		MatchEntity staleMatch = matchRepository.findById(staleWaiting.get("matchId").asText()).orElseThrow();
+		staleMatch.setCreatedAt(Instant.now().minusSeconds(601));
+		matchRepository.save(staleMatch);
+
+		JsonNode quickplay = quickplay("black-player", "Teammate");
+
+		org.junit.jupiter.api.Assertions.assertNotEquals(
+				staleWaiting.get("matchId").asText(),
+				quickplay.get("matchId").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("WAITING_FOR_OPPONENT", quickplay.get("status").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("black-player", quickplay.get("white").get("playerId").asText());
+	}
+
+	@Test
+	void simultaneousQuickplayRequestsShareOneMatch() throws Exception {
+		matchRepository.deleteAll();
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		CountDownLatch start = new CountDownLatch(1);
+		try {
+			Future<MatchResponse> first = executor.submit(() -> {
+				start.await();
+				return matchService.quickplay(new CreateMatchRequest("white-player", "Ritik", null, null));
+			});
+			Future<MatchResponse> second = executor.submit(() -> {
+				start.await();
+				return matchService.quickplay(new CreateMatchRequest("black-player", "Teammate", null, null));
+			});
+
+			start.countDown();
+			MatchResponse firstResponse = first.get(20, TimeUnit.SECONDS);
+			MatchResponse secondResponse = second.get(20, TimeUnit.SECONDS);
+
+			org.junit.jupiter.api.Assertions.assertEquals(firstResponse.matchId(), secondResponse.matchId());
+			MatchEntity match = matchRepository.findById(firstResponse.matchId()).orElseThrow();
+			org.junit.jupiter.api.Assertions.assertEquals(MatchStatus.ACTIVE, match.getStatus());
+			org.junit.jupiter.api.Assertions.assertEquals(1, matchRepository.count());
+		}
+		finally {
+			executor.shutdownNow();
+		}
 	}
 
 	@Test
@@ -823,6 +874,23 @@ class ChessbrainingApiApplicationTests {
 				.getContentAsString();
 
 		return objectMapper.readTree(created);
+	}
+
+	private JsonNode quickplay(String playerId, String playerName) throws Exception {
+		String response = mockMvc.perform(post("/api/v1/matches/quickplay")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "%s",
+								  "playerName": "%s"
+								}
+								""".formatted(playerId, playerName)))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		return objectMapper.readTree(response);
 	}
 
 	private void submitMove(String matchId, String playerId, String from, String to) throws Exception {

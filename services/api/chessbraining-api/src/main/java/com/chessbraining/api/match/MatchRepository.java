@@ -1,5 +1,6 @@
 package com.chessbraining.api.match;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
@@ -21,9 +22,18 @@ public interface MatchRepository extends JpaRepository<MatchEntity, String> {
 	Optional<MatchEntity> findByInviteCodeForUpdate(@Param("inviteCode") String inviteCode);
 
 	@Lock(LockModeType.PESSIMISTIC_WRITE)
-	Optional<MatchEntity> findFirstByStatusAndWhitePlayerIdNotOrderByCreatedAtAsc(
+	Optional<MatchEntity> findFirstByStatusAndMatchmakingModeAndWhitePlayerIdAndCreatedAtAfterOrderByCreatedAtAsc(
 			MatchStatus status,
-			String whitePlayerId);
+			MatchmakingMode matchmakingMode,
+			String whitePlayerId,
+			Instant createdAt);
+
+	@Lock(LockModeType.PESSIMISTIC_WRITE)
+	Optional<MatchEntity> findFirstByStatusAndMatchmakingModeAndWhitePlayerIdNotAndCreatedAtAfterOrderByCreatedAtAsc(
+			MatchStatus status,
+			MatchmakingMode matchmakingMode,
+			String whitePlayerId,
+			Instant createdAt);
 
 	boolean existsByInviteCode(String inviteCode);
 }

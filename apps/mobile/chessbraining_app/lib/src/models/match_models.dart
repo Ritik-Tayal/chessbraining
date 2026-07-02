@@ -145,6 +145,7 @@ class MoveModel {
     required this.from,
     required this.to,
     required this.promotion,
+    required this.fenBefore,
     required this.fenAfter,
   });
 
@@ -154,9 +155,11 @@ class MoveModel {
   final String from;
   final String to;
   final String? promotion;
+  final String fenBefore;
   final String fenAfter;
 
   factory MoveModel.fromJson(Map<String, dynamic> json) {
+    final fenAfter = json['fenAfter'] as String;
     return MoveModel(
       plyNumber: json['plyNumber'] as int,
       playerId: json['playerId'] as String,
@@ -164,7 +167,8 @@ class MoveModel {
       from: json['from'] as String,
       to: json['to'] as String,
       promotion: json['promotion'] as String?,
-      fenAfter: json['fenAfter'] as String,
+      fenBefore: json['fenBefore'] as String? ?? '',
+      fenAfter: fenAfter,
     );
   }
 }

@@ -31,6 +31,10 @@ public class MatchEntity {
 	@Column(nullable = false, length = 32)
 	private MatchPhase phase;
 
+	@Enumerated(EnumType.STRING)
+	@Column(length = 16)
+	private MatchmakingMode matchmakingMode;
+
 	@Column(nullable = false, length = 512)
 	private String fen;
 
@@ -148,6 +152,14 @@ public class MatchEntity {
 
 	public void setPhase(MatchPhase phase) {
 		this.phase = phase;
+	}
+
+	public MatchmakingMode getMatchmakingMode() {
+		return matchmakingMode;
+	}
+
+	public void setMatchmakingMode(MatchmakingMode matchmakingMode) {
+		this.matchmakingMode = matchmakingMode;
 	}
 
 	public String getFen() {

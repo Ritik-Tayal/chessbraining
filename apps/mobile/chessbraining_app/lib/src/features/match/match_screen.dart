@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import '../../models/match_models.dart';
 import 'brain_round_overlay.dart';
 import 'chess_board.dart';
+import 'fen.dart';
 import 'match_controller.dart';
 
 enum _ScreenPage { command, play }
@@ -2021,6 +2022,7 @@ class _MoveLog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final moves = controller.match?.moves ?? const [];
+    final movePairs = _movePairs(moves);
     return _Panel(
       title: 'MOVES',
       child: SizedBox(
@@ -2035,45 +2037,202 @@ class _MoveLog extends StatelessWidget {
                   ),
                 ),
               )
-            : ListView.separated(
-                itemCount: moves.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(color: AppColors.border, height: 1),
-                itemBuilder: (context, index) {
-                  final move = moves[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 36,
-                          child: Text(
-                            '${move.plyNumber}.',
-                            style: const TextStyle(color: AppColors.muted),
+            : Column(
+                children: [
+                  if (controller.isReviewingMove) ...[
+                    _HistoryModeBanner(controller: controller),
+                    const SizedBox(height: 8),
+                  ],
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: movePairs.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(color: AppColors.border, height: 1),
+                      itemBuilder: (context, index) {
+                        final pair = movePairs[index];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 34,
+                                child: Text(
+                                  '${pair.number}.',
+                                  style:
+                                      const TextStyle(color: AppColors.muted),
+                                ),
+                              ),
+                              Expanded(
+                                child: _MoveNotationButton(
+                                  controller: controller,
+                                  move: pair.white,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _MoveNotationButton(
+                                  controller: controller,
+                                  move: pair.black,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            '${move.from}-${move.to}',
-                            style: const TextStyle(
-                              color: AppColors.text,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          move.side,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
+      ),
+    );
+  }
+
+  List<_MovePair> _movePairs(List<MoveModel> moves) {
+    final pairs = <int, _MovePair>{};
+    for (final move in moves) {
+      final number = (move.plyNumber + 1) ~/ 2;
+      final current = pairs[number] ?? _MovePair(number: number);
+      pairs[number] = move.side == 'WHITE' || move.plyNumber.isOdd
+          ? current.copyWith(white: move)
+          : current.copyWith(black: move);
+    }
+    return pairs.values.toList()..sort((a, b) => a.number.compareTo(b.number));
+  }
+}
+
+class _MovePair {
+  const _MovePair({
+    required this.number,
+    this.white,
+    this.black,
+  });
+
+  final int number;
+  final MoveModel? white;
+  final MoveModel? black;
+
+  _MovePair copyWith({
+    MoveModel? white,
+    MoveModel? black,
+  }) {
+    return _MovePair(
+      number: number,
+      white: white ?? this.white,
+      black: black ?? this.black,
+    );
+  }
+}
+
+class _HistoryModeBanner extends StatelessWidget {
+  const _HistoryModeBanner({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final move = controller.reviewMove;
+    final label = move == null
+        ? 'Viewing history'
+        : 'Viewing ${moveNotationFromFen(
+            fenBefore: move.fenBefore,
+            from: move.from,
+            to: move.to,
+            promotion: move.promotion,
+          )}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.primaryContainer.withValues(alpha: 0.18),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.36)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.history, color: AppColors.primary, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: controller.returnToLivePosition,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'LIVE',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MoveNotationButton extends StatelessWidget {
+  const _MoveNotationButton({
+    required this.controller,
+    required this.move,
+  });
+
+  final MatchController controller;
+  final MoveModel? move;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentMove = move;
+    if (currentMove == null) {
+      return const SizedBox(height: 34);
+    }
+
+    final selected = controller.reviewMove?.plyNumber == currentMove.plyNumber;
+    final notation = moveNotationFromFen(
+      fenBefore: currentMove.fenBefore,
+      from: currentMove.from,
+      to: currentMove.to,
+      promotion: currentMove.promotion,
+    );
+
+    return Material(
+      color: selected
+          ? AppColors.primaryContainer.withValues(alpha: 0.24)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: () => controller.viewMovePosition(currentMove),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 34,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected
+                  ? AppColors.primary.withValues(alpha: 0.62)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Text(
+            notation,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: selected ? AppColors.primary : AppColors.text,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
       ),
     );
   }

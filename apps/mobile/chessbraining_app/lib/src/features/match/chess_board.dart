@@ -68,7 +68,7 @@ class _ChessBoardState extends State<ChessBoard>
       return const SizedBox.shrink();
     }
 
-    final board = parseFenBoard(match.fen);
+    final board = parseFenBoard(widget.controller.boardFen ?? match.fen);
     final isBlackPerspective = widget.controller.me?.side == 'BLACK';
     final files = isBlackPerspective
         ? const ['h', 'g', 'f', 'e', 'd', 'c', 'b', 'a']
@@ -76,7 +76,7 @@ class _ChessBoardState extends State<ChessBoard>
     final ranks = isBlackPerspective
         ? const [1, 2, 3, 4, 5, 6, 7, 8]
         : const [8, 7, 6, 5, 4, 3, 2, 1];
-    final lastMove = match.moves.isEmpty ? null : match.moves.last;
+    final lastMove = widget.controller.boardLastMove;
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -128,7 +128,8 @@ class _ChessBoardState extends State<ChessBoard>
               );
             }
 
-            final activeMove = _activeMove;
+            final activeMove =
+                widget.controller.isReviewingMove ? null : _activeMove;
             for (final entry in board.entries) {
               if (activeMove != null && entry.key == activeMove.to) {
                 continue;
