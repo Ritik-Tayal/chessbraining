@@ -196,12 +196,18 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(status().isConflict())
 				.andExpect(jsonPath("$.code").value("MATCH_NOT_READY_FOR_CHESS"));
 
-		mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.status").value("ACTIVE"))
-				.andExpect(jsonPath("$.puzzles").isArray())
-				.andExpect(jsonPath("$.totalQuestions").value(10))
-				.andExpect(jsonPath("$.expiresAt").isNotEmpty());
+		JsonNode round = objectMapper.readTree(
+				mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
+						.andExpect(status().isOk())
+						.andExpect(jsonPath("$.status").value("ACTIVE"))
+						.andExpect(jsonPath("$.puzzles").isArray())
+						.andExpect(jsonPath("$.expiresAt").isNotEmpty())
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
+		org.junit.jupiter.api.Assertions.assertEquals(
+				round.get("puzzles").size(),
+				round.get("totalQuestions").asInt());
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
 				.andExpect(status().isConflict())
@@ -232,6 +238,7 @@ class ChessbrainingApiApplicationTests {
 						.getContentAsString());
 
 		String[] puzzles = objectMapper.convertValue(round.get("puzzles"), String[].class);
+		int totalQuestions = round.get("totalQuestions").asInt();
 
 		for (int i = 0; i < puzzles.length; i++) {
 			mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
@@ -246,7 +253,7 @@ class ChessbrainingApiApplicationTests {
 					.andExpect(status().isOk())
 					.andExpect(jsonPath("$.correct").isBoolean())
 					.andExpect(jsonPath("$.correctAnswer").doesNotExist())
-					.andExpect(jsonPath("$.totalQuestions").value(10));
+					.andExpect(jsonPath("$.totalQuestions").value(totalQuestions));
 		}
 
 		expireActiveBrainRound(matchId);
@@ -288,13 +295,15 @@ class ChessbrainingApiApplicationTests {
 
 		submitMove(matchId, "white-player", "e2", "e4");
 		submitMove(matchId, "black-player", "e7", "e5");
+		JsonNode round = currentBrainRound(matchId);
+		int totalQuestions = round.get("totalQuestions").asInt();
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
 						.contentType(MediaType.APPLICATION_JSON)
-						.content(brainRoundSubmissionJson("white-player", 10)))
+						.content(brainRoundSubmissionJson("white-player", totalQuestions)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.playerAnsweredCount").value(10))
-				.andExpect(jsonPath("$.totalQuestions").value(10))
+				.andExpect(jsonPath("$.playerAnsweredCount").value(totalQuestions))
+				.andExpect(jsonPath("$.totalQuestions").value(totalQuestions))
 				.andExpect(jsonPath("$.roundCompleted").value(false));
 
 		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
@@ -303,10 +312,10 @@ class ChessbrainingApiApplicationTests {
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
 						.contentType(MediaType.APPLICATION_JSON)
-						.content(brainRoundSubmissionJson("black-player", 10)))
+						.content(brainRoundSubmissionJson("black-player", totalQuestions)))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.playerAnsweredCount").value(10))
-				.andExpect(jsonPath("$.totalQuestions").value(10))
+				.andExpect(jsonPath("$.playerAnsweredCount").value(totalQuestions))
+				.andExpect(jsonPath("$.totalQuestions").value(totalQuestions))
 				.andExpect(jsonPath("$.roundCompleted").value(true));
 
 		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
@@ -797,12 +806,7 @@ class ChessbrainingApiApplicationTests {
 	}
 
 	private void answerEveryQuestion(String matchId, String playerId) throws Exception {
-		JsonNode round = objectMapper.readTree(
-				mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
-						.andExpect(status().isOk())
-						.andReturn()
-						.getResponse()
-						.getContentAsString());
+		JsonNode round = currentBrainRound(matchId);
 		int totalQuestions = round.get("totalQuestions").asInt();
 
 		for (int i = 0; i < totalQuestions; i++) {
@@ -817,6 +821,15 @@ class ChessbrainingApiApplicationTests {
 									""".formatted(playerId, i)))
 					.andExpect(status().isOk());
 		}
+	}
+
+	private JsonNode currentBrainRound(String matchId) throws Exception {
+		return objectMapper.readTree(
+				mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
+						.andExpect(status().isOk())
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
 	}
 
 	private String brainRoundSubmissionJson(String playerId, int answerCount) {

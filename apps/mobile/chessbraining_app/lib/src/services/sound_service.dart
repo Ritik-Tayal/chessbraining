@@ -2,16 +2,16 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
 
 enum GameSound {
-  move('move.mp3'),
-  matchStart('match_start.mp3'),
-  matchEndWin('match_end_win.mp3'),
-  matchEndLoss('match_end_loss.mp3'),
-  matchEndDraw('match_end_draw.mp3'),
-  brainRoundStart('brain_round_start.mp3'),
-  brainRoundEnd('brain_round_end.mp3'),
-  powerup('powerup.mp3'),
-  error('error.mp3'),
-  notify('notify.mp3');
+  move('sounds/move.mp3'),
+  matchStart('sounds/match_start.mp3'),
+  matchEndWin('sounds/match_end_win.mp3'),
+  matchEndLoss('sounds/match_end_loss.mp3'),
+  matchEndDraw('sounds/match_end_draw.mp3'),
+  brainRoundStart('sounds/brain_round_start.mp3'),
+  brainRoundEnd('sounds/brain_round_end.mp3'),
+  powerup('sounds/powerup.mp3'),
+  error('sounds/error.mp3'),
+  notify('sounds/notify.mp3');
 
   const GameSound(this.assetPath);
   final String assetPath;

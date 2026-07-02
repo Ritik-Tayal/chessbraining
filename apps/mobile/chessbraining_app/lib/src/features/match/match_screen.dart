@@ -1701,6 +1701,28 @@ class _EndGameResultState extends State<_EndGameResult>
         : _GameResult.loss;
   }
 
+  List<_ConfettiParticle> _makeParticles(int seed) {
+    final random = math.Random(seed);
+    const colors = [
+      AppColors.primary,
+      AppColors.secondary,
+      AppColors.warning,
+      Color(0xfff472b6),
+      Color(0xfff8fafc),
+    ];
+    return List.generate(90, (index) {
+      return _ConfettiParticle(
+        x: random.nextDouble(),
+        y: -random.nextDouble(),
+        drift: random.nextDouble() * 0.7 - 0.35,
+        size: 5 + random.nextDouble() * 7,
+        speed: 0.55 + random.nextDouble() * 0.9,
+        rotation: random.nextDouble() * math.pi,
+        color: colors[index % colors.length],
+      );
+    });
+  }
+
   @override
   void dispose() {
     controller.dispose();
@@ -1876,9 +1898,7 @@ class _EndGameCelebration extends StatelessWidget {
     if (reason != null && reason.isNotEmpty) {
       return reason;
     }
-    return match.winnerPlayerId == playerId
-        ? 'Checkmate'
-        : 'Game over';
+    return match.winnerPlayerId == playerId ? 'Checkmate' : 'Game over';
   }
 }
 
@@ -2008,9 +2028,7 @@ class _EndGameDefeat extends StatelessWidget {
     if (reason != null && reason.isNotEmpty) {
       return reason;
     }
-    return match.winnerPlayerId == playerId
-        ? 'Checkmate'
-        : 'Game over';
+    return match.winnerPlayerId == playerId ? 'Checkmate' : 'Game over';
   }
 }
 
@@ -2099,7 +2117,8 @@ class _EndGameDraw extends StatelessWidget {
                             onPressed: onReview,
                             style: OutlinedButton.styleFrom(
                               foregroundColor: AppColors.secondary,
-                              side: const BorderSide(color: AppColors.secondary),
+                              side:
+                                  const BorderSide(color: AppColors.secondary),
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(8),
@@ -2141,92 +2160,6 @@ class _EndGameDraw extends StatelessWidget {
       return reason;
     }
     return 'Stalemate / Insufficient material';
-  }
-}
-                          const Icon(
-                            Icons.emoji_events,
-                            color: AppColors.warning,
-                            size: 44,
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            winner,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: AppColors.text,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            widget.match.resultReason ?? 'Game completed',
-                            style: const TextStyle(
-                              color: AppColors.muted,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: widget.onReview,
-                                  icon: const Icon(Icons.visibility),
-                                  label: const Text('REVIEW'),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: widget.onCommand,
-                                  icon: const Icon(Icons.tune),
-                                  label: const Text('COMMAND'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _winnerLabel() {
-    final winnerId = widget.match.winnerPlayerId;
-    if (winnerId == null) {
-      return 'Draw';
-    }
-    return winnerId == widget.playerId ? 'You won' : 'Game over';
-  }
-
-  List<_ConfettiParticle> _makeParticles(int seed) {
-    final random = math.Random(seed);
-    const colors = [
-      AppColors.primary,
-      AppColors.secondary,
-      AppColors.warning,
-      Color(0xfff472b6),
-      Color(0xfff8fafc),
-    ];
-    return List.generate(90, (index) {
-      return _ConfettiParticle(
-        x: random.nextDouble(),
-        y: -random.nextDouble(),
-        drift: random.nextDouble() * 0.7 - 0.35,
-        size: 5 + random.nextDouble() * 7,
-        speed: 0.55 + random.nextDouble() * 0.9,
-        rotation: random.nextDouble() * math.pi,
-        color: colors[index % colors.length],
-      );
-    });
   }
 }
 
