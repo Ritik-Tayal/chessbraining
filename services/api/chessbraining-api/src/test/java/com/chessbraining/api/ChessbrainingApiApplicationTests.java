@@ -373,6 +373,13 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
 				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/latest-result", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("COMPLETED"))
+				.andExpect(jsonPath("$.whiteCorrectCount").isNumber())
+				.andExpect(jsonPath("$.blackCorrectCount").isNumber())
+				.andExpect(jsonPath("$.completedAt").isNotEmpty());
 	}
 
 	@Test

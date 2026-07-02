@@ -207,6 +207,7 @@ class BrainRoundModel {
     required this.winnerPlayerId,
     required this.startedAt,
     required this.expiresAt,
+    required this.completedAt,
   });
 
   final String roundId;
@@ -221,6 +222,9 @@ class BrainRoundModel {
   final String? winnerPlayerId;
   final DateTime startedAt;
   final DateTime expiresAt;
+  final DateTime? completedAt;
+
+  bool get isCompleted => status == 'COMPLETED';
 
   factory BrainRoundModel.fromJson(Map<String, dynamic> json) {
     return BrainRoundModel(
@@ -238,6 +242,9 @@ class BrainRoundModel {
       winnerPlayerId: json['winnerPlayerId'] as String?,
       startedAt: DateTime.parse(json['startedAt'] as String),
       expiresAt: DateTime.parse(json['expiresAt'] as String),
+      completedAt: json['completedAt'] == null
+          ? null
+          : DateTime.parse(json['completedAt'] as String),
     );
   }
 }

@@ -32,6 +32,11 @@ public class BrainRoundController {
 		return response;
 	}
 
+	@GetMapping("/latest-result")
+	public BrainRoundResponse getLatestResult(@PathVariable String matchId) {
+		return brainRoundService.getLatestResult(matchId);
+	}
+
 	@PostMapping("/current/answers")
 	public AnswerResultResponse submitAnswer(
 			@PathVariable String matchId,

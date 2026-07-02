@@ -22,6 +22,12 @@ enum PowerupTargetMode {
   revivePawn,
 }
 
+enum PowerupEffectType {
+  clockBoost,
+  extraMove,
+  revivePawn,
+}
+
 class BoardMoveAnimation {
   const BoardMoveAnimation({
     required this.id,
@@ -34,6 +40,48 @@ class BoardMoveAnimation {
   final String from;
   final String to;
   final String piece;
+}
+
+class PowerupEffect {
+  const PowerupEffect({
+    required this.id,
+    required this.type,
+    required this.playerName,
+    required this.side,
+  });
+
+  final int id;
+  final PowerupEffectType type;
+  final String playerName;
+  final String side;
+}
+
+class BrainRoundResultNotice {
+  const BrainRoundResultNotice({
+    required this.id,
+    required this.roundId,
+    required this.roundNumber,
+    required this.whiteName,
+    required this.blackName,
+    required this.whiteScore,
+    required this.blackScore,
+    required this.winnerPlayerId,
+    required this.winnerName,
+    required this.awardedPoints,
+  });
+
+  final int id;
+  final String roundId;
+  final int roundNumber;
+  final String whiteName;
+  final String blackName;
+  final int whiteScore;
+  final int blackScore;
+  final String? winnerPlayerId;
+  final String winnerName;
+  final int awardedPoints;
+
+  bool get isTie => winnerPlayerId == null;
 }
 
 class MatchController extends ChangeNotifier {
@@ -66,8 +114,12 @@ class MatchController extends ChangeNotifier {
   BoardMoveAnimation? boardMoveAnimation;
   String? reviewFen;
   MoveModel? reviewMove;
+  PowerupEffect? powerupEffect;
+  BrainRoundResultNotice? brainRoundResultNotice;
   PowerupTargetMode powerupTargetMode = PowerupTargetMode.none;
   int _boardAnimationSequence = 0;
+  int _powerupEffectSequence = 0;
+  int _brainRoundResultSequence = 0;
 
   PlayerModel? get me => match?.playerById(playerId);
   bool get isMyTurn => me != null && match?.sideToMove == me!.side;
@@ -151,6 +203,22 @@ class MatchController extends ChangeNotifier {
   void updatePlayerName(String value) {
     playerName = value.trim().isEmpty ? 'Player' : value.trim();
     unawaited(GuestSession.saveName(playerName));
+    notifyListeners();
+  }
+
+  void dismissPowerupEffect(int id) {
+    if (powerupEffect?.id != id) {
+      return;
+    }
+    powerupEffect = null;
+    notifyListeners();
+  }
+
+  void dismissBrainRoundResult(int id) {
+    if (brainRoundResultNotice?.id != id) {
+      return;
+    }
+    brainRoundResultNotice = null;
     notifyListeners();
   }
 
@@ -331,7 +399,8 @@ class MatchController extends ChangeNotifier {
     try {
       final round = await _api.getCurrentBrainRound(current.matchId);
       brainRound = round;
-      if (round.status != 'ACTIVE') {
+      if (round.isCompleted) {
+        _showBrainRoundResult(round, current);
         _setMatch(await _api.getMatch(current.matchId));
       }
     } on ApiException catch (exception) {
@@ -398,6 +467,7 @@ class MatchController extends ChangeNotifier {
           winnerPlayerId: currentRound.winnerPlayerId,
           startedAt: currentRound.startedAt,
           expiresAt: currentRound.expiresAt,
+          completedAt: currentRound.completedAt,
         );
       }
       notifyListeners();
@@ -450,9 +520,11 @@ class MatchController extends ChangeNotifier {
           winnerPlayerId: currentRound.winnerPlayerId,
           startedAt: currentRound.startedAt,
           expiresAt: currentRound.expiresAt,
+          completedAt: currentRound.completedAt,
         );
       }
       if (result.roundCompleted) {
+        await _loadLatestBrainRoundResult(current.matchId, current);
         _setMatch(await _api.getMatch(current.matchId));
       } else {
         notifyListeners();
@@ -484,7 +556,9 @@ class MatchController extends ChangeNotifier {
       return Future.value();
     }
     return _run(() async {
-      _setMatch(await _api.completeBrainRound(matchId: current.matchId));
+      final result = await _api.completeBrainRound(matchId: current.matchId);
+      _showBrainRoundResult(result, current);
+      _setMatch(await _api.getMatch(current.matchId));
     });
   }
 
@@ -512,7 +586,6 @@ class MatchController extends ChangeNotifier {
         playerId: playerId,
         type: 'CLOCK_BOOST_30',
       ));
-      SoundService.instance.playPowerup();
     });
   }
 
@@ -527,7 +600,6 @@ class MatchController extends ChangeNotifier {
         playerId: playerId,
         type: 'EXTRA_MOVE',
       ));
-      SoundService.instance.playPowerup();
     });
   }
 
@@ -564,7 +636,6 @@ class MatchController extends ChangeNotifier {
         type: 'REVIVE_PAWN',
         targetSquare: targetSquare,
       ));
-      SoundService.instance.playPowerup();
       powerupTargetMode = PowerupTargetMode.none;
     });
   }
@@ -646,6 +717,13 @@ class MatchController extends ChangeNotifier {
     if (moveForAnimation != null) {
       boardMoveAnimation = moveForAnimation;
     }
+    final powerupForAnimation = _powerupEffectForMatchChange(
+      previousMatch,
+      value,
+    );
+    if (powerupForAnimation != null) {
+      _showPowerupEffect(powerupForAnimation);
+    }
     final matchJustStarted = previousMatch == null && value.isChessPhase;
     final matchJustCompleted = !previousIsCompleted && value.isCompleted;
     final brainRoundJustStarted = !previousIsBrainRound && value.isBrainRound;
@@ -668,6 +746,7 @@ class MatchController extends ChangeNotifier {
       SoundService.instance.playBrainRoundStart();
     } else if (brainRoundJustEnded) {
       SoundService.instance.playBrainRoundEnd();
+      unawaited(_loadLatestBrainRoundResult(value.matchId, value));
     } else if (plyIncreased && value.isChessPhase) {
       SoundService.instance.playMove();
     }
@@ -724,6 +803,120 @@ class MatchController extends ChangeNotifier {
       from: move.from,
       to: move.to,
       piece: piece,
+    );
+  }
+
+  PowerupEffect? _powerupEffectForMatchChange(
+    MatchModel? previous,
+    MatchModel next,
+  ) {
+    if (previous == null || previous.matchId != next.matchId) {
+      return null;
+    }
+    return _powerupEffectForPlayerChange(
+          previousPlayer: previous.white,
+          nextPlayer: next.white,
+          previousMatch: previous,
+          nextMatch: next,
+        ) ??
+        (previous.black == null || next.black == null
+            ? null
+            : _powerupEffectForPlayerChange(
+                previousPlayer: previous.black!,
+                nextPlayer: next.black!,
+                previousMatch: previous,
+                nextMatch: next,
+              ));
+  }
+
+  PowerupEffect? _powerupEffectForPlayerChange({
+    required PlayerModel previousPlayer,
+    required PlayerModel nextPlayer,
+    required MatchModel previousMatch,
+    required MatchModel nextMatch,
+  }) {
+    final brainPointSpend = previousPlayer.brainPoints - nextPlayer.brainPoints;
+    if (brainPointSpend <= 0) {
+      return null;
+    }
+
+    final type = switch (brainPointSpend) {
+      1 when nextPlayer.clockMs > previousPlayer.clockMs =>
+        PowerupEffectType.clockBoost,
+      4 when !previousPlayer.extraMoveArmed && nextPlayer.extraMoveArmed =>
+        PowerupEffectType.extraMove,
+      3
+          when nextMatch.fen != previousMatch.fen &&
+              nextMatch.moves.length == previousMatch.moves.length =>
+        PowerupEffectType.revivePawn,
+      _ => null,
+    };
+    if (type == null) {
+      return null;
+    }
+
+    return PowerupEffect(
+      id: _powerupEffectSequence + 1,
+      type: type,
+      playerName: nextPlayer.playerName,
+      side: nextPlayer.side,
+    );
+  }
+
+  void _showPowerupEffect(PowerupEffect effect) {
+    powerupEffect = PowerupEffect(
+      id: ++_powerupEffectSequence,
+      type: effect.type,
+      playerName: effect.playerName,
+      side: effect.side,
+    );
+    SoundService.instance.playPowerup();
+  }
+
+  Future<void> _loadLatestBrainRoundResult(
+    String matchId,
+    MatchModel fallbackMatch,
+  ) async {
+    try {
+      final result = await _api.getLatestBrainRoundResult(matchId);
+      _showBrainRoundResult(result, match ?? fallbackMatch);
+      notifyListeners();
+    } on ApiException catch (exception) {
+      if (exception.code != 'BRAIN_ROUND_RESULT_NOT_FOUND') {
+        error = _friendlyError(exception);
+        SoundService.instance.playError();
+        notifyListeners();
+      }
+    } catch (exception) {
+      error = _friendlyError(exception);
+      SoundService.instance.playError();
+      notifyListeners();
+    }
+  }
+
+  void _showBrainRoundResult(BrainRoundModel round, MatchModel currentMatch) {
+    if (!round.isCompleted) {
+      return;
+    }
+    if (brainRoundResultNotice?.roundId == round.roundId) {
+      return;
+    }
+
+    final winner = round.winnerPlayerId == null
+        ? null
+        : currentMatch.playerById(round.winnerPlayerId!);
+    final isTie = round.winnerPlayerId == null;
+    brainRoundResultNotice = BrainRoundResultNotice(
+      id: ++_brainRoundResultSequence,
+      roundId: round.roundId,
+      roundNumber: round.roundNumber,
+      whiteName: currentMatch.white.playerName,
+      blackName: currentMatch.black?.playerName ?? 'Black',
+      whiteScore: round.whiteCorrectCount,
+      blackScore: round.blackCorrectCount,
+      winnerPlayerId: round.winnerPlayerId,
+      winnerName: isTie ? 'Draw' : winner?.playerName ?? 'Winner',
+      awardedPoints: isTie ? 1 : 2,
     );
   }
 

@@ -109,6 +109,14 @@ class ChessbrainingApi {
     return BrainRoundModel.fromJson(body as Map<String, dynamic>);
   }
 
+  Future<BrainRoundModel> getLatestBrainRoundResult(String matchId) async {
+    final response = await _withTimeout(
+      _client.get(_uri('/matches/$matchId/brain-rounds/latest-result')),
+    );
+    final body = _decodeResponse(response);
+    return BrainRoundModel.fromJson(body as Map<String, dynamic>);
+  }
+
   Future<AnswerResultModel> submitBrainRoundAnswer({
     required String matchId,
     required String playerId,
@@ -157,14 +165,14 @@ class ChessbrainingApi {
     return BrainRoundSubmissionModel.fromJson(body as Map<String, dynamic>);
   }
 
-  Future<MatchModel> completeBrainRound({
+  Future<BrainRoundModel> completeBrainRound({
     required String matchId,
   }) async {
     final response = await _withTimeout(
       _client.post(_uri('/matches/$matchId/brain-rounds/current/complete')),
     );
-    _decodeResponse(response);
-    return getMatch(matchId);
+    final body = _decodeResponse(response);
+    return BrainRoundModel.fromJson(body as Map<String, dynamic>);
   }
 
   Future<MatchModel> applyPowerup({

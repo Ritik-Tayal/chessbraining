@@ -120,6 +120,11 @@ class _MatchScreenState extends State<MatchScreen> {
         final showCelebration = page == _ScreenPage.play &&
             match?.isCompleted == true &&
             dismissedCelebrationMatchId != match!.matchId;
+        final showBrainRoundResult = page == _ScreenPage.play &&
+            match?.isBrainRound != true &&
+            controller.brainRoundResultNotice != null;
+        final showPowerupEffect =
+            page == _ScreenPage.play && controller.powerupEffect != null;
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -172,6 +177,19 @@ class _MatchScreenState extends State<MatchScreen> {
                 ),
               if (controller.match?.isBrainRound == true)
                 BrainRoundOverlay(controller: controller),
+              if (showBrainRoundResult)
+                _BrainRoundResultNotice(
+                  key: ValueKey(controller.brainRoundResultNotice!.id),
+                  notice: controller.brainRoundResultNotice!,
+                  playerId: controller.playerId,
+                  onDismiss: controller.dismissBrainRoundResult,
+                ),
+              if (showPowerupEffect)
+                _PowerupEffectOverlay(
+                  key: ValueKey(controller.powerupEffect!.id),
+                  effect: controller.powerupEffect!,
+                  onDismiss: controller.dismissPowerupEffect,
+                ),
               if (showCelebration)
                 _EndGameResult(
                   match: match,
@@ -2575,6 +2593,526 @@ class _PowerButton extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _BrainRoundResultNotice extends StatefulWidget {
+  const _BrainRoundResultNotice({
+    required this.notice,
+    required this.playerId,
+    required this.onDismiss,
+    super.key,
+  });
+
+  final BrainRoundResultNotice notice;
+  final String playerId;
+  final ValueChanged<int> onDismiss;
+
+  @override
+  State<_BrainRoundResultNotice> createState() =>
+      _BrainRoundResultNoticeState();
+}
+
+class _BrainRoundResultNoticeState extends State<_BrainRoundResultNotice>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+  Timer? timer;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    )..forward();
+    timer = Timer(const Duration(seconds: 7), () {
+      widget.onDismiss(widget.notice.id);
+    });
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final notice = widget.notice;
+    final wonByMe = notice.winnerPlayerId == widget.playerId;
+    final title = notice.isTie
+        ? 'Brain Round Draw'
+        : wonByMe
+            ? 'You Won The Brain Round'
+            : '${notice.winnerName} Won The Brain Round';
+    final award = notice.isTie
+        ? 'Both players earned +${notice.awardedPoints} BP'
+        : '${notice.winnerName} earned +${notice.awardedPoints} BP';
+
+    return Positioned(
+      left: 12,
+      right: 12,
+      top: 0,
+      child: SafeArea(
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, child) {
+            final curved = Curves.easeOutBack.transform(controller.value);
+            return Opacity(
+              opacity: Curves.easeOut.transform(controller.value),
+              child: Transform.translate(
+                offset: Offset(0, -18 + 18 * controller.value),
+                child: Transform.scale(
+                  scale: 0.96 + 0.04 * curved,
+                  child: child,
+                ),
+              ),
+            );
+          },
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceBright,
+                  border: Border.all(
+                    color: AppColors.secondary.withValues(alpha: 0.62),
+                    width: 1.4,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: AppColors.secondaryContainer
+                                .withValues(alpha: 0.52),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.psychology_alt,
+                            color: AppColors.secondary,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'ROUND ${notice.roundNumber} COMPLETE',
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              Text(
+                                title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.text,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  fontFamily: 'Playfair Display',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => widget.onDismiss(notice.id),
+                          icon: const Icon(Icons.close),
+                          color: AppColors.muted,
+                          tooltip: 'Dismiss',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _BrainScoreTile(
+                            name: notice.whiteName,
+                            label: 'WHITE',
+                            score: notice.whiteScore,
+                            highlighted: notice.winnerPlayerId != null &&
+                                notice.whiteScore > notice.blackScore,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _BrainScoreTile(
+                            name: notice.blackName,
+                            label: 'BLACK',
+                            score: notice.blackScore,
+                            highlighted: notice.winnerPlayerId != null &&
+                                notice.blackScore > notice.whiteScore,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            AppColors.primaryContainer.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.32),
+                        ),
+                      ),
+                      child: Text(
+                        award,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BrainScoreTile extends StatelessWidget {
+  const _BrainScoreTile({
+    required this.name,
+    required this.label,
+    required this.score,
+    required this.highlighted,
+  });
+
+  final String name;
+  final String label;
+  final int score;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlighted ? AppColors.secondary : AppColors.primary;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? AppColors.secondaryContainer.withValues(alpha: 0.34)
+            : AppColors.surfaceLow,
+        border: Border.all(
+          color: highlighted ? color : AppColors.border,
+        ),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                Text(
+                  name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '$score',
+            style: TextStyle(
+              color: color,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Playfair Display',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PowerupEffectOverlay extends StatefulWidget {
+  const _PowerupEffectOverlay({
+    required this.effect,
+    required this.onDismiss,
+    super.key,
+  });
+
+  final PowerupEffect effect;
+  final ValueChanged<int> onDismiss;
+
+  @override
+  State<_PowerupEffectOverlay> createState() => _PowerupEffectOverlayState();
+}
+
+class _PowerupEffectOverlayState extends State<_PowerupEffectOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          widget.onDismiss(widget.effect.id);
+        }
+      })
+      ..forward();
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _PowerupEffectStyle.from(widget.effect.type);
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            final value = controller.value;
+            final opacity = value < 0.18
+                ? value / 0.18
+                : value > 0.78
+                    ? (1 - value) / 0.22
+                    : 1.0;
+            final visibleOpacity = opacity.clamp(0.0, 1.0).toDouble();
+            final entranceProgress = (value.clamp(0.0, 0.55).toDouble()) / 0.55;
+            final pulse = math.sin(value * math.pi * 3).abs();
+            return Opacity(
+              opacity: visibleOpacity,
+              child: Stack(
+                children: [
+                  CustomPaint(
+                    painter: _PowerupBurstPainter(
+                      color: style.color,
+                      progress: value,
+                      type: widget.effect.type,
+                    ),
+                    size: Size.infinite,
+                  ),
+                  Center(
+                    child: Transform.scale(
+                      scale: 0.86 +
+                          0.18 * Curves.easeOutBack.transform(entranceProgress),
+                      child: Container(
+                        width: 246,
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceBright,
+                          border: Border.all(color: style.color, width: 2),
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: style.color.withValues(alpha: 0.28),
+                              blurRadius: 32 + 14 * pulse,
+                              spreadRadius: 2 + 2 * pulse,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 74,
+                              height: 74,
+                              decoration: BoxDecoration(
+                                color: style.color.withValues(alpha: 0.16),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: style.color.withValues(alpha: 0.5),
+                                ),
+                              ),
+                              child: Icon(
+                                style.icon,
+                                color: style.color,
+                                size: 40,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              style.title,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: style.color,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                fontFamily: 'Playfair Display',
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${widget.effect.playerName} used ${style.name}',
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.text,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              style.caption,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _PowerupEffectStyle {
+  const _PowerupEffectStyle({
+    required this.icon,
+    required this.color,
+    required this.name,
+    required this.title,
+    required this.caption,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String name;
+  final String title;
+  final String caption;
+
+  factory _PowerupEffectStyle.from(PowerupEffectType type) {
+    return switch (type) {
+      PowerupEffectType.clockBoost => const _PowerupEffectStyle(
+          icon: Icons.more_time,
+          color: AppColors.primary,
+          name: 'Clock Boost',
+          title: '+30 Seconds',
+          caption: 'Clock pressure reset',
+        ),
+      PowerupEffectType.extraMove => const _PowerupEffectStyle(
+          icon: Icons.double_arrow,
+          color: AppColors.secondary,
+          name: 'Extra Move',
+          title: 'Extra Move Armed',
+          caption: 'One more turn is loaded',
+        ),
+      PowerupEffectType.revivePawn => const _PowerupEffectStyle(
+          icon: Icons.replay,
+          color: AppColors.warning,
+          name: 'Revive Pawn',
+          title: 'Pawn Revived',
+          caption: 'A captured pawn returns',
+        ),
+    };
+  }
+}
+
+class _PowerupBurstPainter extends CustomPainter {
+  const _PowerupBurstPainter({
+    required this.color,
+    required this.progress,
+    required this.type,
+  });
+
+  final Color color;
+  final double progress;
+  final PowerupEffectType type;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final maxRadius = size.shortestSide * 0.42;
+    final ringPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..color = color.withValues(alpha: (1 - progress).clamp(0.0, 1.0) * 0.38);
+    canvas.drawCircle(center, maxRadius * progress, ringPaint);
+    canvas.drawCircle(center, maxRadius * (progress * 0.72 + 0.18), ringPaint);
+
+    final streakPaint = Paint()
+      ..strokeWidth = type == PowerupEffectType.extraMove ? 4 : 3
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: 0.38 * (1 - progress));
+    final count = type == PowerupEffectType.revivePawn ? 12 : 16;
+    for (var index = 0; index < count; index++) {
+      final angle = (math.pi * 2 / count) * index + progress * math.pi;
+      final start = maxRadius * (0.16 + progress * 0.34);
+      final end = start + 22 + 34 * progress;
+      final from = Offset(
+        center.dx + math.cos(angle) * start,
+        center.dy + math.sin(angle) * start,
+      );
+      final to = Offset(
+        center.dx + math.cos(angle) * end,
+        center.dy + math.sin(angle) * end,
+      );
+      canvas.drawLine(from, to, streakPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PowerupBurstPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.color != color ||
+        oldDelegate.type != type;
   }
 }
 
