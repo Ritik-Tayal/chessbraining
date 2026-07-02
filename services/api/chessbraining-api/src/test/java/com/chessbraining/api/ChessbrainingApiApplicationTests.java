@@ -372,7 +372,12 @@ class ChessbrainingApiApplicationTests {
 		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
-				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
+				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty())
+				.andExpect(jsonPath("$.latestBrainRoundResult.roundNumber").value(1))
+				.andExpect(jsonPath("$.latestBrainRoundResult.whiteCorrectCount").isNumber())
+				.andExpect(jsonPath("$.latestBrainRoundResult.blackCorrectCount").isNumber())
+				.andExpect(jsonPath("$.latestBrainRoundResult.awardedBrainPoints").isNumber())
+				.andExpect(jsonPath("$.latestBrainRoundResult.completedAt").isNotEmpty());
 
 		mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/latest-result", matchId))
 				.andExpect(status().isOk())

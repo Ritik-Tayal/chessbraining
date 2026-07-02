@@ -120,6 +120,7 @@ class MatchController extends ChangeNotifier {
   int _boardAnimationSequence = 0;
   int _powerupEffectSequence = 0;
   int _brainRoundResultSequence = 0;
+  String? _lastBrainRoundResultRoundId;
 
   PlayerModel? get me => match?.playerById(playerId);
   bool get isMyTurn => me != null && match?.sideToMove == me!.side;
@@ -524,7 +525,10 @@ class MatchController extends ChangeNotifier {
         );
       }
       if (result.roundCompleted) {
-        await _loadLatestBrainRoundResult(current.matchId, current);
+        final completedRound = brainRound;
+        if (completedRound != null) {
+          _showBrainRoundResult(completedRound, current);
+        }
         _setMatch(await _api.getMatch(current.matchId));
       } else {
         notifyListeners();
@@ -746,9 +750,12 @@ class MatchController extends ChangeNotifier {
       SoundService.instance.playBrainRoundStart();
     } else if (brainRoundJustEnded) {
       SoundService.instance.playBrainRoundEnd();
-      unawaited(_loadLatestBrainRoundResult(value.matchId, value));
     } else if (plyIncreased && value.isChessPhase) {
       SoundService.instance.playMove();
+    }
+
+    if (brainRoundJustEnded && value.latestBrainRoundResult != null) {
+      _showBrainRoundResultFromMatch(value.latestBrainRoundResult!, value);
     }
 
     if (value.isBrainRound) {
@@ -873,32 +880,11 @@ class MatchController extends ChangeNotifier {
     SoundService.instance.playPowerup();
   }
 
-  Future<void> _loadLatestBrainRoundResult(
-    String matchId,
-    MatchModel fallbackMatch,
-  ) async {
-    try {
-      final result = await _api.getLatestBrainRoundResult(matchId);
-      _showBrainRoundResult(result, match ?? fallbackMatch);
-      notifyListeners();
-    } on ApiException catch (exception) {
-      if (exception.code != 'BRAIN_ROUND_RESULT_NOT_FOUND') {
-        error = _friendlyError(exception);
-        SoundService.instance.playError();
-        notifyListeners();
-      }
-    } catch (exception) {
-      error = _friendlyError(exception);
-      SoundService.instance.playError();
-      notifyListeners();
-    }
-  }
-
   void _showBrainRoundResult(BrainRoundModel round, MatchModel currentMatch) {
     if (!round.isCompleted) {
       return;
     }
-    if (brainRoundResultNotice?.roundId == round.roundId) {
+    if (_lastBrainRoundResultRoundId == round.roundId) {
       return;
     }
 
@@ -918,6 +904,33 @@ class MatchController extends ChangeNotifier {
       winnerName: isTie ? 'Draw' : winner?.playerName ?? 'Winner',
       awardedPoints: isTie ? 1 : 2,
     );
+    _lastBrainRoundResultRoundId = round.roundId;
+  }
+
+  void _showBrainRoundResultFromMatch(
+    BrainRoundResultModel result,
+    MatchModel currentMatch,
+  ) {
+    if (_lastBrainRoundResultRoundId == result.roundId) {
+      return;
+    }
+
+    final winner = result.winnerPlayerId == null
+        ? null
+        : currentMatch.playerById(result.winnerPlayerId!);
+    brainRoundResultNotice = BrainRoundResultNotice(
+      id: ++_brainRoundResultSequence,
+      roundId: result.roundId,
+      roundNumber: result.roundNumber,
+      whiteName: currentMatch.white.playerName,
+      blackName: currentMatch.black?.playerName ?? 'Black',
+      whiteScore: result.whiteCorrectCount,
+      blackScore: result.blackCorrectCount,
+      winnerPlayerId: result.winnerPlayerId,
+      winnerName: result.isTie ? 'Draw' : winner?.playerName ?? 'Winner',
+      awardedPoints: result.awardedBrainPoints,
+    );
+    _lastBrainRoundResultRoundId = result.roundId;
   }
 
   String _oppositeSide(String side) => side == 'WHITE' ? 'BLACK' : 'WHITE';

@@ -9,6 +9,7 @@ class MatchModel {
     required this.plyCount,
     required this.brainRoundIntervalMoves,
     required this.brainRoundCount,
+    required this.latestBrainRoundResult,
     required this.white,
     required this.black,
     required this.winnerPlayerId,
@@ -26,6 +27,7 @@ class MatchModel {
   final int plyCount;
   final int brainRoundIntervalMoves;
   final int brainRoundCount;
+  final BrainRoundResultModel? latestBrainRoundResult;
   final PlayerModel white;
   final PlayerModel? black;
   final String? winnerPlayerId;
@@ -66,6 +68,7 @@ class MatchModel {
       plyCount: plyCount ?? this.plyCount,
       brainRoundIntervalMoves: brainRoundIntervalMoves,
       brainRoundCount: brainRoundCount,
+      latestBrainRoundResult: latestBrainRoundResult,
       white: white,
       black: black,
       winnerPlayerId: winnerPlayerId,
@@ -86,6 +89,11 @@ class MatchModel {
       plyCount: json['plyCount'] as int,
       brainRoundIntervalMoves: json['brainRoundIntervalMoves'] as int,
       brainRoundCount: json['brainRoundCount'] as int,
+      latestBrainRoundResult: json['latestBrainRoundResult'] == null
+          ? null
+          : BrainRoundResultModel.fromJson(
+              json['latestBrainRoundResult'] as Map<String, dynamic>,
+            ),
       white: PlayerModel.fromJson(json['white'] as Map<String, dynamic>),
       black: json['black'] == null
           ? null
@@ -189,6 +197,40 @@ class LegalMoveModel {
       from: json['from'] as String,
       to: json['to'] as String,
       promotion: json['promotion'] as String?,
+    );
+  }
+}
+
+class BrainRoundResultModel {
+  const BrainRoundResultModel({
+    required this.roundId,
+    required this.roundNumber,
+    required this.whiteCorrectCount,
+    required this.blackCorrectCount,
+    required this.winnerPlayerId,
+    required this.awardedBrainPoints,
+    required this.completedAt,
+  });
+
+  final String roundId;
+  final int roundNumber;
+  final int whiteCorrectCount;
+  final int blackCorrectCount;
+  final String? winnerPlayerId;
+  final int awardedBrainPoints;
+  final DateTime completedAt;
+
+  bool get isTie => winnerPlayerId == null;
+
+  factory BrainRoundResultModel.fromJson(Map<String, dynamic> json) {
+    return BrainRoundResultModel(
+      roundId: json['roundId'] as String,
+      roundNumber: json['roundNumber'] as int,
+      whiteCorrectCount: json['whiteCorrectCount'] as int,
+      blackCorrectCount: json['blackCorrectCount'] as int,
+      winnerPlayerId: json['winnerPlayerId'] as String?,
+      awardedBrainPoints: json['awardedBrainPoints'] as int,
+      completedAt: DateTime.parse(json['completedAt'] as String),
     );
   }
 }
