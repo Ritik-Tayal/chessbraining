@@ -7,7 +7,7 @@ import '../../api/chessbraining_api.dart';
 import '../../api/match_socket_client.dart';
 import '../../models/match_models.dart';
 import '../../session/guest_session.dart';
-import '../services/sound_service.dart';
+import '../../services/sound_service.dart';
 
 typedef MatchSocketFactory = MatchSocketClient Function({
   required String apiBaseUrl,

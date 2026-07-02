@@ -37,6 +37,7 @@ class MatchModel {
   bool get isChessPhase => phase == 'CHESS_PHASE';
   bool get isBrainRound => phase == 'BRAIN_ROUND';
   bool get isCompleted => phase == 'COMPLETED';
+  bool get isDraw => isCompleted && winnerPlayerId == null;
 
   PlayerModel? playerById(String playerId) {
     if (white.playerId == playerId) {
