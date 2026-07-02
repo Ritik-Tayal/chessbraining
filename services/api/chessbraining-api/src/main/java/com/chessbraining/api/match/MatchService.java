@@ -23,7 +23,10 @@ public class MatchService {
 	private static final int DEFAULT_BRAIN_ROUND_INTERVAL_MOVES = 5;
 	private static final int DEFAULT_BRAIN_ROUND_SECONDS = 30;
 	private static final int QUICKPLAY_WAITING_TTL_SECONDS = 600;
+	private static final int WINNER_BRAIN_POINTS = 2;
+	private static final int TIE_BRAIN_POINTS = 1;
 	private static final String BRAIN_ROUND_ACTIVE = "ACTIVE";
+	private static final String BRAIN_ROUND_COMPLETED = "COMPLETED";
 	private static final String INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 	private static final SecureRandom RANDOM = new SecureRandom();
 	private final Object quickplayLock = new Object();
@@ -426,6 +429,7 @@ public class MatchService {
 				match.getPlyCount(),
 				match.getBrainRoundIntervalMoves(),
 				match.getBrainRoundCount(),
+				latestBrainRoundResult(match),
 				new PlayerResponse(match.getWhitePlayerId(), match.getWhitePlayerName(), "WHITE",
 						match.getWhiteBrainPoints(), match.getWhiteClockMs(),
 						match.isWhiteExtraMoveArmed(), match.isWhiteExtraMoveActive(),
@@ -441,6 +445,23 @@ public class MatchService {
 				match.getClockDeadlineAt(),
 				match.getCreatedAt(),
 				match.getUpdatedAt());
+	}
+
+	private BrainRoundResultResponse latestBrainRoundResult(MatchEntity match) {
+		if (match.getPhase() == MatchPhase.BRAIN_ROUND || match.getBrainRoundCount() == 0) {
+			return null;
+		}
+		return brainRoundRepository
+				.findFirstByMatchIdAndStatusOrderByRoundNumberDesc(match.getId(), BRAIN_ROUND_COMPLETED)
+				.map(round -> new BrainRoundResultResponse(
+						round.getId(),
+						round.getRoundNumber(),
+						round.getWhiteCorrectCount(),
+						round.getBlackCorrectCount(),
+						round.getWinnerPlayerId(),
+						round.getWinnerPlayerId() == null ? TIE_BRAIN_POINTS : WINNER_BRAIN_POINTS,
+						round.getCompletedAt()))
+				.orElse(null);
 	}
 
 	private MoveResponse toMoveResponse(MatchMoveEntity move) {

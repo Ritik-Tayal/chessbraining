@@ -13,6 +13,7 @@ public record MatchResponse(
 		int plyCount,
 		int brainRoundIntervalMoves,
 		int brainRoundCount,
+		BrainRoundResultResponse latestBrainRoundResult,
 		PlayerResponse white,
 		PlayerResponse black,
 		String winnerPlayerId,
