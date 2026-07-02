@@ -7,6 +7,7 @@ import '../../api/chessbraining_api.dart';
 import '../../api/match_socket_client.dart';
 import '../../models/match_models.dart';
 import '../../session/guest_session.dart';
+import '../services/sound_service.dart';
 
 typedef MatchSocketFactory = MatchSocketClient Function({
   required String apiBaseUrl,
@@ -119,6 +120,7 @@ class MatchController extends ChangeNotifier {
         playerId: playerId,
         playerName: playerName,
       ));
+      SoundService.instance.playNotify();
     });
   }
 
@@ -128,6 +130,7 @@ class MatchController extends ChangeNotifier {
         playerId: playerId,
         playerName: playerName,
       ));
+      SoundService.instance.playNotify();
     });
   }
 
@@ -138,6 +141,7 @@ class MatchController extends ChangeNotifier {
         playerId: playerId,
         playerName: playerName,
       ));
+      SoundService.instance.playNotify();
     });
   }
 
@@ -184,6 +188,7 @@ class MatchController extends ChangeNotifier {
         to: move.to,
         promotion: move.promotion,
       ));
+      SoundService.instance.playMove();
     });
   }
 
@@ -212,8 +217,10 @@ class MatchController extends ChangeNotifier {
         }
       }
       error = exception.message;
+      SoundService.instance.playError();
     } catch (exception) {
       error = exception.toString();
+      SoundService.instance.playError();
     } finally {
       brainRoundLoading = false;
       notifyListeners();
@@ -269,8 +276,10 @@ class MatchController extends ChangeNotifier {
       return result;
     } on ApiException catch (exception) {
       error = exception.message;
+      SoundService.instance.playError();
     } catch (exception) {
       error = exception.toString();
+      SoundService.instance.playError();
     }
     notifyListeners();
     return null;
@@ -332,8 +341,10 @@ class MatchController extends ChangeNotifier {
         }
       }
       error = exception.message;
+      SoundService.instance.playError();
     } catch (exception) {
       error = exception.toString();
+      SoundService.instance.playError();
     }
     notifyListeners();
     return null;
@@ -373,6 +384,7 @@ class MatchController extends ChangeNotifier {
         playerId: playerId,
         type: 'CLOCK_BOOST_30',
       ));
+      SoundService.instance.playPowerup();
     });
   }
 
@@ -387,6 +399,7 @@ class MatchController extends ChangeNotifier {
         playerId: playerId,
         type: 'EXTRA_MOVE',
       ));
+      SoundService.instance.playPowerup();
     });
   }
 
@@ -412,6 +425,7 @@ class MatchController extends ChangeNotifier {
     }
     if (!isPowerupTarget(targetSquare)) {
       error = 'Choose an empty square between ranks 2 and 7.';
+      SoundService.instance.playError();
       notifyListeners();
       return Future.value();
     }
@@ -422,6 +436,7 @@ class MatchController extends ChangeNotifier {
         type: 'REVIVE_PAWN',
         targetSquare: targetSquare,
       ));
+      SoundService.instance.playPowerup();
       powerupTargetMode = PowerupTargetMode.none;
     });
   }
@@ -456,14 +471,21 @@ class MatchController extends ChangeNotifier {
     } on ApiException catch (exception) {
       legalMoves = const [];
       error = exception.message;
+      SoundService.instance.playError();
     } catch (exception) {
       legalMoves = const [];
       error = exception.toString();
+      SoundService.instance.playError();
     }
   }
 
   void _setMatch(MatchModel value) {
-    final previousMatchId = match?.matchId;
+    final previousMatch = match;
+    final previousMatchId = previousMatch?.matchId;
+    final previousPlyCount = previousMatch?.plyCount ?? 0;
+    final previousIsBrainRound = previousMatch?.isBrainRound ?? false;
+    final previousIsCompleted = previousMatch?.isCompleted ?? false;
+
     match = value;
     selectedSquare = null;
     powerupTargetMode = PowerupTargetMode.none;
@@ -471,6 +493,34 @@ class MatchController extends ChangeNotifier {
       brainRound = null;
     }
     _connectRealtimeIfNeeded(previousMatchId);
+
+    final plyIncreased = value.plyCount > previousPlyCount;
+    final matchJustStarted = previousMatch == null && value.isChessPhase;
+    final matchJustCompleted = !previousIsCompleted && value.isCompleted;
+    final brainRoundJustStarted = !previousIsBrainRound && value.isBrainRound;
+    final brainRoundJustEnded = previousIsBrainRound && !value.isBrainRound;
+
+    if (matchJustStarted) {
+      SoundService.instance.playMatchStart();
+    } else if (matchJustCompleted) {
+      final me = value.playerById(playerId);
+      if (me != null) {
+        if (value.winnerPlayerId == playerId) {
+          SoundService.instance.playMatchEndWin();
+        } else if (value.isDraw) {
+          SoundService.instance.playMatchEndDraw();
+        } else {
+          SoundService.instance.playMatchEndLoss();
+        }
+      }
+    } else if (brainRoundJustStarted) {
+      SoundService.instance.playBrainRoundStart();
+    } else if (brainRoundJustEnded) {
+      SoundService.instance.playBrainRoundEnd();
+    } else if (plyIncreased && value.isChessPhase) {
+      SoundService.instance.playMove();
+    }
+
     if (value.isBrainRound) {
       loadCurrentBrainRound();
       notifyListeners();
@@ -520,8 +570,10 @@ class MatchController extends ChangeNotifier {
       await action();
     } on ApiException catch (exception) {
       error = exception.message;
+      SoundService.instance.playError();
     } catch (exception) {
       error = exception.toString();
+      SoundService.instance.playError();
     } finally {
       loading = false;
       notifyListeners();

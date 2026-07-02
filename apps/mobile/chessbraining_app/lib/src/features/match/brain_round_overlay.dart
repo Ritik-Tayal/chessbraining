@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 
 import '../../models/match_models.dart';
+import '../../services/sound_service.dart';
 import 'match_controller.dart';
 
 class BrainRoundOverlay extends StatefulWidget {
@@ -237,6 +238,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       finished = nextIndex >= round.totalQuestions;
     });
 
+    SoundService.instance.playNotify();
+
     if (nextIndex >= round.totalQuestions) {
       unawaited(_submitAnswers());
     }
@@ -267,6 +270,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       scoreSubmitted = true;
       submitting = false;
     });
+    SoundService.instance.playBrainRoundEnd();
     if (result.roundCompleted) {
       timer?.cancel();
     }
