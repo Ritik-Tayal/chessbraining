@@ -19,10 +19,12 @@ public class MatchController {
 
 	private final MatchService matchService;
 	private final MatchRealtimeService realtimeService;
+	private final BotService botService;
 
-	public MatchController(MatchService matchService, MatchRealtimeService realtimeService) {
+	public MatchController(MatchService matchService, MatchRealtimeService realtimeService, BotService botService) {
 		this.matchService = matchService;
 		this.realtimeService = realtimeService;
+		this.botService = botService;
 	}
 
 	@PostMapping
@@ -35,6 +37,13 @@ public class MatchController {
 	@PostMapping("/quickplay")
 	public MatchResponse quickplay(@RequestBody(required = false) CreateMatchRequest request) {
 		MatchResponse response = matchService.quickplay(request);
+		realtimeService.publishMatchState(response);
+		return response;
+	}
+
+	@PostMapping("/bot")
+	public MatchResponse createBotMatch(@RequestBody(required = false) CreateBotMatchRequest request) {
+		MatchResponse response = botService.createBotMatch(request);
 		realtimeService.publishMatchState(response);
 		return response;
 	}
@@ -68,6 +77,7 @@ public class MatchController {
 			@RequestBody SubmitMoveRequest request) {
 		MatchResponse response = matchService.submitMove(matchId, request);
 		realtimeService.publishMatchState(response);
+		botService.scheduleContinuation(response);
 		return response;
 	}
 

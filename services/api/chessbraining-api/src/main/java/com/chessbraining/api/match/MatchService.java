@@ -64,6 +64,50 @@ public class MatchService {
 		return createWaitingMatch(request, MatchmakingMode.PRIVATE);
 	}
 
+	@Transactional
+	public MatchResponse createBotMatch(CreateBotMatchRequest request) {
+		String humanPlayerId = playerIdOrNew(request == null ? null : request.playerId());
+		String humanPlayerName = playerNameOrDefault(request == null ? null : request.playerName(), "Player");
+		BotDifficulty difficulty = request == null || request.difficulty() == null
+				? BotDifficulty.NORMAL
+				: request.difficulty();
+		String humanSide = normalizePreferredSide(request == null ? null : request.preferredSide());
+		boolean humanPlaysWhite = !"BLACK".equals(humanSide);
+		String botPlayerId = "bot-" + difficulty.name().toLowerCase(Locale.ROOT) + "-" + UUID.randomUUID();
+
+		MatchEntity match = new MatchEntity();
+		match.setInviteCode(generateInviteCode());
+		match.setStatus(MatchStatus.ACTIVE);
+		match.setPhase(MatchPhase.CHESS_PHASE);
+		match.setMatchmakingMode(MatchmakingMode.PRIVATE);
+		match.setFen(ChessService.STARTING_FEN);
+		match.setSideToMove("WHITE");
+		match.setTimeControlSeconds(resolveTimeControlSeconds(request == null ? null : request.timeControlSeconds()));
+		match.setWhiteClockMs(match.getTimeControlSeconds() * 1000);
+		match.setBlackClockMs(match.getTimeControlSeconds() * 1000);
+		match.setBrainRoundIntervalMoves(resolveBrainRoundInterval(request == null ? null : request.brainRoundIntervalMoves()));
+		match.setStartedAt(Instant.now());
+
+		if (humanPlaysWhite) {
+			match.setWhitePlayerId(humanPlayerId);
+			match.setWhitePlayerName(humanPlayerName);
+			match.setBlackPlayerId(botPlayerId);
+			match.setBlackPlayerName(botName(difficulty));
+			match.setBlackBot(true);
+			match.setBlackBotDifficulty(difficulty);
+		} else {
+			match.setWhitePlayerId(botPlayerId);
+			match.setWhitePlayerName(botName(difficulty));
+			match.setWhiteBot(true);
+			match.setWhiteBotDifficulty(difficulty);
+			match.setBlackPlayerId(humanPlayerId);
+			match.setBlackPlayerName(humanPlayerName);
+		}
+		clockService.startClocks(match);
+		MatchEntity saved = matchRepository.save(match);
+		return toResponse(saved, List.of());
+	}
+
 	public MatchResponse quickplay(CreateMatchRequest request) {
 		synchronized (quickplayLock) {
 			return transactionTemplate.execute(status -> quickplayInTransaction(request));
@@ -292,8 +336,12 @@ public class MatchService {
 		match.setSideToMove("WHITE");
 		match.setWhitePlayerId(previous.getBlackPlayerId());
 		match.setWhitePlayerName(previous.getBlackPlayerName());
+		match.setWhiteBot(previous.isBlackBot());
+		match.setWhiteBotDifficulty(previous.getBlackBotDifficulty());
 		match.setBlackPlayerId(previous.getWhitePlayerId());
 		match.setBlackPlayerName(previous.getWhitePlayerName());
+		match.setBlackBot(previous.isWhiteBot());
+		match.setBlackBotDifficulty(previous.getWhiteBotDifficulty());
 		match.setTimeControlSeconds(previous.getTimeControlSeconds());
 		match.setWhiteClockMs(match.getTimeControlSeconds() * 1000);
 		match.setBlackClockMs(match.getTimeControlSeconds() * 1000);
@@ -488,12 +536,14 @@ public class MatchService {
 				new PlayerResponse(match.getWhitePlayerId(), match.getWhitePlayerName(), "WHITE",
 						match.getWhiteBrainPoints(), match.getWhiteClockMs(),
 						match.isWhiteExtraMoveArmed(), match.isWhiteExtraMoveActive(),
-						chessService.revivablePawnCount(match.getFen(), "WHITE")),
+						chessService.revivablePawnCount(match.getFen(), "WHITE"),
+						match.isWhiteBot(), match.getWhiteBotDifficulty()),
 				match.getBlackPlayerId() == null ? null :
 						new PlayerResponse(match.getBlackPlayerId(), match.getBlackPlayerName(), "BLACK",
 								match.getBlackBrainPoints(), match.getBlackClockMs(),
 								match.isBlackExtraMoveArmed(), match.isBlackExtraMoveActive(),
-								chessService.revivablePawnCount(match.getFen(), "BLACK")),
+								chessService.revivablePawnCount(match.getFen(), "BLACK"),
+								match.isBlackBot(), match.getBlackBotDifficulty()),
 				match.getWinnerPlayerId(),
 				match.getResultReason(),
 				match.getRematchRequestedByPlayerId(),
@@ -569,6 +619,23 @@ public class MatchService {
 					"Brain round interval must be between 1 and 20 moves per player.");
 		}
 		return value;
+	}
+
+	private String normalizePreferredSide(String value) {
+		if (value == null || value.isBlank()) {
+			return "WHITE";
+		}
+		String normalized = value.trim().toUpperCase(Locale.ROOT);
+		return "BLACK".equals(normalized) ? "BLACK" : "WHITE";
+	}
+
+	private String botName(BotDifficulty difficulty) {
+		return switch (difficulty) {
+			case EASY -> "NeuroBot Easy";
+			case NORMAL -> "NeuroBot";
+			case HARD -> "NeuroBot Hard";
+			case EXPERT -> "NeuroBot Expert";
+		};
 	}
 
 	private String playerIdOrNew(String playerId) {

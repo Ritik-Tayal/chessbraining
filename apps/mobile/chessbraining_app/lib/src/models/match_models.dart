@@ -128,6 +128,8 @@ class PlayerModel {
     required this.extraMoveArmed,
     required this.extraMoveActive,
     required this.revivablePawns,
+    required this.bot,
+    required this.botDifficulty,
   });
 
   final String playerId;
@@ -138,6 +140,8 @@ class PlayerModel {
   final bool extraMoveArmed;
   final bool extraMoveActive;
   final int revivablePawns;
+  final bool bot;
+  final String? botDifficulty;
 
   factory PlayerModel.fromJson(Map<String, dynamic> json) {
     return PlayerModel(
@@ -149,6 +153,8 @@ class PlayerModel {
       extraMoveArmed: json['extraMoveArmed'] as bool? ?? false,
       extraMoveActive: json['extraMoveActive'] as bool? ?? false,
       revivablePawns: json['revivablePawns'] as int? ?? 0,
+      bot: json['bot'] as bool? ?? false,
+      botDifficulty: json['botDifficulty'] as String?,
     );
   }
 }

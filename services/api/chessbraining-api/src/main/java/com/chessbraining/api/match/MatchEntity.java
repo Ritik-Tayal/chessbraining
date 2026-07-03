@@ -53,6 +53,20 @@ public class MatchEntity {
 	@Column(length = 80)
 	private String blackPlayerName;
 
+	@Column
+	private Boolean whiteBot = false;
+
+	@Column
+	private Boolean blackBot = false;
+
+	@Enumerated(EnumType.STRING)
+	@Column(length = 16)
+	private BotDifficulty whiteBotDifficulty;
+
+	@Enumerated(EnumType.STRING)
+	@Column(length = 16)
+	private BotDifficulty blackBotDifficulty;
+
 	@Column(nullable = false)
 	private int timeControlSeconds;
 
@@ -214,6 +228,38 @@ public class MatchEntity {
 
 	public void setBlackPlayerName(String blackPlayerName) {
 		this.blackPlayerName = blackPlayerName;
+	}
+
+	public boolean isWhiteBot() {
+		return Boolean.TRUE.equals(whiteBot);
+	}
+
+	public void setWhiteBot(boolean whiteBot) {
+		this.whiteBot = whiteBot;
+	}
+
+	public boolean isBlackBot() {
+		return Boolean.TRUE.equals(blackBot);
+	}
+
+	public void setBlackBot(boolean blackBot) {
+		this.blackBot = blackBot;
+	}
+
+	public BotDifficulty getWhiteBotDifficulty() {
+		return whiteBotDifficulty;
+	}
+
+	public void setWhiteBotDifficulty(BotDifficulty whiteBotDifficulty) {
+		this.whiteBotDifficulty = whiteBotDifficulty;
+	}
+
+	public BotDifficulty getBlackBotDifficulty() {
+		return blackBotDifficulty;
+	}
+
+	public void setBlackBotDifficulty(BotDifficulty blackBotDifficulty) {
+		this.blackBotDifficulty = blackBotDifficulty;
 	}
 
 	public int getTimeControlSeconds() {

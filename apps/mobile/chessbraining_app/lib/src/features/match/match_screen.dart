@@ -528,6 +528,15 @@ class _HomeMainPanel extends StatelessWidget {
                         onPressed:
                             controller.loading ? null : controller.createMatch,
                       ),
+                      _PlayModeCard(
+                        title: 'Play Bot',
+                        description:
+                            'Practice against NeuroBot with brain-round scoring.',
+                        icon: Icons.smart_toy,
+                        color: AppColors.warning,
+                        onPressed:
+                            controller.loading ? null : controller.playBot,
+                      ),
                     ];
                     if (stacked) {
                       return Column(
@@ -549,6 +558,8 @@ class _HomeMainPanel extends StatelessWidget {
                     );
                   },
                 ),
+                const SizedBox(height: 14),
+                _BotMatchOptions(controller: controller),
                 const SizedBox(height: 14),
                 _JoinMatchRow(
                   controller: controller,
@@ -848,6 +859,11 @@ class _HomeHero extends StatelessWidget {
                       onPressed:
                           controller.loading ? null : controller.createMatch,
                     ),
+                    _HeroAction(
+                      label: 'PLAY BOT',
+                      icon: Icons.smart_toy,
+                      onPressed: controller.loading ? null : controller.playBot,
+                    ),
                   ],
                 ),
                 const SizedBox(height: 14),
@@ -1122,6 +1138,156 @@ class _PlayModeCard extends StatelessWidget {
                 size: 20,
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BotMatchOptions extends StatelessWidget {
+  const _BotMatchOptions({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh.withValues(alpha: 0.58),
+        border:
+            Border.all(color: AppColors.strongBorder.withValues(alpha: 0.32)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(
+                  Icons.smart_toy,
+                  color: AppColors.warning,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'NeuroBot settings',
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Brain scores vary by difficulty.',
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final difficulty in const [
+                'EASY',
+                'NORMAL',
+                'HARD',
+                'EXPERT'
+              ])
+                _ChoicePill(
+                  label: _difficultyLabel(difficulty),
+                  selected: controller.botDifficulty == difficulty,
+                  onPressed: () => controller.setBotDifficulty(difficulty),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _ChoicePill(
+                label: 'Play White',
+                selected: controller.botPreferredSide == 'WHITE',
+                onPressed: () => controller.setBotPreferredSide('WHITE'),
+              ),
+              _ChoicePill(
+                label: 'Play Black',
+                selected: controller.botPreferredSide == 'BLACK',
+                onPressed: () => controller.setBotPreferredSide('BLACK'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _difficultyLabel(String value) {
+    return switch (value) {
+      'EASY' => 'Easy',
+      'NORMAL' => 'Normal',
+      'HARD' => 'Hard',
+      'EXPERT' => 'Expert',
+      _ => value,
+    };
+  }
+}
+
+class _ChoicePill extends StatelessWidget {
+  const _ChoicePill({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primaryContainer
+              : AppColors.surfaceBright.withValues(alpha: 0.78),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+          ),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColors.background : AppColors.text,
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
           ),
         ),
       ),
