@@ -55,6 +55,24 @@ class ChessbrainingApi {
     });
   }
 
+  Future<MatchModel> createBotMatch({
+    required String playerId,
+    required String playerName,
+    required String difficulty,
+    String preferredSide = 'WHITE',
+    int timeControlSeconds = 300,
+    int brainRoundIntervalMoves = 5,
+  }) {
+    return _postMatch('/matches/bot', {
+      'playerId': playerId,
+      'playerName': playerName,
+      'difficulty': difficulty,
+      'preferredSide': preferredSide,
+      'timeControlSeconds': timeControlSeconds,
+      'brainRoundIntervalMoves': brainRoundIntervalMoves,
+    });
+  }
+
   Future<MatchModel> joinMatch({
     required String inviteCode,
     required String playerId,

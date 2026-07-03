@@ -8,6 +8,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Predicate;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -213,6 +214,57 @@ class ChessbrainingApiApplicationTests {
 						.param("playerId", "white-player"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$[?(@.from == 'e2' && @.to == 'e4')]").exists());
+	}
+
+	@Test
+	void createsBotMatchWithDifficultyMetadata() throws Exception {
+		JsonNode created = createBotMatch("human-player", "Ritik", "HARD", "WHITE", 5);
+
+		org.junit.jupiter.api.Assertions.assertEquals("ACTIVE", created.get("status").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("CHESS_PHASE", created.get("phase").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("human-player", created.get("white").get("playerId").asText());
+		org.junit.jupiter.api.Assertions.assertFalse(created.get("white").get("bot").asBoolean());
+		org.junit.jupiter.api.Assertions.assertTrue(created.get("black").get("bot").asBoolean());
+		org.junit.jupiter.api.Assertions.assertEquals("HARD", created.get("black").get("botDifficulty").asText());
+	}
+
+	@Test
+	void botPlaysOpeningMoveWhenItHasWhite() throws Exception {
+		JsonNode created = createBotMatch("human-player", "Ritik", "EASY", "BLACK", 5);
+		String matchId = created.get("matchId").asText();
+
+		JsonNode afterBotMove = waitForMatch(matchId, match ->
+				match.get("plyCount").asInt() >= 1 && "BLACK".equals(match.get("sideToMove").asText()));
+
+		org.junit.jupiter.api.Assertions.assertEquals("human-player", afterBotMove.get("black").get("playerId").asText());
+		org.junit.jupiter.api.Assertions.assertEquals(1, afterBotMove.get("moves").size());
+		org.junit.jupiter.api.Assertions.assertTrue(afterBotMove.get("moves").get(0).get("playerId").asText().startsWith("bot-easy-"));
+	}
+
+	@Test
+	void botSubmitsDifficultyBasedBrainRoundScore() throws Exception {
+		JsonNode created = createBotMatch("human-player", "Ritik", "NORMAL", "WHITE", 1);
+		String matchId = created.get("matchId").asText();
+
+		submitMove(matchId, "human-player", "e2", "e4");
+		JsonNode brainRoundMatch = waitForMatch(matchId, match -> "BRAIN_ROUND".equals(match.get("phase").asText()));
+		org.junit.jupiter.api.Assertions.assertEquals(1, brainRoundMatch.get("brainRoundCount").asInt());
+
+		JsonNode round = currentBrainRound(matchId);
+		int totalQuestions = round.get("totalQuestions").asInt();
+		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(brainRoundSubmissionJson("human-player", totalQuestions)))
+				.andExpect(status().isOk());
+
+		JsonNode completed = waitForMatch(matchId, match ->
+				"CHESS_PHASE".equals(match.get("phase").asText()) &&
+						!match.get("latestBrainRoundResult").isNull());
+		JsonNode result = completed.get("latestBrainRoundResult");
+		int botScore = result.get("blackCorrectCount").asInt();
+		org.junit.jupiter.api.Assertions.assertTrue(botScore >= 0);
+		org.junit.jupiter.api.Assertions.assertTrue(botScore <= totalQuestions);
+		org.junit.jupiter.api.Assertions.assertEquals(1, result.get("roundNumber").asInt());
 	}
 
 	@Test
@@ -954,6 +1006,51 @@ class ChessbrainingApiApplicationTests {
 				.getContentAsString();
 
 		return objectMapper.readTree(response);
+	}
+
+	private JsonNode createBotMatch(
+			String playerId,
+			String playerName,
+			String difficulty,
+			String preferredSide,
+			int brainRoundIntervalMoves) throws Exception {
+		String response = mockMvc.perform(post("/api/v1/matches/bot")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "%s",
+								  "playerName": "%s",
+								  "difficulty": "%s",
+								  "preferredSide": "%s",
+								  "timeControlSeconds": 300,
+								  "brainRoundIntervalMoves": %d
+								}
+								""".formatted(playerId, playerName, difficulty, preferredSide, brainRoundIntervalMoves)))
+				.andExpect(status().isOk())
+				.andReturn()
+				.getResponse()
+				.getContentAsString();
+
+		return objectMapper.readTree(response);
+	}
+
+	private JsonNode waitForMatch(String matchId, Predicate<JsonNode> predicate) throws Exception {
+		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(8);
+		JsonNode latest = null;
+		while (System.nanoTime() < deadline) {
+			latest = objectMapper.readTree(
+					mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+							.andExpect(status().isOk())
+							.andReturn()
+							.getResponse()
+							.getContentAsString());
+			if (predicate.test(latest)) {
+				return latest;
+			}
+			Thread.sleep(120);
+		}
+		org.junit.jupiter.api.Assertions.fail("Timed out waiting for match state. Latest: " + latest);
+		return latest;
 	}
 
 	private void submitMove(String matchId, String playerId, String from, String to) throws Exception {

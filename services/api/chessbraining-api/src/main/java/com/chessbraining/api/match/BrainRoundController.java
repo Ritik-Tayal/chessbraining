@@ -15,14 +15,17 @@ public class BrainRoundController {
 	private final BrainRoundService brainRoundService;
 	private final MatchService matchService;
 	private final MatchRealtimeService realtimeService;
+	private final BotService botService;
 
 	public BrainRoundController(
 			BrainRoundService brainRoundService,
 			MatchService matchService,
-			MatchRealtimeService realtimeService) {
+			MatchRealtimeService realtimeService,
+			BotService botService) {
 		this.brainRoundService = brainRoundService;
 		this.matchService = matchService;
 		this.realtimeService = realtimeService;
+		this.botService = botService;
 	}
 
 	@GetMapping("/current")
@@ -66,6 +69,9 @@ public class BrainRoundController {
 		MatchResponse match = matchService.getMatch(matchId);
 		if (match.phase() != MatchPhase.BRAIN_ROUND) {
 			realtimeService.publishMatchState(match);
+			botService.scheduleContinuation(match);
+		} else {
+			botService.scheduleContinuation(match);
 		}
 	}
 }

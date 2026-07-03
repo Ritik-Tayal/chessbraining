@@ -101,6 +101,8 @@ class MatchController extends ChangeNotifier {
   String apiBaseUrl = ChessbrainingApi.defaultBaseUrl;
   final String playerId;
   String playerName;
+  String botDifficulty = 'NORMAL';
+  String botPreferredSide = 'WHITE';
 
   MatchModel? match;
   BrainRoundModel? brainRound;
@@ -260,6 +262,28 @@ class MatchController extends ChangeNotifier {
       _setMatch(await _api.quickplay(
         playerId: playerId,
         playerName: playerName,
+      ));
+      SoundService.instance.playNotify();
+    });
+  }
+
+  void setBotDifficulty(String value) {
+    botDifficulty = value;
+    notifyListeners();
+  }
+
+  void setBotPreferredSide(String value) {
+    botPreferredSide = value;
+    notifyListeners();
+  }
+
+  Future<void> playBot() {
+    return _run(() async {
+      _setMatch(await _api.createBotMatch(
+        playerId: playerId,
+        playerName: playerName,
+        difficulty: botDifficulty,
+        preferredSide: botPreferredSide,
       ));
       SoundService.instance.playNotify();
     });
