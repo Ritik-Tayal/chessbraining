@@ -194,6 +194,8 @@ class _MatchScreenState extends State<MatchScreen> {
                 _EndGameResult(
                   match: match,
                   playerId: controller.playerId,
+                  loading: controller.loading,
+                  onRematch: controller.requestRematch,
                   onReview: () => setState(
                     () => dismissedCelebrationMatchId = match.matchId,
                   ),
@@ -3120,12 +3122,16 @@ class _EndGameResult extends StatefulWidget {
   const _EndGameResult({
     required this.match,
     required this.playerId,
+    required this.loading,
+    required this.onRematch,
     required this.onReview,
     required this.onCommand,
   });
 
   final MatchModel match;
   final String playerId;
+  final bool loading;
+  final Future<void> Function() onRematch;
   final VoidCallback onReview;
   final VoidCallback onCommand;
 
@@ -3207,6 +3213,8 @@ class _EndGameResultState extends State<_EndGameResult>
       _GameResult.win => _EndGameCelebration(
           match: widget.match,
           playerId: widget.playerId,
+          loading: widget.loading,
+          onRematch: widget.onRematch,
           onReview: widget.onReview,
           onCommand: widget.onCommand,
           controller: controller,
@@ -3215,12 +3223,16 @@ class _EndGameResultState extends State<_EndGameResult>
       _GameResult.loss => _EndGameDefeat(
           match: widget.match,
           playerId: widget.playerId,
+          loading: widget.loading,
+          onRematch: widget.onRematch,
           onReview: widget.onReview,
           onCommand: widget.onCommand,
         ),
       _GameResult.draw => _EndGameDraw(
           match: widget.match,
           playerId: widget.playerId,
+          loading: widget.loading,
+          onRematch: widget.onRematch,
           onReview: widget.onReview,
           onCommand: widget.onCommand,
         ),
@@ -3234,6 +3246,8 @@ class _EndGameCelebration extends StatelessWidget {
   const _EndGameCelebration({
     required this.match,
     required this.playerId,
+    required this.loading,
+    required this.onRematch,
     required this.onReview,
     required this.onCommand,
     required this.controller,
@@ -3242,6 +3256,8 @@ class _EndGameCelebration extends StatelessWidget {
 
   final MatchModel match;
   final String playerId;
+  final bool loading;
+  final Future<void> Function() onRematch;
   final VoidCallback onReview;
   final VoidCallback onCommand;
   final AnimationController controller;
@@ -3339,40 +3355,14 @@ class _EndGameCelebration extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.replay, size: 18),
-                            label: const Text('REVIEW'),
-                            onPressed: onReview,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.primary,
-                              side: const BorderSide(color: AppColors.primary),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            icon: const Icon(Icons.home, size: 18),
-                            label: const Text('HOME'),
-                            onPressed: onCommand,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primaryContainer,
-                              foregroundColor: AppColors.background,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    _EndGameActions(
+                      match: match,
+                      playerId: playerId,
+                      loading: loading,
+                      accentColor: AppColors.primary,
+                      onRematch: onRematch,
+                      onReview: onReview,
+                      onCommand: onCommand,
                     ),
                   ],
                 ),
@@ -3397,12 +3387,16 @@ class _EndGameDefeat extends StatelessWidget {
   const _EndGameDefeat({
     required this.match,
     required this.playerId,
+    required this.loading,
+    required this.onRematch,
     required this.onReview,
     required this.onCommand,
   });
 
   final MatchModel match;
   final String playerId;
+  final bool loading;
+  final Future<void> Function() onRematch;
   final VoidCallback onReview;
   final VoidCallback onCommand;
 
@@ -3471,40 +3465,14 @@ class _EndGameDefeat extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.replay, size: 18),
-                            label: const Text('REVIEW'),
-                            onPressed: onReview,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.warning,
-                              side: const BorderSide(color: AppColors.warning),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            icon: const Icon(Icons.home, size: 18),
-                            label: const Text('HOME'),
-                            onPressed: onCommand,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primaryContainer,
-                              foregroundColor: AppColors.background,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    _EndGameActions(
+                      match: match,
+                      playerId: playerId,
+                      loading: loading,
+                      accentColor: AppColors.warning,
+                      onRematch: onRematch,
+                      onReview: onReview,
+                      onCommand: onCommand,
                     ),
                   ],
                 ),
@@ -3529,12 +3497,16 @@ class _EndGameDraw extends StatelessWidget {
   const _EndGameDraw({
     required this.match,
     required this.playerId,
+    required this.loading,
+    required this.onRematch,
     required this.onReview,
     required this.onCommand,
   });
 
   final MatchModel match;
   final String playerId;
+  final bool loading;
+  final Future<void> Function() onRematch;
   final VoidCallback onReview;
   final VoidCallback onCommand;
 
@@ -3603,41 +3575,14 @@ class _EndGameDraw extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.replay, size: 18),
-                            label: const Text('REVIEW'),
-                            onPressed: onReview,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.secondary,
-                              side:
-                                  const BorderSide(color: AppColors.secondary),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            icon: const Icon(Icons.home, size: 18),
-                            label: const Text('HOME'),
-                            onPressed: onCommand,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primaryContainer,
-                              foregroundColor: AppColors.background,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    _EndGameActions(
+                      match: match,
+                      playerId: playerId,
+                      loading: loading,
+                      accentColor: AppColors.secondary,
+                      onRematch: onRematch,
+                      onReview: onReview,
+                      onCommand: onCommand,
                     ),
                   ],
                 ),
@@ -3655,6 +3600,123 @@ class _EndGameDraw extends StatelessWidget {
       return reason;
     }
     return 'Stalemate / Insufficient material';
+  }
+}
+
+class _EndGameActions extends StatelessWidget {
+  const _EndGameActions({
+    required this.match,
+    required this.playerId,
+    required this.loading,
+    required this.accentColor,
+    required this.onRematch,
+    required this.onReview,
+    required this.onCommand,
+  });
+
+  final MatchModel match;
+  final String playerId;
+  final bool loading;
+  final Color accentColor;
+  final Future<void> Function() onRematch;
+  final VoidCallback onReview;
+  final VoidCallback onCommand;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            icon: Icon(_rematchIcon(), size: 18),
+            label: Text(_rematchLabel()),
+            onPressed: _rematchEnabled() ? onRematch : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: accentColor,
+              foregroundColor: AppColors.background,
+              disabledBackgroundColor: AppColors.surface,
+              disabledForegroundColor: AppColors.muted,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.replay, size: 18),
+                label: const Text('REVIEW'),
+                onPressed: onReview,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: accentColor,
+                  side: BorderSide(color: accentColor),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                icon: const Icon(Icons.home, size: 18),
+                label: const Text('HOME'),
+                onPressed: onCommand,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryContainer,
+                  foregroundColor: AppColors.background,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  bool _rematchEnabled() {
+    final requestedBy = match.rematchRequestedByPlayerId;
+    return !loading &&
+        match.rematchMatchId == null &&
+        (requestedBy == null || requestedBy.isEmpty || requestedBy != playerId);
+  }
+
+  IconData _rematchIcon() {
+    final requestedBy = match.rematchRequestedByPlayerId;
+    if (match.rematchMatchId != null || loading) {
+      return Icons.hourglass_top;
+    }
+    if (requestedBy != null &&
+        requestedBy.isNotEmpty &&
+        requestedBy != playerId) {
+      return Icons.handshake;
+    }
+    return Icons.sync;
+  }
+
+  String _rematchLabel() {
+    final requestedBy = match.rematchRequestedByPlayerId;
+    if (match.rematchMatchId != null) {
+      return 'LOADING REMATCH';
+    }
+    if (requestedBy == null || requestedBy.isEmpty) {
+      return loading ? 'REQUESTING' : 'REMATCH';
+    }
+    if (requestedBy == playerId) {
+      return 'REMATCH REQUESTED';
+    }
+    return loading ? 'ACCEPTING' : 'ACCEPT REMATCH';
   }
 }
 

@@ -18,6 +18,8 @@ public record MatchResponse(
 		PlayerResponse black,
 		String winnerPlayerId,
 		String resultReason,
+		String rematchRequestedByPlayerId,
+		String rematchMatchId,
 		List<MoveResponse> moves,
 		Instant clockDeadlineAt,
 		Instant createdAt,

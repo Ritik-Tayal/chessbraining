@@ -248,6 +248,61 @@ public class MatchService {
 		return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
 	}
 
+	@Transactional
+	public MatchResponse requestRematch(String matchId, String playerId) {
+		MatchEntity match = loadMatchForUpdate(matchId);
+		requirePlayerInMatch(match, playerId);
+		if (match.getStatus() != MatchStatus.COMPLETED || match.getPhase() != MatchPhase.COMPLETED) {
+			throw new ApiException(HttpStatus.CONFLICT, "REMATCH_NOT_AVAILABLE",
+					"Rematch can only be requested after a completed match.");
+		}
+		if (match.getBlackPlayerId() == null) {
+			throw new ApiException(HttpStatus.CONFLICT, "REMATCH_REQUIRES_TWO_PLAYERS",
+					"Rematch requires both players from the completed match.");
+		}
+		if (match.getRematchMatchId() != null) {
+			return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
+		}
+
+		String requester = playerId.trim();
+		String currentRequest = match.getRematchRequestedByPlayerId();
+		if (currentRequest == null || currentRequest.isBlank()) {
+			match.setRematchRequestedByPlayerId(requester);
+			MatchEntity saved = matchRepository.save(match);
+			return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
+		}
+		if (currentRequest.equals(requester)) {
+			return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
+		}
+
+		MatchEntity rematch = createRematchMatch(match);
+		MatchEntity savedRematch = matchRepository.save(rematch);
+		match.setRematchMatchId(savedRematch.getId());
+		MatchEntity saved = matchRepository.save(match);
+		return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
+	}
+
+	private MatchEntity createRematchMatch(MatchEntity previous) {
+		MatchEntity match = new MatchEntity();
+		match.setInviteCode(generateInviteCode());
+		match.setStatus(MatchStatus.ACTIVE);
+		match.setPhase(MatchPhase.CHESS_PHASE);
+		match.setMatchmakingMode(MatchmakingMode.PRIVATE);
+		match.setFen(ChessService.STARTING_FEN);
+		match.setSideToMove("WHITE");
+		match.setWhitePlayerId(previous.getBlackPlayerId());
+		match.setWhitePlayerName(previous.getBlackPlayerName());
+		match.setBlackPlayerId(previous.getWhitePlayerId());
+		match.setBlackPlayerName(previous.getWhitePlayerName());
+		match.setTimeControlSeconds(previous.getTimeControlSeconds());
+		match.setWhiteClockMs(match.getTimeControlSeconds() * 1000);
+		match.setBlackClockMs(match.getTimeControlSeconds() * 1000);
+		match.setBrainRoundIntervalMoves(previous.getBrainRoundIntervalMoves());
+		match.setStartedAt(Instant.now());
+		clockService.startClocks(match);
+		return match;
+	}
+
 	private MatchResponse joinExistingMatch(MatchEntity match, JoinMatchRequest request) {
 		if (match.getStatus() != MatchStatus.WAITING_FOR_OPPONENT) {
 			throw new ApiException(HttpStatus.CONFLICT, "MATCH_ALREADY_STARTED", "Match already has two players.");
@@ -441,6 +496,8 @@ public class MatchService {
 								chessService.revivablePawnCount(match.getFen(), "BLACK")),
 				match.getWinnerPlayerId(),
 				match.getResultReason(),
+				match.getRematchRequestedByPlayerId(),
+				match.getRematchMatchId(),
 				moves.stream().map(this::toMoveResponse).toList(),
 				match.getClockDeadlineAt(),
 				match.getCreatedAt(),

@@ -79,4 +79,13 @@ public class MatchController {
 		realtimeService.publishMatchState(response);
 		return response;
 	}
+
+	@PostMapping("/{matchId}/rematch")
+	public MatchResponse rematch(
+			@PathVariable String matchId,
+			@RequestBody Map<String, String> request) {
+		MatchResponse response = matchService.requestRematch(matchId, request.get("playerId"));
+		realtimeService.publishMatchState(response);
+		return response;
+	}
 }
