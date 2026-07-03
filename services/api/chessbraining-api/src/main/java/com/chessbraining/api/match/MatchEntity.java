@@ -95,6 +95,12 @@ public class MatchEntity {
 	@Column(length = 64)
 	private String resultReason;
 
+	@Column(length = 64)
+	private String rematchRequestedByPlayerId;
+
+	@Column(length = 36)
+	private String rematchMatchId;
+
 	@Column(nullable = false)
 	private Instant createdAt;
 
@@ -320,6 +326,22 @@ public class MatchEntity {
 
 	public void setResultReason(String resultReason) {
 		this.resultReason = resultReason;
+	}
+
+	public String getRematchRequestedByPlayerId() {
+		return rematchRequestedByPlayerId;
+	}
+
+	public void setRematchRequestedByPlayerId(String rematchRequestedByPlayerId) {
+		this.rematchRequestedByPlayerId = rematchRequestedByPlayerId;
+	}
+
+	public String getRematchMatchId() {
+		return rematchMatchId;
+	}
+
+	public void setRematchMatchId(String rematchMatchId) {
+		this.rematchMatchId = rematchMatchId;
 	}
 
 	public Instant getCreatedAt() {

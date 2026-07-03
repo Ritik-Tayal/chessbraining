@@ -121,6 +121,7 @@ class MatchController extends ChangeNotifier {
   int _powerupEffectSequence = 0;
   int _brainRoundResultSequence = 0;
   String? _lastBrainRoundResultRoundId;
+  String? _loadingRematchMatchId;
 
   PlayerModel? get me => match?.playerById(playerId);
   bool get isMyTurn => me != null && match?.sideToMove == me!.side;
@@ -401,7 +402,6 @@ class MatchController extends ChangeNotifier {
       final round = await _api.getCurrentBrainRound(current.matchId);
       brainRound = round;
       if (round.isCompleted) {
-        _showBrainRoundResult(round, current);
         _setMatch(await _api.getMatch(current.matchId));
       }
     } on ApiException catch (exception) {
@@ -525,10 +525,6 @@ class MatchController extends ChangeNotifier {
         );
       }
       if (result.roundCompleted) {
-        final completedRound = brainRound;
-        if (completedRound != null) {
-          _showBrainRoundResult(completedRound, current);
-        }
         _setMatch(await _api.getMatch(current.matchId));
       } else {
         notifyListeners();
@@ -560,8 +556,7 @@ class MatchController extends ChangeNotifier {
       return Future.value();
     }
     return _run(() async {
-      final result = await _api.completeBrainRound(matchId: current.matchId);
-      _showBrainRoundResult(result, current);
+      await _api.completeBrainRound(matchId: current.matchId);
       _setMatch(await _api.getMatch(current.matchId));
     });
   }
@@ -573,6 +568,19 @@ class MatchController extends ChangeNotifier {
     }
     return _run(() async {
       _setMatch(await _api.resign(
+        matchId: current.matchId,
+        playerId: playerId,
+      ));
+    });
+  }
+
+  Future<void> requestRematch() {
+    final current = match;
+    if (current == null || !current.isCompleted) {
+      return Future.value();
+    }
+    return _run(() async {
+      _setMatch(await _api.requestRematch(
         matchId: current.matchId,
         playerId: playerId,
       ));
@@ -715,6 +723,7 @@ class MatchController extends ChangeNotifier {
       brainRound = null;
     }
     _connectRealtimeIfNeeded(previousMatchId);
+    _loadAcceptedRematchIfNeeded(value);
 
     final plyIncreased = value.plyCount > previousPlyCount;
     final moveForAnimation = _animationForServerMove(previousMatch, value);
@@ -787,6 +796,26 @@ class MatchController extends ChangeNotifier {
         notifyListeners();
       },
     )..connect();
+  }
+
+  void _loadAcceptedRematchIfNeeded(MatchModel value) {
+    final rematchMatchId = value.rematchMatchId;
+    if (!value.isCompleted ||
+        rematchMatchId == null ||
+        rematchMatchId.isEmpty ||
+        _loadingRematchMatchId == rematchMatchId) {
+      return;
+    }
+    _loadingRematchMatchId = rematchMatchId;
+    unawaited(_api.getMatch(rematchMatchId).then((rematch) {
+      _loadingRematchMatchId = null;
+      _setMatch(rematch);
+    }).catchError((Object exception) {
+      _loadingRematchMatchId = null;
+      error = _friendlyError(exception);
+      SoundService.instance.playError();
+      notifyListeners();
+    }));
   }
 
   BoardMoveAnimation? _animationForServerMove(
@@ -878,33 +907,6 @@ class MatchController extends ChangeNotifier {
       side: effect.side,
     );
     SoundService.instance.playPowerup();
-  }
-
-  void _showBrainRoundResult(BrainRoundModel round, MatchModel currentMatch) {
-    if (!round.isCompleted) {
-      return;
-    }
-    if (_lastBrainRoundResultRoundId == round.roundId) {
-      return;
-    }
-
-    final winner = round.winnerPlayerId == null
-        ? null
-        : currentMatch.playerById(round.winnerPlayerId!);
-    final isTie = round.winnerPlayerId == null;
-    brainRoundResultNotice = BrainRoundResultNotice(
-      id: ++_brainRoundResultSequence,
-      roundId: round.roundId,
-      roundNumber: round.roundNumber,
-      whiteName: currentMatch.white.playerName,
-      blackName: currentMatch.black?.playerName ?? 'Black',
-      whiteScore: round.whiteCorrectCount,
-      blackScore: round.blackCorrectCount,
-      winnerPlayerId: round.winnerPlayerId,
-      winnerName: isTie ? 'Draw' : winner?.playerName ?? 'Winner',
-      awardedPoints: isTie ? 1 : 2,
-    );
-    _lastBrainRoundResultRoundId = round.roundId;
   }
 
   void _showBrainRoundResultFromMatch(

@@ -850,6 +850,57 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(jsonPath("$.clockDeadlineAt").isEmpty());
 	}
 
+	@Test
+	void rematchRequiresBothPlayersAndSwapsColorsAfterAcceptance() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/resign", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("COMPLETED"));
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/rematch", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "white-player"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.rematchRequestedByPlayerId").value("white-player"))
+				.andExpect(jsonPath("$.rematchMatchId").isEmpty());
+
+		JsonNode accepted = objectMapper.readTree(
+				mockMvc.perform(post("/api/v1/matches/{matchId}/rematch", matchId)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("""
+										{
+										  "playerId": "black-player"
+										}
+										"""))
+						.andExpect(status().isOk())
+						.andExpect(jsonPath("$.rematchRequestedByPlayerId").value("white-player"))
+						.andExpect(jsonPath("$.rematchMatchId").isNotEmpty())
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", accepted.get("rematchMatchId").asText()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("ACTIVE"))
+				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
+				.andExpect(jsonPath("$.white.playerId").value("black-player"))
+				.andExpect(jsonPath("$.black.playerId").value("white-player"))
+				.andExpect(jsonPath("$.plyCount").value(0))
+				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
+	}
+
 	private JsonNode createJoinedMatch(int brainRoundIntervalMoves) throws Exception {
 		JsonNode created = createMatch("white-player", "Ritik", brainRoundIntervalMoves);
 		String joined = mockMvc.perform(post("/api/v1/matches/join")

@@ -14,6 +14,8 @@ class MatchModel {
     required this.black,
     required this.winnerPlayerId,
     required this.resultReason,
+    required this.rematchRequestedByPlayerId,
+    required this.rematchMatchId,
     required this.moves,
     required this.clockDeadlineAt,
   });
@@ -32,6 +34,8 @@ class MatchModel {
   final PlayerModel? black;
   final String? winnerPlayerId;
   final String? resultReason;
+  final String? rematchRequestedByPlayerId;
+  final String? rematchMatchId;
   final List<MoveModel> moves;
   final DateTime? clockDeadlineAt;
 
@@ -73,6 +77,8 @@ class MatchModel {
       black: black,
       winnerPlayerId: winnerPlayerId,
       resultReason: resultReason,
+      rematchRequestedByPlayerId: rematchRequestedByPlayerId,
+      rematchMatchId: rematchMatchId,
       moves: moves ?? this.moves,
       clockDeadlineAt: clockDeadlineAt ?? this.clockDeadlineAt,
     );
@@ -100,6 +106,8 @@ class MatchModel {
           : PlayerModel.fromJson(json['black'] as Map<String, dynamic>),
       winnerPlayerId: json['winnerPlayerId'] as String?,
       resultReason: json['resultReason'] as String?,
+      rematchRequestedByPlayerId: json['rematchRequestedByPlayerId'] as String?,
+      rematchMatchId: json['rematchMatchId'] as String?,
       moves: (json['moves'] as List<dynamic>)
           .map((item) => MoveModel.fromJson(item as Map<String, dynamic>))
           .toList(),

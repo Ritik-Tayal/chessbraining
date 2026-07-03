@@ -189,6 +189,15 @@ class ChessbrainingApi {
     });
   }
 
+  Future<MatchModel> requestRematch({
+    required String matchId,
+    required String playerId,
+  }) {
+    return _postMatch('/matches/$matchId/rematch', {
+      'playerId': playerId,
+    });
+  }
+
   Future<MatchModel> _postMatch(String path, Map<String, Object?> body) async {
     final response = await _withTimeout(
       _client.post(
