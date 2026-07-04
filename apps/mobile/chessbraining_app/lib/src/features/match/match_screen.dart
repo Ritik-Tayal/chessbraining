@@ -831,14 +831,14 @@ class _HomeHero extends StatelessWidget {
                     height: 0.98,
                   ),
                 ),
-                const SizedBox(height: 10),
-                Text(
-                  'Chess + brain battles + powerups.',
-                  style: TextStyle(
-                    color: AppColors.background.withValues(alpha: 0.86),
-                    fontSize: compact ? 17 : 20,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
+                const SizedBox(height: 24),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    'assets/photos/logo.png',
+                    height: 160,
+                    width: 160,
+                    fit: BoxFit.cover,
                   ),
                 ),
                 const SizedBox(height: 18),
