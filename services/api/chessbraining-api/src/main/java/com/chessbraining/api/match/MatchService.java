@@ -6,6 +6,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
+import com.fasterxml.jackson.core.JacksonException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.chessbraining.api.chess.ChessMove;
 import com.chessbraining.api.chess.ChessMoveResult;
 import com.chessbraining.api.chess.ChessService;
@@ -37,7 +39,7 @@ public class MatchService {
 	private final ChessService chessService;
 	private final ClockService clockService;
 	private final MathPuzzleService mathPuzzleService;
-	private final tools.jackson.databind.ObjectMapper objectMapper;
+	private final ObjectMapper objectMapper;
 	private final TransactionTemplate transactionTemplate;
 
 	public MatchService(
@@ -47,7 +49,7 @@ public class MatchService {
 			ChessService chessService,
 			ClockService clockService,
 			MathPuzzleService mathPuzzleService,
-			tools.jackson.databind.ObjectMapper objectMapper,
+			ObjectMapper objectMapper,
 			TransactionTemplate transactionTemplate) {
 		this.matchRepository = matchRepository;
 		this.moveRepository = moveRepository;
@@ -483,7 +485,7 @@ public class MatchService {
 		try {
 			round.setPuzzleExpressions(objectMapper.writeValueAsString(puzzleSet.expressions()));
 			round.setPuzzleAnswers(objectMapper.writeValueAsString(puzzleSet.answers()));
-		} catch (tools.jackson.core.JacksonException e) {
+		} catch (JacksonException e) {
 			throw new org.springframework.web.server.ResponseStatusException(
 					org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Failed to serialize puzzles");
 		}

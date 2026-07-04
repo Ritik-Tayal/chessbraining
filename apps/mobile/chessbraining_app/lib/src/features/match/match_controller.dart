@@ -101,7 +101,7 @@ class MatchController extends ChangeNotifier {
   String apiBaseUrl = ChessbrainingApi.defaultBaseUrl;
   final String playerId;
   String playerName;
-  String botDifficulty = 'NORMAL';
+  String botDifficulty = '';
   String botPreferredSide = 'WHITE';
 
   MatchModel? match;
@@ -268,16 +268,34 @@ class MatchController extends ChangeNotifier {
   }
 
   void setBotDifficulty(String value) {
-    botDifficulty = value;
+    final normalized = value.trim().toUpperCase();
+    if (!_isSupportedBotDifficulty(normalized)) {
+      return;
+    }
+    botDifficulty = normalized;
     notifyListeners();
   }
 
   void setBotPreferredSide(String value) {
-    botPreferredSide = value;
+    final normalized = value.trim().toUpperCase();
+    if (normalized != 'WHITE' && normalized != 'BLACK') {
+      return;
+    }
+    botPreferredSide = normalized;
     notifyListeners();
   }
 
   Future<void> playBot() {
+    if (!_isSupportedBotDifficulty(botDifficulty)) {
+      error = 'Select EASY, NORMAL, HARD or EXPERT before starting.';
+      notifyListeners();
+      return Future.value();
+    }
+    if (botPreferredSide != 'WHITE' && botPreferredSide != 'BLACK') {
+      error = 'Select your preferred side before starting.';
+      notifyListeners();
+      return Future.value();
+    }
     return _run(() async {
       _setMatch(await _api.createBotMatch(
         playerId: playerId,
@@ -957,6 +975,10 @@ class MatchController extends ChangeNotifier {
       awardedPoints: result.awardedBrainPoints,
     );
     _lastBrainRoundResultRoundId = result.roundId;
+  }
+
+  bool _isSupportedBotDifficulty(String value) {
+    return value == 'EASY' || value == 'NORMAL' || value == 'HARD' || value == 'EXPERT';
   }
 
   String _oppositeSide(String side) => side == 'WHITE' ? 'BLACK' : 'WHITE';

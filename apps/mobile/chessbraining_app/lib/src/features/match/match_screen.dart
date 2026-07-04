@@ -19,7 +19,6 @@ class MatchScreen extends StatefulWidget {
   });
 
   final MatchController controller;
-
   @override
   State<MatchScreen> createState() => _MatchScreenState();
 }
@@ -35,6 +34,7 @@ class _MatchScreenState extends State<MatchScreen> {
   Timer? clockTicker;
   DateTime? lastClockExpiryRefreshDeadline;
   _ScreenPage selectedPage = _ScreenPage.command;
+  bool isBotSetupOpen = false;
   String? activeMatchId;
   String? dismissedCelebrationMatchId;
 
@@ -60,12 +60,34 @@ class _MatchScreenState extends State<MatchScreen> {
     if (matchId != null && matchId != activeMatchId) {
       activeMatchId = matchId;
       dismissedCelebrationMatchId = null;
+      isBotSetupOpen = false;
       if (mounted && selectedPage != _ScreenPage.play) {
         setState(() => selectedPage = _ScreenPage.play);
       }
     }
   }
 
+
+  void _openBotMatchSetup() {
+    if (!mounted || isBotSetupOpen) {
+      return;
+    }
+    setState(() => isBotSetupOpen = true);
+    _scrollToHomeSection(playSectionKey);
+  }
+
+  void _startBotMatch() {
+    if (widget.controller.loading) {
+      return;
+    }
+    widget.controller.playBot();
+  }
+
+  void _closeBotMatchSetup() {
+    if (mounted && isBotSetupOpen) {
+      setState(() => isBotSetupOpen = false);
+    }
+  }
   void _refreshExpiredClock() {
     final current = widget.controller.match;
     final deadline = current?.clockDeadlineAt;
@@ -156,6 +178,9 @@ class _MatchScreenState extends State<MatchScreen> {
                               playKey: playSectionKey,
                               powerupsKey: powerupsSectionKey,
                               profileKey: profileSectionKey,
+                              isBotSetupOpen: isBotSetupOpen,
+                              onOpenBotSetup: _openBotMatchSetup,
+                              onStartBotMatch: _startBotMatch,
                               onResume: match == null
                                   ? null
                                   : () => setState(
@@ -392,6 +417,9 @@ class _CommandPage extends StatelessWidget {
     required this.playKey,
     required this.powerupsKey,
     required this.profileKey,
+    required this.isBotSetupOpen,
+    required this.onOpenBotSetup,
+    required this.onStartBotMatch,
     required this.onResume,
   });
 
@@ -403,6 +431,9 @@ class _CommandPage extends StatelessWidget {
   final GlobalKey playKey;
   final GlobalKey powerupsKey;
   final GlobalKey profileKey;
+  final bool isBotSetupOpen;
+  final VoidCallback onOpenBotSetup;
+  final VoidCallback onStartBotMatch;
   final VoidCallback? onResume;
 
   @override
@@ -422,7 +453,10 @@ class _CommandPage extends StatelessWidget {
                   children: [
                     KeyedSubtree(
                       key: homeKey,
-                      child: _HomeHero(controller: controller),
+                      child: _HomeHero(
+                        controller: controller,
+                        onPlayBot: onOpenBotSetup,
+                      ),
                     ),
                     const SizedBox(height: 18),
                     if (wide)
@@ -435,6 +469,9 @@ class _CommandPage extends StatelessWidget {
                               page: this,
                               profileKey: profileKey,
                               playKey: playKey,
+                              isBotSetupOpen: isBotSetupOpen,
+                              onOpenBotSetup: onOpenBotSetup,
+                              onStartBotMatch: onStartBotMatch,
                             ),
                           ),
                           const SizedBox(width: 18),
@@ -454,6 +491,9 @@ class _CommandPage extends StatelessWidget {
                             page: this,
                             profileKey: profileKey,
                             playKey: playKey,
+                            isBotSetupOpen: isBotSetupOpen,
+                            onOpenBotSetup: onOpenBotSetup,
+                            onStartBotMatch: onStartBotMatch,
                           ),
                           const SizedBox(height: 16),
                           _HomeSidePanel(
@@ -478,11 +518,17 @@ class _HomeMainPanel extends StatelessWidget {
     required this.page,
     required this.profileKey,
     required this.playKey,
+    required this.isBotSetupOpen,
+    required this.onOpenBotSetup,
+    required this.onStartBotMatch,
   });
 
   final _CommandPage page;
   final GlobalKey profileKey;
   final GlobalKey playKey;
+  final bool isBotSetupOpen;
+  final VoidCallback onOpenBotSetup;
+  final VoidCallback onStartBotMatch;
 
   @override
   Widget build(BuildContext context) {
@@ -529,13 +575,13 @@ class _HomeMainPanel extends StatelessWidget {
                             controller.loading ? null : controller.createMatch,
                       ),
                       _PlayModeCard(
-                        title: 'Play Bot',
+                        title: 'Play vs Bot',
                         description:
-                            'Practice against NeuroBot with brain-round scoring.',
+                            'Choose difficulty, then start a NeuroBot match.',
                         icon: Icons.smart_toy,
                         color: AppColors.warning,
                         onPressed:
-                            controller.loading ? null : controller.playBot,
+                             controller.loading ? null : onOpenBotSetup,
                       ),
                     ];
                     if (stacked) {
@@ -559,7 +605,13 @@ class _HomeMainPanel extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 14),
-                _BotMatchOptions(controller: controller),
+                if (isBotSetupOpen) ...[
+                  _BotMatchOptions(
+                    controller: controller,
+                    loading: controller.loading,
+                    onStartBotMatch: onStartBotMatch,
+                  ),
+                ],
                 const SizedBox(height: 14),
                 _JoinMatchRow(
                   controller: controller,
@@ -772,10 +824,10 @@ class _ProfileStat extends StatelessWidget {
 }
 
 class _HomeHero extends StatelessWidget {
-  const _HomeHero({required this.controller});
-
-  final MatchController controller;
-
+  const _HomeHero({
+    required this.controller,
+    required this.onPlayBot,
+  });
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < 680;
@@ -862,7 +914,7 @@ class _HomeHero extends StatelessWidget {
                     _HeroAction(
                       label: 'PLAY BOT',
                       icon: Icons.smart_toy,
-                      onPressed: controller.loading ? null : controller.playBot,
+                      onPressed: controller.loading ? null : onPlayBot,
                     ),
                   ],
                 ),
@@ -1146,9 +1198,15 @@ class _PlayModeCard extends StatelessWidget {
 }
 
 class _BotMatchOptions extends StatelessWidget {
-  const _BotMatchOptions({required this.controller});
+  const _BotMatchOptions({
+    required this.controller,
+    required this.onStartBotMatch,
+    required this.loading,
+  });
 
   final MatchController controller;
+  final VoidCallback onStartBotMatch;
+  final bool loading;
 
   @override
   Widget build(BuildContext context) {
@@ -1213,7 +1271,7 @@ class _BotMatchOptions extends StatelessWidget {
                 'EASY',
                 'NORMAL',
                 'HARD',
-                'EXPERT'
+                'EXPERT',
               ])
                 _ChoicePill(
                   label: _difficultyLabel(difficulty),
@@ -1238,6 +1296,12 @@ class _BotMatchOptions extends StatelessWidget {
                 onPressed: () => controller.setBotPreferredSide('BLACK'),
               ),
             ],
+      ),
+          const SizedBox(height: 10),
+          _ActionButton(
+            label: 'START BOT MATCH',
+            icon: Icons.play_arrow,
+            onPressed: loading ? null : (controller.botDifficulty.isEmpty ? null : onStartBotMatch),
           ),
         ],
       ),
@@ -1254,7 +1318,6 @@ class _BotMatchOptions extends StatelessWidget {
     };
   }
 }
-
 class _ChoicePill extends StatelessWidget {
   const _ChoicePill({
     required this.label,
