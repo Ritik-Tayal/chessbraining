@@ -24,6 +24,7 @@ public class BrainRoundService {
 	private final BrainRoundRepository brainRoundRepository;
 	private final MatchRepository matchRepository;
 	private final MathPuzzleService mathPuzzleService;
+	private final DotConnectPuzzleService dotConnectPuzzleService;
 	private final ClockService clockService;
 	private final ObjectMapper objectMapper;
 
@@ -31,11 +32,13 @@ public class BrainRoundService {
 			BrainRoundRepository brainRoundRepository,
 			MatchRepository matchRepository,
 			MathPuzzleService mathPuzzleService,
+			DotConnectPuzzleService dotConnectPuzzleService,
 			ClockService clockService,
 			ObjectMapper objectMapper) {
 		this.brainRoundRepository = brainRoundRepository;
 		this.matchRepository = matchRepository;
 		this.mathPuzzleService = mathPuzzleService;
+		this.dotConnectPuzzleService = dotConnectPuzzleService;
 		this.clockService = clockService;
 		this.objectMapper = objectMapper;
 	}
@@ -204,6 +207,75 @@ public class BrainRoundService {
 		return completeActiveRound(round, match);
 	}
 
+	@Transactional
+	public AnswerResultResponse submitPath(String matchId, SubmitPathRequest request) {
+		if (request == null) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, "PATH_REQUIRED", "Path request is required.");
+		}
+
+		BrainRoundEntity round = loadActiveRound(matchId);
+		MatchEntity match = loadMatchForUpdate(matchId);
+		requireActiveBrainRoundMatch(match);
+		String side = requirePlayerInMatch(match, request.playerId());
+		boolean isWhite = side.equals("WHITE");
+
+		if (isExpired(round)) {
+			completeActiveRound(round, match);
+			int playerCorrectCount = isWhite ? round.getWhiteCorrectCount() : round.getBlackCorrectCount();
+			return new AnswerResultResponse(false, playerCorrectCount, round.getTotalQuestions());
+		}
+
+		if (!BrainRoundPuzzleType.DOT_CONNECT.name().equals(round.getPuzzleType())) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, "NOT_DOT_CONNECT_ROUND",
+					"This brain round is not a dot-connect puzzle.");
+		}
+
+		List<String> puzzles = parseExpressions(round.getPuzzleExpressions());
+		if (request.puzzleIndex() < 0 || request.puzzleIndex() >= puzzles.size()) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_PUZZLE_INDEX",
+					"Puzzle index is out of range.");
+		}
+
+		int questionMask = 1 << request.puzzleIndex();
+		if (isWhite) {
+			if ((round.getWhiteAnsweredMask() & questionMask) != 0) {
+				throw new ApiException(HttpStatus.CONFLICT, "PUZZLE_ALREADY_ANSWERED",
+						"This puzzle was already answered by this player.");
+			}
+		} else {
+			if ((round.getBlackAnsweredMask() & questionMask) != 0) {
+				throw new ApiException(HttpStatus.CONFLICT, "PUZZLE_ALREADY_ANSWERED",
+						"This puzzle was already answered by this player.");
+			}
+		}
+
+		String puzzleJson = puzzles.get(request.puzzleIndex());
+		boolean correct = dotConnectPuzzleService.validatePath(puzzleJson, request.path());
+
+		if (isWhite) {
+			round.setWhiteAnsweredMask(round.getWhiteAnsweredMask() | questionMask);
+			if (correct) {
+				round.setWhiteCorrectCount(round.getWhiteCorrectCount() + 1);
+			}
+		} else {
+			round.setBlackAnsweredMask(round.getBlackAnsweredMask() | questionMask);
+			if (correct) {
+				round.setBlackCorrectCount(round.getBlackCorrectCount() + 1);
+			}
+		}
+		brainRoundRepository.save(round);
+
+		if (bothPlayersAnsweredAll(round)) {
+			completeActiveRound(round, match);
+		}
+
+		int playerCorrectCount = isWhite ? round.getWhiteCorrectCount() : round.getBlackCorrectCount();
+		return new AnswerResultResponse(
+				correct,
+				playerCorrectCount,
+				round.getTotalQuestions());
+	}
+
 	private BrainRoundResponse completeActiveRound(BrainRoundEntity round, MatchEntity match) {
 		int whiteScore = round.getWhiteCorrectCount();
 		int blackScore = round.getBlackCorrectCount();
@@ -300,6 +372,7 @@ public class BrainRoundService {
 				round.getId(),
 				round.getRoundNumber(),
 				round.getStatus(),
+				round.getPuzzleType(),
 				puzzles,
 				round.getTotalQuestions(),
 				round.getWhiteCorrectCount(),

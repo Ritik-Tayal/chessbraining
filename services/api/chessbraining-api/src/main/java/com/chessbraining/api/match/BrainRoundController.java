@@ -57,6 +57,15 @@ public class BrainRoundController {
 		return response;
 	}
 
+	@PostMapping("/current/paths")
+	public AnswerResultResponse submitPath(
+			@PathVariable String matchId,
+			@RequestBody SubmitPathRequest request) {
+		AnswerResultResponse response = brainRoundService.submitPath(matchId, request);
+		publishIfRoundFinished(matchId);
+		return response;
+	}
+
 	private void publishIfRoundFinished(String matchId) {
 		MatchResponse match = matchService.getMatch(matchId);
 		if (match.phase() != MatchPhase.BRAIN_ROUND) {

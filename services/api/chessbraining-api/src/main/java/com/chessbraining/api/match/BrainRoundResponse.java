@@ -7,6 +7,7 @@ public record BrainRoundResponse(
 		String roundId,
 		int roundNumber,
 		String status,
+		String puzzleType,
 		List<String> puzzles,
 		int totalQuestions,
 		int whiteCorrectCount,
