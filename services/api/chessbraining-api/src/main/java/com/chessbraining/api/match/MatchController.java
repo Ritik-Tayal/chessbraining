@@ -96,6 +96,11 @@ public class MatchController {
 			@RequestBody Map<String, String> request) {
 		MatchResponse response = matchService.requestRematch(matchId, request.get("playerId"));
 		realtimeService.publishMatchState(response);
+		if (response.rematchMatchId() != null && !response.rematchMatchId().isBlank()) {
+			MatchResponse rematch = matchService.getMatch(response.rematchMatchId());
+			realtimeService.publishMatchState(rematch);
+			botService.scheduleContinuation(rematch);
+		}
 		return response;
 	}
 }

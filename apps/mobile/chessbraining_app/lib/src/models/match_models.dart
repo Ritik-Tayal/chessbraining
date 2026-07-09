@@ -327,11 +327,25 @@ class DotConnectPuzzle {
       rows: json['rows'] as int,
       cols: json['cols'] as int,
       dots: (json['dots'] as List<dynamic>)
-          .map((dot) => (dot as List<dynamic>)
-              .map((e) => e as int)
-              .toList())
+          .map(_dotFromJson)
           .toList(),
     );
+  }
+
+  static List<int> _dotFromJson(Object? value) {
+    if (value is List<dynamic> && value.length >= 2) {
+      return [
+        (value[0] as num).toInt(),
+        (value[1] as num).toInt(),
+      ];
+    }
+    if (value is Map<String, dynamic>) {
+      return [
+        (value['row'] as num).toInt(),
+        (value['col'] as num).toInt(),
+      ];
+    }
+    throw const FormatException('Invalid dot-connect coordinate.');
   }
 }
 

@@ -1003,6 +1003,47 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
 	}
 
+	@Test
+	void botRematchCreatesNextMatchImmediatelyAndSwapsColors() throws Exception {
+		JsonNode created = createBotMatch("human-player", "Ritik", "NORMAL", "WHITE", 5);
+		String matchId = created.get("matchId").asText();
+
+		mockMvc.perform(post("/api/v1/matches/{matchId}/resign", matchId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "playerId": "human-player"
+								}
+								"""))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("COMPLETED"));
+
+		JsonNode rematchRequest = objectMapper.readTree(
+				mockMvc.perform(post("/api/v1/matches/{matchId}/rematch", matchId)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("""
+										{
+										  "playerId": "human-player"
+										}
+										"""))
+						.andExpect(status().isOk())
+						.andExpect(jsonPath("$.rematchRequestedByPlayerId").value("human-player"))
+						.andExpect(jsonPath("$.rematchMatchId").isNotEmpty())
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", rematchRequest.get("rematchMatchId").asText()))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.status").value("ACTIVE"))
+				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
+				.andExpect(jsonPath("$.white.bot").value(true))
+				.andExpect(jsonPath("$.white.botDifficulty").value("NORMAL"))
+				.andExpect(jsonPath("$.black.playerId").value("human-player"))
+				.andExpect(jsonPath("$.black.bot").value(false))
+				.andExpect(jsonPath("$.clockDeadlineAt").isNotEmpty());
+	}
+
 	private JsonNode createJoinedMatch(int brainRoundIntervalMoves) throws Exception {
 		JsonNode created = createMatch("white-player", "Ritik", brainRoundIntervalMoves);
 		String joined = mockMvc.perform(post("/api/v1/matches/join")

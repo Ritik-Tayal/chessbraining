@@ -631,6 +631,7 @@ class MatchController extends ChangeNotifier {
           winnerPlayerId: currentRound.winnerPlayerId,
           startedAt: currentRound.startedAt,
           expiresAt: currentRound.expiresAt,
+          completedAt: currentRound.completedAt,
         );
       }
       notifyListeners();
