@@ -18,6 +18,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.context.ActiveProfiles;
 
 import com.chessbraining.api.match.BrainRoundEntity;
+import com.chessbraining.api.match.BrainRoundPuzzleType;
 import com.chessbraining.api.match.BrainRoundRepository;
 import com.chessbraining.api.match.MatchEntity;
 import com.chessbraining.api.match.MatchRepository;
@@ -251,11 +252,7 @@ class ChessbrainingApiApplicationTests {
 		org.junit.jupiter.api.Assertions.assertEquals(1, brainRoundMatch.get("brainRoundCount").asInt());
 
 		JsonNode round = currentBrainRound(matchId);
-		int totalQuestions = round.get("totalQuestions").asInt();
-		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(brainRoundSubmissionJson("human-player", totalQuestions)))
-				.andExpect(status().isOk());
+		submitEveryBrainRoundPuzzle(matchId, "human-player", round);
 
 		JsonNode completed = waitForMatch(matchId, match ->
 				"CHESS_PHASE".equals(match.get("phase").asText()) &&
@@ -263,7 +260,7 @@ class ChessbrainingApiApplicationTests {
 		JsonNode result = completed.get("latestBrainRoundResult");
 		int botScore = result.get("blackCorrectCount").asInt();
 		org.junit.jupiter.api.Assertions.assertTrue(botScore >= 0);
-		org.junit.jupiter.api.Assertions.assertTrue(botScore <= totalQuestions);
+		org.junit.jupiter.api.Assertions.assertTrue(botScore <= round.get("totalQuestions").asInt());
 		org.junit.jupiter.api.Assertions.assertEquals(1, result.get("roundNumber").asInt());
 	}
 
@@ -403,8 +400,8 @@ class ChessbrainingApiApplicationTests {
 		submitMove(matchId, "white-player", "e2", "e4");
 		submitMove(matchId, "black-player", "e7", "e5");
 
-		answerEveryQuestion(matchId, "white-player");
-		answerEveryQuestion(matchId, "black-player");
+		submitEveryBrainRoundPuzzle(matchId, "white-player");
+		submitEveryBrainRoundPuzzle(matchId, "black-player");
 
 		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
 				.andExpect(status().isOk())
@@ -496,6 +493,7 @@ class ChessbrainingApiApplicationTests {
 
 		submitMove(matchId, "white-player", "e2", "e4");
 		submitMove(matchId, "black-player", "e7", "e5");
+		forceActiveRoundPuzzleType(matchId, BrainRoundPuzzleType.MENTAL_MATH.name());
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
 						.contentType(MediaType.APPLICATION_JSON)
@@ -519,6 +517,7 @@ class ChessbrainingApiApplicationTests {
 
 		submitMove(matchId, "white-player", "e2", "e4");
 		submitMove(matchId, "black-player", "e7", "e5");
+		forceActiveRoundPuzzleType(matchId, BrainRoundPuzzleType.MENTAL_MATH.name());
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
 						.contentType(MediaType.APPLICATION_JSON)
@@ -566,6 +565,7 @@ class ChessbrainingApiApplicationTests {
 
 		submitMove(matchId, "white-player", "e2", "e4");
 		submitMove(matchId, "black-player", "e7", "e5");
+		forceActiveRoundPuzzleType(matchId, BrainRoundPuzzleType.MENTAL_MATH.name());
 		expireActiveBrainRound(matchId);
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/resign", matchId)
@@ -596,6 +596,7 @@ class ChessbrainingApiApplicationTests {
 
 		submitMove(matchId, "white-player", "e2", "e4");
 		submitMove(matchId, "black-player", "e7", "e5");
+		forceActiveRoundPuzzleType(matchId, BrainRoundPuzzleType.MENTAL_MATH.name());
 		expireActiveBrainRound(matchId);
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
@@ -942,7 +943,9 @@ class ChessbrainingApiApplicationTests {
 		JsonNode joined = objectMapper.readTree(joinedResponse);
 		String matchId = joined.get("matchId").asText();
 
-		Thread.sleep(31000);
+		MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+		match.setClockDeadlineAt(Instant.now().minusSeconds(1));
+		matchRepository.save(match);
 
 		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
 				.andExpect(status().isOk())
@@ -1157,8 +1160,20 @@ class ChessbrainingApiApplicationTests {
 				.andExpect(status().isOk());
 	}
 
-	private void answerEveryQuestion(String matchId, String playerId) throws Exception {
-		JsonNode round = currentBrainRound(matchId);
+	private void submitEveryBrainRoundPuzzle(String matchId, String playerId) throws Exception {
+		submitEveryBrainRoundPuzzle(matchId, playerId, currentBrainRound(matchId));
+	}
+
+	private void submitEveryBrainRoundPuzzle(String matchId, String playerId, JsonNode round) throws Exception {
+		String puzzleType = round.get("puzzleType").asText();
+		if (BrainRoundPuzzleType.DOT_CONNECT.name().equals(puzzleType)) {
+			submitEveryDotConnectPuzzle(matchId, playerId, round);
+		} else {
+			submitEveryMathPuzzle(matchId, playerId, round);
+		}
+	}
+
+	private void submitEveryMathPuzzle(String matchId, String playerId, JsonNode round) throws Exception {
 		int totalQuestions = round.get("totalQuestions").asInt();
 
 		for (int i = 0; i < totalQuestions; i++) {
@@ -1173,6 +1188,31 @@ class ChessbrainingApiApplicationTests {
 									""".formatted(playerId, i)))
 					.andExpect(status().isOk());
 		}
+	}
+
+	private void submitEveryDotConnectPuzzle(String matchId, String playerId, JsonNode round) throws Exception {
+		int totalQuestions = round.get("totalQuestions").asInt();
+
+		for (int i = 0; i < totalQuestions; i++) {
+			mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/paths", matchId)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{
+									  "playerId": "%s",
+									  "puzzleIndex": %d,
+									  "path": [[0,0],[0,1],[0,2]]
+									}
+									""".formatted(playerId, i)))
+					.andExpect(status().isOk());
+		}
+	}
+
+	private void forceActiveRoundPuzzleType(String matchId, String puzzleType) {
+		BrainRoundEntity round = brainRoundRepository
+				.findFirstByMatchIdAndStatusOrderByStartedAtDesc(matchId, "ACTIVE")
+				.orElseThrow();
+		round.setPuzzleType(puzzleType);
+		brainRoundRepository.save(round);
 	}
 
 	private JsonNode currentBrainRound(String matchId) throws Exception {

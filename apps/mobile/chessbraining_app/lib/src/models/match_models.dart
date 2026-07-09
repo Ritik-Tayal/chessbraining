@@ -326,9 +326,7 @@ class DotConnectPuzzle {
     return DotConnectPuzzle(
       rows: json['rows'] as int,
       cols: json['cols'] as int,
-      dots: (json['dots'] as List<dynamic>)
-          .map(_dotFromJson)
-          .toList(),
+      dots: (json['dots'] as List<dynamic>).map(_dotFromJson).toList(),
     );
   }
 

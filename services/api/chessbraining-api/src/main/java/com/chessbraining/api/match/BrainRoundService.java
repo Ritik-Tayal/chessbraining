@@ -73,8 +73,10 @@ public class BrainRoundService {
 
 		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
-		List<Integer> answers = parseAnswers(round.getPuzzleAnswers());
 		requireActiveBrainRoundMatch(match);
+		requirePuzzleType(round, BrainRoundPuzzleType.MENTAL_MATH, "NOT_MENTAL_MATH_ROUND",
+				"This brain round is not a mental math puzzle.");
+		List<Integer> answers = parseAnswers(round.getPuzzleAnswers());
 		String side = requirePlayerInMatch(match, request.playerId());
 		boolean isWhite = side.equals("WHITE");
 		if (isExpired(round)) {
@@ -130,8 +132,10 @@ public class BrainRoundService {
 
 		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
-		List<Integer> answers = parseAnswers(round.getPuzzleAnswers());
 		requireActiveBrainRoundMatch(match);
+		requirePuzzleType(round, BrainRoundPuzzleType.MENTAL_MATH, "NOT_MENTAL_MATH_ROUND",
+				"This brain round is not a mental math puzzle.");
+		List<Integer> answers = parseAnswers(round.getPuzzleAnswers());
 		String side = requirePlayerInMatch(match, request.playerId());
 		boolean isWhite = side.equals("WHITE");
 		int allAnsweredMask = allAnsweredMask(round);
@@ -235,10 +239,8 @@ public class BrainRoundService {
 			return new AnswerResultResponse(false, playerCorrectCount, round.getTotalQuestions());
 		}
 
-		if (!BrainRoundPuzzleType.DOT_CONNECT.name().equals(round.getPuzzleType())) {
-			throw new ApiException(HttpStatus.BAD_REQUEST, "NOT_DOT_CONNECT_ROUND",
-					"This brain round is not a dot-connect puzzle.");
-		}
+		requirePuzzleType(round, BrainRoundPuzzleType.DOT_CONNECT, "NOT_DOT_CONNECT_ROUND",
+				"This brain round is not a dot-connect puzzle.");
 
 		List<String> puzzles = parseExpressions(round.getPuzzleExpressions());
 		if (request.puzzleIndex() < 0 || request.puzzleIndex() >= puzzles.size()) {
@@ -332,6 +334,16 @@ public class BrainRoundService {
 	private void requireActiveBrainRoundMatch(MatchEntity match) {
 		if (match.getStatus() != MatchStatus.ACTIVE || match.getPhase() != MatchPhase.BRAIN_ROUND) {
 			throw new ApiException(HttpStatus.CONFLICT, "NOT_IN_BRAIN_ROUND", "Match is not in a brain round.");
+		}
+	}
+
+	private void requirePuzzleType(
+			BrainRoundEntity round,
+			BrainRoundPuzzleType expectedType,
+			String errorCode,
+			String message) {
+		if (!expectedType.name().equals(round.getPuzzleType())) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, errorCode, message);
 		}
 	}
 

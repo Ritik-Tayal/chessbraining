@@ -778,8 +778,7 @@ class MatchController extends ChangeNotifier {
 
   void _setMatch(MatchModel value) {
     final currentMatch = match;
-    if (movePending &&
-        currentMatch != null &&
+    if (currentMatch != null &&
         value.matchId == currentMatch.matchId &&
         value.plyCount < currentMatch.plyCount) {
       return;
