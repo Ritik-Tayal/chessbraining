@@ -48,6 +48,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
         timer?.cancel();
         if (scoreSubmitted) {
           unawaited(widget.controller.completeBrainRound());
+        } else if (round.isDotConnect) {
+          unawaited(_submitDotConnectPaths());
         } else {
           unawaited(_submitAnswers());
         }
@@ -85,13 +87,18 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     final secondsLeft = round == null ? 30 : _remainingSeconds(round);
     final totalSeconds = round == null ? 30 : _durationSeconds(round);
     final progress = totalSeconds == 0 ? 0.0 : secondsLeft / totalSeconds;
+    final answeredCount = round?.isDotConnect == true
+        ? dotConnectSolvedCount
+        : answersByQuestion.length;
     final displayedScore =
-        scoreSubmitted ? max(score, serverScore) : answersByQuestion.length;
+        scoreSubmitted ? max(score, serverScore) : answeredCount;
     final scoreLabel = scoreSubmitted ? 'SCORE' : 'DONE';
     final scoreValue = scoreSubmitted
         ? '$displayedScore'
-        : '${answersByQuestion.length}/${round?.totalQuestions ?? 0}';
+        : '$answeredCount/${round?.totalQuestions ?? 0}';
     final deadlinePassed = round != null && secondsLeft == 0;
+    final roundTitle =
+        round?.isDotConnect == true ? 'DOT CONNECT' : 'MENTAL MATH';
 
     return Positioned.fill(
       child: Material(
@@ -109,6 +116,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _BrainHeader(
+                          title: roundTitle,
                           scoreLabel: scoreLabel,
                           scoreValue: scoreValue,
                           secondsLeft: secondsLeft,
@@ -300,7 +308,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     await widget.controller.completeBrainRound();
   }
 
-  void _onDotConnectSolved(int puzzleIndex, bool correct, List<List<int>> path) {
+  void _onDotConnectSolved(
+      int puzzleIndex, bool correct, List<List<int>> path) {
     setState(() {
       dotConnectSolvedCount++;
       dotConnectPaths[puzzleIndex] = path;
@@ -322,6 +331,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
 
     setState(() => submitting = true);
     int totalCorrect = 0;
+    final deadlinePassed = _remainingSeconds(round) == 0;
 
     for (final entry in dotConnectPaths.entries) {
       final result = await widget.controller.submitDotConnectPath(
@@ -342,18 +352,24 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       submitting = false;
     });
     SoundService.instance.playBrainRoundEnd();
-    unawaited(widget.controller.refresh());
+    if (deadlinePassed) {
+      await widget.controller.completeBrainRound();
+    } else {
+      unawaited(widget.controller.refresh());
+    }
   }
 }
 
 class _BrainHeader extends StatelessWidget {
   const _BrainHeader({
+    required this.title,
     required this.scoreLabel,
     required this.scoreValue,
     required this.secondsLeft,
     required this.compact,
   });
 
+  final String title;
   final String scoreLabel;
   final String scoreValue;
   final int secondsLeft;
@@ -367,7 +383,7 @@ class _BrainHeader extends StatelessWidget {
         const SizedBox(width: 10),
         Expanded(
           child: Text(
-            'BRAIN ROUND',
+            title,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
               color: const Color(0xff170f0a),

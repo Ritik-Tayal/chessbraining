@@ -872,7 +872,7 @@ class _HomeHero extends StatelessWidget {
                   runSpacing: 8,
                   children: const [
                     _TinyStat(icon: Icons.timer, value: '5 min'),
-                    _TinyStat(icon: Icons.calculate, value: 'Math rounds'),
+                    _TinyStat(icon: Icons.extension, value: 'Brain games'),
                     _TinyStat(icon: Icons.bolt, value: 'Powerups'),
                   ],
                 ),
@@ -1405,10 +1405,10 @@ class _RulesSnapshot extends StatelessWidget {
     const steps = [
       (Icons.grid_4x4, '1', 'Play chess', 'Normal legal chess moves.'),
       (
-        Icons.calculate,
+        Icons.extension,
         '2',
         'Win brain rounds',
-        'Fast math battles pause play.'
+        'Math or dot-connect games pause play.'
       ),
       (Icons.bolt, '3', 'Spend BP', 'Use powerups during chess turns.'),
     ];

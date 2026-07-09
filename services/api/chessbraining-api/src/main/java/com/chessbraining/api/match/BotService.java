@@ -199,6 +199,9 @@ public class BotService {
 		if (round == null || botAlreadyAnswered(round, bot.side())) {
 			return false;
 		}
+		if (BrainRoundPuzzleType.DOT_CONNECT.name().equals(round.getPuzzleType())) {
+			return submitBotDotConnectRound(match, bot, round);
+		}
 		List<Integer> answers = parseAnswers(round.getPuzzleAnswers());
 		int targetScore = botScore(bot, round.getTotalQuestions(), match.brainRoundCount());
 		List<SubmitAnswerBatchRequest.SubmittedAnswer> submitted = new ArrayList<>();
@@ -213,6 +216,30 @@ public class BotService {
 				match.matchId(),
 				new SubmitAnswerBatchRequest(bot.playerId(), submitted));
 		return response.roundCompleted();
+	}
+
+	private boolean submitBotDotConnectRound(MatchResponse match, PlayerResponse bot, BrainRoundEntity round) {
+		List<String> puzzles = parseExpressions(round.getPuzzleExpressions());
+		int targetScore = botScore(bot, round.getTotalQuestions(), match.brainRoundCount());
+		int submittedCount = 0;
+		for (int i = 0; i < round.getTotalQuestions() && i < puzzles.size(); i++) {
+			List<List<Integer>> path = i < targetScore
+					? solutionPath(puzzles.get(i))
+					: List.of(List.of(0, 0), List.of(0, 1));
+			try {
+				brainRoundService.submitPath(
+						match.matchId(),
+						new SubmitPathRequest(bot.playerId(), i, path));
+				submittedCount++;
+			} catch (ApiException ex) {
+				if ("NOT_IN_BRAIN_ROUND".equals(ex.getCode()) ||
+						"BRAIN_ROUND_NOT_FOUND".equals(ex.getCode())) {
+					break;
+				}
+				throw ex;
+			}
+		}
+		return submittedCount > 0 && matchService.getMatch(match.matchId()).phase() != MatchPhase.BRAIN_ROUND;
 	}
 
 	private int botScore(PlayerResponse bot, int totalQuestions, int roundNumber) {
@@ -280,6 +307,26 @@ public class BotService {
 			return List.of(objectMapper.readValue(json, Integer[].class));
 		} catch (tools.jackson.core.JacksonException e) {
 			throw new IllegalStateException("Failed to parse bot brain-round answers.", e);
+		}
+	}
+
+	private List<String> parseExpressions(String json) {
+		try {
+			return List.of(objectMapper.readValue(json, String[].class));
+		} catch (tools.jackson.core.JacksonException e) {
+			throw new IllegalStateException("Failed to parse bot brain-round puzzles.", e);
+		}
+	}
+
+	private List<List<Integer>> solutionPath(String puzzleJson) {
+		try {
+			DotConnectPuzzleService.PuzzleData puzzle =
+					objectMapper.readValue(puzzleJson, DotConnectPuzzleService.PuzzleData.class);
+			return puzzle.solutionPath().stream()
+					.map(dot -> List.of(dot.row(), dot.col()))
+					.toList();
+		} catch (tools.jackson.core.JacksonException e) {
+			return List.of(List.of(0, 0), List.of(0, 1));
 		}
 	}
 
