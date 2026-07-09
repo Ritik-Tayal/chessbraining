@@ -27,6 +27,9 @@ public class BrainRoundEntity {
 	@Column(nullable = false, length = 32)
 	private String status;
 
+	@Column(nullable = false, length = 32)
+	private String puzzleType;
+
 	@Column(length = 64)
 	private String winnerPlayerId;
 
@@ -104,6 +107,14 @@ public class BrainRoundEntity {
 
 	public void setStatus(String status) {
 		this.status = status;
+	}
+
+	public String getPuzzleType() {
+		return puzzleType;
+	}
+
+	public void setPuzzleType(String puzzleType) {
+		this.puzzleType = puzzleType;
 	}
 
 	public String getWinnerPlayerId() {

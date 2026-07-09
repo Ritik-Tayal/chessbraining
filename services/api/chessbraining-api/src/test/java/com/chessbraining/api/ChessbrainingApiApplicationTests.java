@@ -303,7 +303,9 @@ class ChessbrainingApiApplicationTests {
 				mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
 						.andExpect(status().isOk())
 						.andExpect(jsonPath("$.status").value("ACTIVE"))
+						.andExpect(jsonPath("$.puzzleType").isNotEmpty())
 						.andExpect(jsonPath("$.puzzles").isArray())
+						.andExpect(jsonPath("$.totalQuestions").isNumber())
 						.andExpect(jsonPath("$.expiresAt").isNotEmpty())
 						.andReturn()
 						.getResponse()
@@ -340,23 +342,42 @@ class ChessbrainingApiApplicationTests {
 						.getResponse()
 						.getContentAsString());
 
-		String[] puzzles = objectMapper.convertValue(round.get("puzzles"), String[].class);
+		String puzzleType = round.get("puzzleType").asText();
 		int totalQuestions = round.get("totalQuestions").asInt();
 
-		for (int i = 0; i < puzzles.length; i++) {
-			mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
-							.contentType(MediaType.APPLICATION_JSON)
-							.content("""
-									{
-									  "playerId": "white-player",
-									  "questionIndex": %d,
-									  "answer": 0
-									}
-									""".formatted(i)))
-					.andExpect(status().isOk())
-					.andExpect(jsonPath("$.correct").isBoolean())
-					.andExpect(jsonPath("$.correctAnswer").doesNotExist())
-					.andExpect(jsonPath("$.totalQuestions").value(totalQuestions));
+		if ("MENTAL_MATH".equals(puzzleType)) {
+			String[] puzzles = objectMapper.convertValue(round.get("puzzles"), String[].class);
+
+			for (int i = 0; i < puzzles.length; i++) {
+				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/answers", matchId)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("""
+										{
+										  "playerId": "white-player",
+										  "questionIndex": %d,
+										  "answer": 0
+										}
+										""".formatted(i)))
+						.andExpect(status().isOk())
+						.andExpect(jsonPath("$.correct").isBoolean())
+						.andExpect(jsonPath("$.correctAnswer").doesNotExist())
+						.andExpect(jsonPath("$.totalQuestions").value(totalQuestions));
+			}
+		} else {
+			for (int i = 0; i < totalQuestions; i++) {
+				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/paths", matchId)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("""
+										{
+										  "playerId": "white-player",
+										  "puzzleIndex": %d,
+										  "path": [[0,0],[0,1],[0,2]]
+										}
+										""".formatted(i)))
+						.andExpect(status().isOk())
+						.andExpect(jsonPath("$.correct").isBoolean())
+						.andExpect(jsonPath("$.totalQuestions").value(totalQuestions));
+			}
 		}
 
 		expireActiveBrainRound(matchId);
@@ -401,25 +422,63 @@ class ChessbrainingApiApplicationTests {
 		JsonNode round = currentBrainRound(matchId);
 		int totalQuestions = round.get("totalQuestions").asInt();
 
-		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(brainRoundSubmissionJson("white-player", totalQuestions)))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.playerAnsweredCount").value(totalQuestions))
-				.andExpect(jsonPath("$.totalQuestions").value(totalQuestions))
-				.andExpect(jsonPath("$.roundCompleted").value(false));
+		JsonNode round = objectMapper.readTree(
+				mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
+						.andExpect(status().isOk())
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
 
-		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.phase").value("BRAIN_ROUND"));
+		String puzzleType = round.get("puzzleType").asText();
+		int totalQuestions = round.get("totalQuestions").asInt();
 
-		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
-						.contentType(MediaType.APPLICATION_JSON)
-						.content(brainRoundSubmissionJson("black-player", totalQuestions)))
-				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.playerAnsweredCount").value(totalQuestions))
-				.andExpect(jsonPath("$.totalQuestions").value(totalQuestions))
-				.andExpect(jsonPath("$.roundCompleted").value(true));
+		if ("MENTAL_MATH".equals(puzzleType)) {
+			mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(brainRoundSubmissionJson("white-player", totalQuestions)))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.playerAnsweredCount").value(totalQuestions))
+					.andExpect(jsonPath("$.totalQuestions").value(totalQuestions))
+					.andExpect(jsonPath("$.roundCompleted").value(false));
+
+			mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.phase").value("BRAIN_ROUND"));
+
+			mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content(brainRoundSubmissionJson("black-player", totalQuestions)))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.playerAnsweredCount").value(totalQuestions))
+					.andExpect(jsonPath("$.totalQuestions").value(totalQuestions))
+					.andExpect(jsonPath("$.roundCompleted").value(true));
+		} else {
+			for (int i = 0; i < totalQuestions; i++) {
+				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/paths", matchId)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("""
+										{
+										  "playerId": "white-player",
+										  "puzzleIndex": %d,
+										  "path": [[0,0],[0,1],[0,2]]
+										}
+										""".formatted(i)))
+						.andExpect(status().isOk());
+			}
+
+			for (int i = 0; i < totalQuestions; i++) {
+				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/paths", matchId)
+								.contentType(MediaType.APPLICATION_JSON)
+								.content("""
+										{
+										  "playerId": "black-player",
+										  "puzzleIndex": %d,
+										  "path": [[0,0],[0,1],[0,2]]
+										}
+										""".formatted(i)))
+						.andExpect(status().isOk());
+			}
+		}
 
 		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
 				.andExpect(status().isOk())

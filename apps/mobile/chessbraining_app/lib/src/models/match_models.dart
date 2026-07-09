@@ -254,6 +254,7 @@ class BrainRoundModel {
     required this.roundId,
     required this.roundNumber,
     required this.status,
+    required this.puzzleType,
     required this.puzzles,
     required this.totalQuestions,
     required this.whiteCorrectCount,
@@ -269,6 +270,7 @@ class BrainRoundModel {
   final String roundId;
   final int roundNumber;
   final String status;
+  final String puzzleType;
   final List<String> puzzles;
   final int totalQuestions;
   final int whiteCorrectCount;
@@ -282,11 +284,15 @@ class BrainRoundModel {
 
   bool get isCompleted => status == 'COMPLETED';
 
+  bool get isMathPuzzle => puzzleType == 'MENTAL_MATH';
+  bool get isDotConnect => puzzleType == 'DOT_CONNECT';
+
   factory BrainRoundModel.fromJson(Map<String, dynamic> json) {
     return BrainRoundModel(
       roundId: json['roundId'] as String,
       roundNumber: json['roundNumber'] as int,
       status: json['status'] as String,
+      puzzleType: json['puzzleType'] as String? ?? 'MENTAL_MATH',
       puzzles: (json['puzzles'] as List<dynamic>)
           .map((item) => item.toString())
           .toList(),
@@ -301,6 +307,30 @@ class BrainRoundModel {
       completedAt: json['completedAt'] == null
           ? null
           : DateTime.parse(json['completedAt'] as String),
+    );
+  }
+}
+
+class DotConnectPuzzle {
+  const DotConnectPuzzle({
+    required this.rows,
+    required this.cols,
+    required this.dots,
+  });
+
+  final int rows;
+  final int cols;
+  final List<List<int>> dots;
+
+  factory DotConnectPuzzle.fromJson(Map<String, dynamic> json) {
+    return DotConnectPuzzle(
+      rows: json['rows'] as int,
+      cols: json['cols'] as int,
+      dots: (json['dots'] as List<dynamic>)
+          .map((dot) => (dot as List<dynamic>)
+              .map((e) => e as int)
+              .toList())
+          .toList(),
     );
   }
 }

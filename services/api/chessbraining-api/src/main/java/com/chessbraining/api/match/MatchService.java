@@ -22,6 +22,7 @@ public class MatchService {
 	private static final int DEFAULT_TIME_CONTROL_SECONDS = 300;
 	private static final int DEFAULT_BRAIN_ROUND_INTERVAL_MOVES = 5;
 	private static final int DEFAULT_BRAIN_ROUND_SECONDS = 30;
+	private static final int DOT_CONNECT_PUZZLE_COUNT = 5;
 	private static final int QUICKPLAY_WAITING_TTL_SECONDS = 600;
 	private static final int WINNER_BRAIN_POINTS = 2;
 	private static final int TIE_BRAIN_POINTS = 1;
@@ -37,6 +38,7 @@ public class MatchService {
 	private final ChessService chessService;
 	private final ClockService clockService;
 	private final MathPuzzleService mathPuzzleService;
+	private final DotConnectPuzzleService dotConnectPuzzleService;
 	private final tools.jackson.databind.ObjectMapper objectMapper;
 	private final TransactionTemplate transactionTemplate;
 
@@ -47,6 +49,7 @@ public class MatchService {
 			ChessService chessService,
 			ClockService clockService,
 			MathPuzzleService mathPuzzleService,
+			DotConnectPuzzleService dotConnectPuzzleService,
 			tools.jackson.databind.ObjectMapper objectMapper,
 			TransactionTemplate transactionTemplate) {
 		this.matchRepository = matchRepository;
@@ -55,6 +58,7 @@ public class MatchService {
 		this.chessService = chessService;
 		this.clockService = clockService;
 		this.mathPuzzleService = mathPuzzleService;
+		this.dotConnectPuzzleService = dotConnectPuzzleService;
 		this.objectMapper = objectMapper;
 		this.transactionTemplate = transactionTemplate;
 	}
@@ -471,23 +475,36 @@ public class MatchService {
 		match.setPhase(MatchPhase.BRAIN_ROUND);
 		match.setBrainRoundCount(match.getBrainRoundCount() + 1);
 
-		MathPuzzleService.PuzzleSet puzzleSet = mathPuzzleService.generatePuzzles();
+		boolean useDotConnect = RANDOM.nextBoolean();
+		String puzzleType = useDotConnect
+				? BrainRoundPuzzleType.DOT_CONNECT.name()
+				: BrainRoundPuzzleType.MENTAL_MATH.name();
 		Instant now = Instant.now();
 
 		BrainRoundEntity round = new BrainRoundEntity();
 		round.setMatchId(match.getId());
 		round.setRoundNumber(match.getBrainRoundCount());
 		round.setStatus(BRAIN_ROUND_ACTIVE);
+		round.setPuzzleType(puzzleType);
 		round.setStartedAt(now);
 		round.setExpiresAt(now.plusSeconds(DEFAULT_BRAIN_ROUND_SECONDS));
+
 		try {
-			round.setPuzzleExpressions(objectMapper.writeValueAsString(puzzleSet.expressions()));
-			round.setPuzzleAnswers(objectMapper.writeValueAsString(puzzleSet.answers()));
+			if (useDotConnect) {
+				DotConnectPuzzleService.PuzzleSet puzzleSet = dotConnectPuzzleService.generatePuzzleSet(DOT_CONNECT_PUZZLE_COUNT);
+				round.setPuzzleExpressions(objectMapper.writeValueAsString(puzzleSet.puzzles()));
+				round.setPuzzleAnswers(objectMapper.writeValueAsString(puzzleSet.answers()));
+				round.setTotalQuestions(puzzleSet.puzzles().size());
+			} else {
+				MathPuzzleService.PuzzleSet puzzleSet = mathPuzzleService.generatePuzzles();
+				round.setPuzzleExpressions(objectMapper.writeValueAsString(puzzleSet.expressions()));
+				round.setPuzzleAnswers(objectMapper.writeValueAsString(puzzleSet.answers()));
+				round.setTotalQuestions(puzzleSet.expressions().size());
+			}
 		} catch (tools.jackson.core.JacksonException e) {
 			throw new org.springframework.web.server.ResponseStatusException(
 					org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Failed to serialize puzzles");
 		}
-		round.setTotalQuestions(puzzleSet.expressions().size());
 		round.setWhiteCorrectCount(0);
 		round.setBlackCorrectCount(0);
 		round.setWhiteAnsweredMask(0);

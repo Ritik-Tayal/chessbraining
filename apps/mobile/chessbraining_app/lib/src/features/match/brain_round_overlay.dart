@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/match_models.dart';
 import '../../services/sound_service.dart';
+import 'dot_connect_puzzle.dart';
 import 'match_controller.dart';
 
 class BrainRoundOverlay extends StatefulWidget {
@@ -28,6 +29,10 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   bool finished = false;
   bool scoreSubmitted = false;
   bool submitting = false;
+
+  int dotConnectSolvedCount = 0;
+  final Map<int, List<List<int>>> dotConnectPaths = {};
+  final Map<int, bool> dotConnectResults = {};
 
   @override
   void initState() {
@@ -124,29 +129,36 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                         SizedBox(height: compact ? 10 : 16),
                         Expanded(
                           flex: compact ? 5 : 6,
-                          child: _PuzzleCard(
-                            puzzle: currentPuzzle,
-                            answer: answer,
-                            finished: finished,
-                            scoreSubmitted: scoreSubmitted,
-                            submitting: submitting,
-                            questionIndex: questionIndex,
-                            totalQuestions: round?.totalQuestions ?? 0,
-                            compact: compact,
-                          ),
+                          child: round?.isDotConnect == true
+                              ? DotConnectPuzzleWidget(
+                                  puzzles: puzzles,
+                                  enabled: _inputEnabled,
+                                  onPuzzleSolved: _onDotConnectSolved,
+                                )
+                              : _PuzzleCard(
+                                  puzzle: currentPuzzle,
+                                  answer: answer,
+                                  finished: finished,
+                                  scoreSubmitted: scoreSubmitted,
+                                  submitting: submitting,
+                                  questionIndex: questionIndex,
+                                  totalQuestions: round?.totalQuestions ?? 0,
+                                  compact: compact,
+                                ),
                         ),
                         SizedBox(height: compact ? 10 : 14),
-                        Expanded(
-                          flex: compact ? 5 : 4,
-                          child: _NumberPad(
-                            enabled: _inputEnabled,
-                            onAppend: _append,
-                            onBackspace: _backspace,
-                            onSubmit: _inputEnabled && answer.isNotEmpty
-                                ? _submit
-                                : null,
+                        if (round?.isDotConnect != true)
+                          Expanded(
+                            flex: compact ? 5 : 4,
+                            child: _NumberPad(
+                              enabled: _inputEnabled,
+                              onAppend: _append,
+                              onBackspace: _backspace,
+                              onSubmit: _inputEnabled && answer.isNotEmpty
+                                  ? _submit
+                                  : null,
+                            ),
                           ),
-                        ),
                         SizedBox(height: compact ? 8 : 12),
                         if (widget.controller.error != null) ...[
                           Text(
@@ -278,10 +290,58 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
 
   Future<void> _handleComplete() async {
     if (!scoreSubmitted) {
-      await _submitAnswers();
+      if (widget.controller.brainRound?.isDotConnect == true) {
+        await _submitDotConnectPaths();
+      } else {
+        await _submitAnswers();
+      }
       return;
     }
     await widget.controller.completeBrainRound();
+  }
+
+  void _onDotConnectSolved(int puzzleIndex, bool correct, List<List<int>> path) {
+    setState(() {
+      dotConnectSolvedCount++;
+      dotConnectPaths[puzzleIndex] = path;
+      dotConnectResults[puzzleIndex] = correct;
+    });
+
+    final round = widget.controller.brainRound;
+    if (round != null && dotConnectSolvedCount >= round.totalQuestions) {
+      setState(() => finished = true);
+      unawaited(_submitDotConnectPaths());
+    }
+  }
+
+  Future<void> _submitDotConnectPaths() async {
+    final round = widget.controller.brainRound;
+    if (round == null || scoreSubmitted || submitting) {
+      return;
+    }
+
+    setState(() => submitting = true);
+    int totalCorrect = 0;
+
+    for (final entry in dotConnectPaths.entries) {
+      final result = await widget.controller.submitDotConnectPath(
+        puzzleIndex: entry.key,
+        path: entry.value,
+      );
+      if (result != null && result.correct) {
+        totalCorrect++;
+      }
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      score = totalCorrect;
+      finished = true;
+      scoreSubmitted = true;
+      submitting = false;
+    });
+    SoundService.instance.playBrainRoundEnd();
   }
 }
 

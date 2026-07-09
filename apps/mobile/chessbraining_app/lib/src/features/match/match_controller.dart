@@ -479,6 +479,7 @@ class MatchController extends ChangeNotifier {
           roundId: currentRound.roundId,
           roundNumber: currentRound.roundNumber,
           status: currentRound.status,
+          puzzleType: currentRound.puzzleType,
           puzzles: currentRound.puzzles,
           totalQuestions: currentRound.totalQuestions,
           whiteCorrectCount: isWhite
@@ -528,6 +529,7 @@ class MatchController extends ChangeNotifier {
           roundId: currentRound.roundId,
           roundNumber: currentRound.roundNumber,
           status: currentRound.status,
+          puzzleType: currentRound.puzzleType,
           puzzles: currentRound.puzzles,
           totalQuestions: currentRound.totalQuestions,
           whiteCorrectCount: isWhite
@@ -583,6 +585,65 @@ class MatchController extends ChangeNotifier {
       await _api.completeBrainRound(matchId: current.matchId);
       _setMatch(await _api.getMatch(current.matchId));
     });
+  }
+
+  Future<AnswerResultModel?> submitDotConnectPath({
+    required int puzzleIndex,
+    required List<List<int>> path,
+  }) async {
+    final current = match;
+    if (current == null) {
+      return null;
+    }
+    try {
+      final result = await _api.submitDotConnectPath(
+        matchId: current.matchId,
+        playerId: playerId,
+        puzzleIndex: puzzleIndex,
+        path: path,
+      );
+      final currentRound = brainRound;
+      if (currentRound != null) {
+        final isWhite = me?.side == 'WHITE';
+        final nextWhite = isWhite
+            ? min(currentRound.nextWhiteQuestionIndex + 1,
+                currentRound.totalQuestions)
+            : currentRound.nextWhiteQuestionIndex;
+        final nextBlack = isWhite
+            ? currentRound.nextBlackQuestionIndex
+            : min(currentRound.nextBlackQuestionIndex + 1,
+                currentRound.totalQuestions);
+        brainRound = BrainRoundModel(
+          roundId: currentRound.roundId,
+          roundNumber: currentRound.roundNumber,
+          status: currentRound.status,
+          puzzleType: currentRound.puzzleType,
+          puzzles: currentRound.puzzles,
+          totalQuestions: currentRound.totalQuestions,
+          whiteCorrectCount: isWhite
+              ? result.playerCorrectCount
+              : currentRound.whiteCorrectCount,
+          blackCorrectCount: isWhite
+              ? currentRound.blackCorrectCount
+              : result.playerCorrectCount,
+          nextWhiteQuestionIndex: nextWhite,
+          nextBlackQuestionIndex: nextBlack,
+          winnerPlayerId: currentRound.winnerPlayerId,
+          startedAt: currentRound.startedAt,
+          expiresAt: currentRound.expiresAt,
+        );
+      }
+      notifyListeners();
+      return result;
+    } on ApiException catch (exception) {
+      error = exception.message;
+      SoundService.instance.playError();
+    } catch (exception) {
+      error = exception.toString();
+      SoundService.instance.playError();
+    }
+    notifyListeners();
+    return null;
   }
 
   Future<void> resign() {
