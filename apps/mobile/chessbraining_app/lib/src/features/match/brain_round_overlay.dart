@@ -342,6 +342,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       submitting = false;
     });
     SoundService.instance.playBrainRoundEnd();
+    unawaited(widget.controller.refresh());
   }
 }
 

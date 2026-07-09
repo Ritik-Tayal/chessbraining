@@ -315,6 +315,14 @@ public class MatchService {
 		String requester = playerId.trim();
 		String currentRequest = match.getRematchRequestedByPlayerId();
 		if (currentRequest == null || currentRequest.isBlank()) {
+			if (hasBotPlayer(match) && !isBotPlayer(match, requester)) {
+				MatchEntity rematch = createRematchMatch(match);
+				MatchEntity savedRematch = matchRepository.save(rematch);
+				match.setRematchRequestedByPlayerId(requester);
+				match.setRematchMatchId(savedRematch.getId());
+				MatchEntity saved = matchRepository.save(match);
+				return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
+			}
 			match.setRematchRequestedByPlayerId(requester);
 			MatchEntity saved = matchRepository.save(match);
 			return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
@@ -353,6 +361,15 @@ public class MatchService {
 		match.setStartedAt(Instant.now());
 		clockService.startClocks(match);
 		return match;
+	}
+
+	private boolean hasBotPlayer(MatchEntity match) {
+		return match.isWhiteBot() || match.isBlackBot();
+	}
+
+	private boolean isBotPlayer(MatchEntity match, String playerId) {
+		return (match.isWhiteBot() && playerId.equals(match.getWhitePlayerId())) ||
+				(match.isBlackBot() && playerId.equals(match.getBlackPlayerId()));
 	}
 
 	private MatchResponse joinExistingMatch(MatchEntity match, JoinMatchRequest request) {
