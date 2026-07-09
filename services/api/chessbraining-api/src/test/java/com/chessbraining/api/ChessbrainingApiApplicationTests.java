@@ -421,16 +421,7 @@ class ChessbrainingApiApplicationTests {
 		submitMove(matchId, "black-player", "e7", "e5");
 		JsonNode round = currentBrainRound(matchId);
 		int totalQuestions = round.get("totalQuestions").asInt();
-
-		JsonNode round = objectMapper.readTree(
-				mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/current", matchId))
-						.andExpect(status().isOk())
-						.andReturn()
-						.getResponse()
-						.getContentAsString());
-
 		String puzzleType = round.get("puzzleType").asText();
-		int totalQuestions = round.get("totalQuestions").asInt();
 
 		if ("MENTAL_MATH".equals(puzzleType)) {
 			mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/submissions", matchId)
