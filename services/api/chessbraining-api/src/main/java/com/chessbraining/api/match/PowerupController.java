@@ -13,10 +13,12 @@ public class PowerupController {
 
 	private final PowerupService powerupService;
 	private final MatchRealtimeService realtimeService;
+	private final BotService botService;
 
-	public PowerupController(PowerupService powerupService, MatchRealtimeService realtimeService) {
+	public PowerupController(PowerupService powerupService, MatchRealtimeService realtimeService, BotService botService) {
 		this.powerupService = powerupService;
 		this.realtimeService = realtimeService;
+		this.botService = botService;
 	}
 
 	@PostMapping
@@ -25,6 +27,7 @@ public class PowerupController {
 			@RequestBody ApplyPowerupRequest request) {
 		MatchResponse response = powerupService.applyPowerup(matchId, request);
 		realtimeService.publishMatchState(response);
+		botService.scheduleContinuation(response);
 		return response;
 	}
 }

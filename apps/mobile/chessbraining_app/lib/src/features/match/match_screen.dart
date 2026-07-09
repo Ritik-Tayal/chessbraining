@@ -2,10 +2,12 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../models/match_models.dart';
 import 'brain_round_overlay.dart';
 import 'chess_board.dart';
+import 'fen.dart';
 import 'match_controller.dart';
 
 enum _ScreenPage { command, play }
@@ -25,6 +27,11 @@ class MatchScreen extends StatefulWidget {
 class _MatchScreenState extends State<MatchScreen> {
   final playerNameController = TextEditingController();
   final inviteController = TextEditingController();
+  final commandScrollController = ScrollController();
+  final homeSectionKey = GlobalKey();
+  final playSectionKey = GlobalKey();
+  final powerupsSectionKey = GlobalKey();
+  final profileSectionKey = GlobalKey();
   Timer? clockTicker;
   DateTime? lastClockExpiryRefreshDeadline;
   _ScreenPage selectedPage = _ScreenPage.command;
@@ -75,10 +82,24 @@ class _MatchScreenState extends State<MatchScreen> {
     unawaited(widget.controller.refresh());
   }
 
+  void _scrollToHomeSection(GlobalKey key) {
+    final context = key.currentContext;
+    if (context == null) {
+      return;
+    }
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 320),
+      curve: Curves.easeOutCubic,
+      alignment: 0.08,
+    );
+  }
+
   @override
   void dispose() {
     widget.controller.removeListener(_handleControllerChanged);
     clockTicker?.cancel();
+    commandScrollController.dispose();
     playerNameController.dispose();
     inviteController.dispose();
     super.dispose();
@@ -99,6 +120,11 @@ class _MatchScreenState extends State<MatchScreen> {
         final showCelebration = page == _ScreenPage.play &&
             match?.isCompleted == true &&
             dismissedCelebrationMatchId != match!.matchId;
+        final showBrainRoundResult = page == _ScreenPage.play &&
+            match?.isBrainRound != true &&
+            controller.brainRoundResultNotice != null;
+        final showPowerupEffect =
+            page == _ScreenPage.play && controller.powerupEffect != null;
 
         return Scaffold(
           backgroundColor: AppColors.background,
@@ -108,22 +134,28 @@ class _MatchScreenState extends State<MatchScreen> {
               SafeArea(
                 child: Column(
                   children: [
-                    _TopBar(
-                      controller: controller,
-                      selectedPage: page,
-                      onCommand: () =>
-                          setState(() => selectedPage = _ScreenPage.command),
-                      onPlay: match == null
-                          ? null
-                          : () =>
-                              setState(() => selectedPage = _ScreenPage.play),
-                    ),
+                    if (page == _ScreenPage.command)
+                      _TopBar(
+                        controller: controller,
+                        selectedPage: page,
+                        onCommand: () =>
+                            setState(() => selectedPage = _ScreenPage.command),
+                        onPlay: match == null
+                            ? null
+                            : () =>
+                                setState(() => selectedPage = _ScreenPage.play),
+                      ),
                     Expanded(
                       child: page == _ScreenPage.command
                           ? _CommandPage(
                               controller: controller,
                               playerNameController: playerNameController,
                               inviteController: inviteController,
+                              scrollController: commandScrollController,
+                              homeKey: homeSectionKey,
+                              playKey: playSectionKey,
+                              powerupsKey: powerupsSectionKey,
+                              profileKey: profileSectionKey,
                               onResume: match == null
                                   ? null
                                   : () => setState(
@@ -136,12 +168,34 @@ class _MatchScreenState extends State<MatchScreen> {
                 ),
               ),
               if (showPowerBar) _PowerToolbar(controller: controller),
+              if (page == _ScreenPage.command)
+                _HomeBottomNav(
+                  onHome: () => _scrollToHomeSection(homeSectionKey),
+                  onPlay: () => _scrollToHomeSection(playSectionKey),
+                  onPowerups: () => _scrollToHomeSection(powerupsSectionKey),
+                  onProfile: () => _scrollToHomeSection(profileSectionKey),
+                ),
               if (controller.match?.isBrainRound == true)
                 BrainRoundOverlay(controller: controller),
+              if (showBrainRoundResult)
+                _BrainRoundResultNotice(
+                  key: ValueKey(controller.brainRoundResultNotice!.id),
+                  notice: controller.brainRoundResultNotice!,
+                  playerId: controller.playerId,
+                  onDismiss: controller.dismissBrainRoundResult,
+                ),
+              if (showPowerupEffect)
+                _PowerupEffectOverlay(
+                  key: ValueKey(controller.powerupEffect!.id),
+                  effect: controller.powerupEffect!,
+                  onDismiss: controller.dismissPowerupEffect,
+                ),
               if (showCelebration)
                 _EndGameResult(
                   match: match,
                   playerId: controller.playerId,
+                  loading: controller.loading,
+                  onRematch: controller.requestRematch,
                   onReview: () => setState(
                     () => dismissedCelebrationMatchId = match.matchId,
                   ),
@@ -177,13 +231,22 @@ class _TopBar extends StatelessWidget {
     return Container(
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppColors.background,
-        border: Border(bottom: BorderSide(color: AppColors.border)),
+        border: Border(
+          bottom: BorderSide(color: AppColors.border.withValues(alpha: 0.65)),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          const Icon(Icons.grid_4x4, color: AppColors.primary),
+          const Icon(Icons.menu, color: AppColors.primary, size: 26),
           const SizedBox(width: 10),
           const Flexible(
             child: Text(
@@ -191,8 +254,9 @@ class _TopBar extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: AppColors.primary,
-                fontSize: 22,
+                fontSize: 24,
                 fontWeight: FontWeight.w900,
+                fontFamily: 'Playfair Display',
               ),
             ),
           ),
@@ -204,18 +268,21 @@ class _TopBar extends StatelessWidget {
               onPlay: onPlay,
             ),
           const Spacer(),
-          if (MediaQuery.sizeOf(context).width >= 560) ...[
+          if (selectedPage == _ScreenPage.play &&
+              match != null &&
+              MediaQuery.sizeOf(context).width >= 560) ...[
             Text(
-              match?.phase ?? 'HOME',
+              match.phase,
               style: const TextStyle(
-                color: AppColors.muted,
+                color: AppColors.quiet,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 0.8,
               ),
             ),
             const SizedBox(width: 12),
           ],
-          _LiveChip(connected: controller.realtimeConnected),
+          if (selectedPage == _ScreenPage.play && match != null)
+            _LiveChip(connected: controller.realtimeConnected),
         ],
       ),
     );
@@ -320,12 +387,22 @@ class _CommandPage extends StatelessWidget {
     required this.controller,
     required this.playerNameController,
     required this.inviteController,
+    required this.scrollController,
+    required this.homeKey,
+    required this.playKey,
+    required this.powerupsKey,
+    required this.profileKey,
     required this.onResume,
   });
 
   final MatchController controller;
   final TextEditingController playerNameController;
   final TextEditingController inviteController;
+  final ScrollController scrollController;
+  final GlobalKey homeKey;
+  final GlobalKey playKey;
+  final GlobalKey powerupsKey;
+  final GlobalKey profileKey;
   final VoidCallback? onResume;
 
   @override
@@ -334,30 +411,59 @@ class _CommandPage extends StatelessWidget {
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 980;
         return ListView(
-          padding: const EdgeInsets.fromLTRB(18, 22, 18, 28),
+          controller: scrollController,
+          padding: const EdgeInsets.fromLTRB(18, 22, 18, 108),
           children: [
             Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1100),
-                child: wide
-                    ? Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    KeyedSubtree(
+                      key: homeKey,
+                      child: _HomeHero(controller: controller),
+                    ),
+                    const SizedBox(height: 18),
+                    if (wide)
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(flex: 6, child: _HomeMainPanel(this)),
+                          Expanded(
+                            flex: 6,
+                            child: _HomeMainPanel(
+                              page: this,
+                              profileKey: profileKey,
+                              playKey: playKey,
+                            ),
+                          ),
                           const SizedBox(width: 18),
                           Expanded(
                             flex: 4,
-                            child: _HomeSidePanel(this),
+                            child: _HomeSidePanel(
+                              page: this,
+                              powerupsKey: powerupsKey,
+                            ),
                           ),
                         ],
                       )
-                    : Column(
+                    else
+                      Column(
                         children: [
-                          _HomeMainPanel(this),
+                          _HomeMainPanel(
+                            page: this,
+                            profileKey: profileKey,
+                            playKey: playKey,
+                          ),
                           const SizedBox(height: 16),
-                          _HomeSidePanel(this),
+                          _HomeSidePanel(
+                            page: this,
+                            powerupsKey: powerupsKey,
+                          ),
                         ],
                       ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -368,9 +474,15 @@ class _CommandPage extends StatelessWidget {
 }
 
 class _HomeMainPanel extends StatelessWidget {
-  const _HomeMainPanel(this.page);
+  const _HomeMainPanel({
+    required this.page,
+    required this.profileKey,
+    required this.playKey,
+  });
 
   final _CommandPage page;
+  final GlobalKey profileKey;
+  final GlobalKey playKey;
 
   @override
   Widget build(BuildContext context) {
@@ -378,108 +490,91 @@ class _HomeMainPanel extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _HomeHero(controller: controller),
-        const SizedBox(height: 16),
-        _Panel(
-          title: 'PROFILE',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 52,
-                    height: 52,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.18),
-                      border: Border.all(color: AppColors.primary),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: const Icon(
-                      Icons.person,
-                      color: AppColors.primary,
-                      size: 28,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _TechField(
-                      controller: page.playerNameController,
-                      label: 'DISPLAY NAME',
-                      icon: Icons.edit,
-                      onChanged: controller.updatePlayerName,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+        KeyedSubtree(
+          key: profileKey,
+          child: _Panel(
+            title: 'PROFILE',
+            child: _GuestProfileCard(
+              controller: controller,
+              playerNameController: page.playerNameController,
+            ),
           ),
         ),
         const SizedBox(height: 16),
-        _Panel(
-          title: 'PLAY',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final stacked = constraints.maxWidth < 620;
-                  final cards = [
-                    _PlayModeCard(
-                      title: 'Instant Play',
-                      description: 'Find a waiting player or create a table.',
-                      icon: Icons.flash_on,
-                      color: AppColors.primary,
-                      onPressed:
-                          controller.loading ? null : controller.quickplay,
-                    ),
-                    _PlayModeCard(
-                      title: 'Create Match',
-                      description: 'Open a private invite for a friend.',
-                      icon: Icons.add_circle_outline,
-                      color: AppColors.secondary,
-                      onPressed:
-                          controller.loading ? null : controller.createMatch,
-                    ),
-                  ];
-                  if (stacked) {
-                    return Column(
+        KeyedSubtree(
+          key: playKey,
+          child: _Panel(
+            title: 'PLAY',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final stacked = constraints.maxWidth < 620;
+                    final cards = [
+                      _PlayModeCard(
+                        title: 'Instant Play',
+                        description: 'Find a waiting player or create a table.',
+                        icon: Icons.flash_on,
+                        color: AppColors.primary,
+                        onPressed:
+                            controller.loading ? null : controller.quickplay,
+                      ),
+                      _PlayModeCard(
+                        title: 'Create Match',
+                        description: 'Open a private invite for a friend.',
+                        icon: Icons.add_circle_outline,
+                        color: AppColors.secondary,
+                        onPressed:
+                            controller.loading ? null : controller.createMatch,
+                      ),
+                      _PlayModeCard(
+                        title: 'Play Bot',
+                        description:
+                            'Practice against NeuroBot with brain-round scoring.',
+                        icon: Icons.smart_toy,
+                        color: AppColors.warning,
+                        onPressed:
+                            controller.loading ? null : controller.playBot,
+                      ),
+                    ];
+                    if (stacked) {
+                      return Column(
+                        children: [
+                          for (final card in cards) ...[
+                            card,
+                            if (card != cards.last) const SizedBox(height: 10),
+                          ],
+                        ],
+                      );
+                    }
+                    return Row(
                       children: [
                         for (final card in cards) ...[
-                          card,
-                          if (card != cards.last) const SizedBox(height: 10),
+                          Expanded(child: card),
+                          if (card != cards.last) const SizedBox(width: 10),
                         ],
                       ],
                     );
-                  }
-                  return Row(
-                    children: [
-                      for (final card in cards) ...[
-                        Expanded(child: card),
-                        if (card != cards.last) const SizedBox(width: 10),
-                      ],
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 14),
-              _JoinMatchRow(
-                controller: controller,
-                inviteController: page.inviteController,
-              ),
-              if (controller.loading) ...[
-                const SizedBox(height: 18),
-                const LinearProgressIndicator(
-                  minHeight: 4,
-                  backgroundColor: AppColors.surfaceHigh,
-                  color: AppColors.primary,
+                  },
                 ),
-              ],
-              if (controller.error != null) ...[
                 const SizedBox(height: 14),
-                _ErrorBanner(message: controller.error!),
+                _BotMatchOptions(controller: controller),
+                const SizedBox(height: 14),
+                _JoinMatchRow(
+                  controller: controller,
+                  inviteController: page.inviteController,
+                ),
+                if (controller.loading) ...[
+                  const SizedBox(height: 18),
+                  const _LoadingBanner(),
+                ],
+                if (controller.error != null) ...[
+                  const SizedBox(height: 14),
+                  _ErrorBanner(message: controller.error!),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ],
@@ -488,9 +583,13 @@ class _HomeMainPanel extends StatelessWidget {
 }
 
 class _HomeSidePanel extends StatelessWidget {
-  const _HomeSidePanel(this.page);
+  const _HomeSidePanel({
+    required this.page,
+    required this.powerupsKey,
+  });
 
   final _CommandPage page;
+  final GlobalKey powerupsKey;
 
   @override
   Widget build(BuildContext context) {
@@ -524,8 +623,150 @@ class _HomeSidePanel extends StatelessWidget {
                 ),
         ),
         const SizedBox(height: 16),
-        const _PowerupGuide(),
+        KeyedSubtree(
+          key: powerupsKey,
+          child: const _PowerupGuide(),
+        ),
       ],
+    );
+  }
+}
+
+class _GuestProfileCard extends StatelessWidget {
+  const _GuestProfileCard({
+    required this.controller,
+    required this.playerNameController,
+  });
+
+  final MatchController controller;
+  final TextEditingController playerNameController;
+
+  @override
+  Widget build(BuildContext context) {
+    final player = controller.me;
+    final brainPoints = player?.brainPoints ?? 0;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 68,
+              height: 68,
+              decoration: BoxDecoration(
+                color: AppColors.primaryContainer,
+                border: Border.all(color: AppColors.secondary, width: 2),
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.secondary.withValues(alpha: 0.18),
+                    blurRadius: 18,
+                  ),
+                ],
+              ),
+              child: const Icon(
+                Icons.person,
+                color: AppColors.surfaceHigh,
+                size: 34,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    controller.playerName,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'Playfair Display',
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'GUEST PLAYER • NEW BRAINER',
+                    style: TextStyle(
+                      color: AppColors.secondary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            const Expanded(child: _ProfileStat(label: 'WINS', value: '0')),
+            const SizedBox(width: 10),
+            const Expanded(child: _ProfileStat(label: 'LOSSES', value: '0')),
+            const SizedBox(width: 10),
+            Expanded(
+              child: _ProfileStat(label: 'BRAIN POINTS', value: '$brainPoints'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        _TechField(
+          controller: playerNameController,
+          label: 'DISPLAY NAME',
+          icon: Icons.edit,
+          onChanged: controller.updatePlayerName,
+        ),
+      ],
+    );
+  }
+}
+
+class _ProfileStat extends StatelessWidget {
+  const _ProfileStat({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh.withValues(alpha: 0.55),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.75)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        children: [
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.quiet,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.1,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Playfair Display',
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -541,49 +782,89 @@ class _HomeHero extends StatelessWidget {
     return Container(
       padding: EdgeInsets.all(compact ? 18 : 22),
       decoration: BoxDecoration(
-        color: AppColors.surfaceLow,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.primaryContainer,
+        border: Border.all(color: AppColors.primary),
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.18),
+            blurRadius: 22,
+            offset: const Offset(0, 14),
+          ),
+        ],
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Stack(
         children: [
-          Container(
-            width: compact ? 52 : 64,
-            height: compact ? 52 : 64,
-            decoration: BoxDecoration(
-              color: AppColors.primary,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.psychology_alt,
-              color: AppColors.background,
-              size: 34,
+          Positioned(
+            right: compact ? -28 : -10,
+            bottom: compact ? -26 : -18,
+            child: IgnorePointer(
+              child: SizedBox(
+                width: compact ? 142 : 230,
+                height: compact ? 142 : 190,
+                child: const _HeroBrainBoardVisual(),
+              ),
             ),
           ),
-          const SizedBox(width: 16),
-          Expanded(
+          Padding(
+            padding: EdgeInsets.only(right: compact ? 6 : 190),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Chess Braining',
+                Text(
+                  'COMPETITIVE ARENA',
                   style: TextStyle(
-                    color: AppColors.text,
-                    fontSize: 30,
+                    color: AppColors.secondaryContainer.withValues(alpha: 0.78),
+                    fontSize: 11,
                     fontWeight: FontWeight.w900,
-                    height: 1,
+                    letterSpacing: 2.4,
                   ),
                 ),
                 const SizedBox(height: 10),
-                Text(
-                  'Play chess, win brain rounds, spend Brain Points on tactical powerups.',
+                const Text(
+                  'Chess Braining',
                   style: TextStyle(
-                    color: AppColors.muted,
-                    fontSize: compact ? 14 : 16,
-                    fontWeight: FontWeight.w700,
-                    height: 1.35,
+                    color: AppColors.background,
+                    fontSize: 42,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: 'Playfair Display',
+                    height: 0.98,
                   ),
+                ),
+                const SizedBox(height: 24),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: Image.asset(
+                    'assets/photos/logo.png',
+                    height: 160,
+                    width: 160,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    _HeroAction(
+                      label: 'PLAY NOW',
+                      icon: Icons.arrow_forward,
+                      primary: true,
+                      onPressed:
+                          controller.loading ? null : controller.quickplay,
+                    ),
+                    _HeroAction(
+                      label: 'CREATE PRIVATE MATCH',
+                      icon: Icons.add,
+                      onPressed:
+                          controller.loading ? null : controller.createMatch,
+                    ),
+                    _HeroAction(
+                      label: 'PLAY BOT',
+                      icon: Icons.smart_toy,
+                      onPressed: controller.loading ? null : controller.playBot,
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 14),
                 Wrap(
@@ -600,6 +881,170 @@ class _HomeHero extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _HeroBrainBoardVisual extends StatelessWidget {
+  const _HeroBrainBoardVisual();
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: const _HeroBrainBoardPainter(),
+      child: const SizedBox.expand(),
+    );
+  }
+}
+
+class _HeroBrainBoardPainter extends CustomPainter {
+  const _HeroBrainBoardPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final boardSize = size.shortestSide * 0.58;
+    final boardOrigin =
+        Offset(size.width - boardSize - 8, size.height - boardSize - 6);
+    final light = Paint()..color = AppColors.background.withValues(alpha: 0.18);
+    final dark = Paint()..color = AppColors.secondary.withValues(alpha: 0.22);
+    final cell = boardSize / 4;
+    for (var row = 0; row < 4; row++) {
+      for (var col = 0; col < 4; col++) {
+        final paint = (row + col).isEven ? light : dark;
+        canvas.drawRRect(
+          RRect.fromRectAndRadius(
+            Rect.fromLTWH(
+              boardOrigin.dx + col * cell,
+              boardOrigin.dy + row * cell,
+              cell,
+              cell,
+            ),
+            const Radius.circular(4),
+          ),
+          paint,
+        );
+      }
+    }
+
+    final nodePaint = Paint()
+      ..color = AppColors.secondaryContainer.withValues(alpha: 0.56)
+      ..style = PaintingStyle.fill;
+    final linePaint = Paint()
+      ..color = AppColors.secondaryContainer.withValues(alpha: 0.32)
+      ..strokeWidth = 2;
+    final nodes = [
+      Offset(size.width * 0.18, size.height * 0.28),
+      Offset(size.width * 0.38, size.height * 0.16),
+      Offset(size.width * 0.54, size.height * 0.32),
+      Offset(size.width * 0.35, size.height * 0.48),
+      Offset(size.width * 0.62, size.height * 0.55),
+    ];
+    for (var i = 0; i < nodes.length - 1; i++) {
+      canvas.drawLine(nodes[i], nodes[i + 1], linePaint);
+    }
+    canvas.drawLine(nodes[0], nodes[3], linePaint);
+    canvas.drawLine(nodes[2], nodes[4], linePaint);
+    for (final node in nodes) {
+      canvas.drawCircle(node, 7, nodePaint);
+      canvas.drawCircle(
+        node,
+        12,
+        Paint()
+          ..color = AppColors.secondaryContainer.withValues(alpha: 0.12)
+          ..style = PaintingStyle.fill,
+      );
+    }
+
+    final piecePaint = Paint()
+      ..color = AppColors.background.withValues(alpha: 0.42);
+    final center = Offset(
+        boardOrigin.dx + boardSize * 0.62, boardOrigin.dy + boardSize * 0.42);
+    canvas.drawCircle(center, boardSize * 0.12, piecePaint);
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(center.dx, center.dy + boardSize * 0.2),
+          width: boardSize * 0.22,
+          height: boardSize * 0.28,
+        ),
+        const Radius.circular(18),
+      ),
+      piecePaint,
+    );
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromCenter(
+          center: Offset(center.dx, center.dy + boardSize * 0.36),
+          width: boardSize * 0.44,
+          height: boardSize * 0.08,
+        ),
+        const Radius.circular(6),
+      ),
+      piecePaint,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _HeroAction extends StatelessWidget {
+  const _HeroAction({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.primary = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground =
+        primary ? AppColors.primaryContainer : AppColors.background;
+    final background =
+        primary ? AppColors.background : Colors.white.withValues(alpha: 0.08);
+    return SizedBox(
+      height: 46,
+      child: primary
+          ? FilledButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 18),
+              label: Text(label),
+              style: FilledButton.styleFrom(
+                backgroundColor: background,
+                foregroundColor: foreground,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            )
+          : OutlinedButton.icon(
+              onPressed: onPressed,
+              icon: Icon(icon, size: 18),
+              label: Text(label),
+              style: OutlinedButton.styleFrom(
+                backgroundColor: background,
+                foregroundColor: foreground,
+                side: BorderSide(
+                  color: AppColors.background.withValues(alpha: 0.34),
+                ),
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.1,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
     );
   }
 }
@@ -621,6 +1066,7 @@ class _PlayModeCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final primaryCard = title == 'Instant Play';
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 120),
       opacity: onPressed == null ? 0.55 : 1,
@@ -631,9 +1077,15 @@ class _PlayModeCard extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 112),
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            color: AppColors.surfaceLow,
-            border: Border.all(color: color.withValues(alpha: 0.65)),
-            borderRadius: BorderRadius.circular(8),
+            color: primaryCard
+                ? AppColors.primaryContainer
+                : AppColors.surfaceHigh.withValues(alpha: 0.7),
+            border: Border.all(
+              color: primaryCard
+                  ? AppColors.primary
+                  : AppColors.strongBorder.withValues(alpha: 0.55),
+            ),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -643,9 +1095,13 @@ class _PlayModeCard extends StatelessWidget {
                 height: 42,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.16),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-                child: Icon(icon, color: color),
+                child: Icon(
+                  icon,
+                  color:
+                      primaryCard ? AppColors.background : AppColors.secondary,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -654,17 +1110,21 @@ class _PlayModeCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: AppColors.text,
+                      style: TextStyle(
+                        color:
+                            primaryCard ? AppColors.background : AppColors.text,
                         fontSize: 17,
                         fontWeight: FontWeight.w900,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       description,
-                      style: const TextStyle(
-                        color: AppColors.muted,
+                      style: TextStyle(
+                        color: primaryCard
+                            ? AppColors.background.withValues(alpha: 0.72)
+                            : AppColors.muted,
                         height: 1.3,
                         fontWeight: FontWeight.w700,
                       ),
@@ -672,8 +1132,162 @@ class _PlayModeCard extends StatelessWidget {
                   ],
                 ),
               ),
-              Icon(Icons.arrow_forward, color: color, size: 20),
+              Icon(
+                Icons.arrow_forward,
+                color: primaryCard ? AppColors.background : AppColors.secondary,
+                size: 20,
+              ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BotMatchOptions extends StatelessWidget {
+  const _BotMatchOptions({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh.withValues(alpha: 0.58),
+        border:
+            Border.all(color: AppColors.strongBorder.withValues(alpha: 0.32)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: AppColors.warning.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(
+                  Icons.smart_toy,
+                  color: AppColors.warning,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'NeuroBot settings',
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'Brain scores vary by difficulty.',
+                      style: TextStyle(
+                        color: AppColors.muted,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final difficulty in const [
+                'EASY',
+                'NORMAL',
+                'HARD',
+                'EXPERT'
+              ])
+                _ChoicePill(
+                  label: _difficultyLabel(difficulty),
+                  selected: controller.botDifficulty == difficulty,
+                  onPressed: () => controller.setBotDifficulty(difficulty),
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _ChoicePill(
+                label: 'Play White',
+                selected: controller.botPreferredSide == 'WHITE',
+                onPressed: () => controller.setBotPreferredSide('WHITE'),
+              ),
+              _ChoicePill(
+                label: 'Play Black',
+                selected: controller.botPreferredSide == 'BLACK',
+                onPressed: () => controller.setBotPreferredSide('BLACK'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _difficultyLabel(String value) {
+    return switch (value) {
+      'EASY' => 'Easy',
+      'NORMAL' => 'Normal',
+      'HARD' => 'Hard',
+      'EXPERT' => 'Expert',
+      _ => value,
+    };
+  }
+}
+
+class _ChoicePill extends StatelessWidget {
+  const _ChoicePill({
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppColors.primaryContainer
+              : AppColors.surfaceBright.withValues(alpha: 0.78),
+          border: Border.all(
+            color: selected ? AppColors.primary : AppColors.border,
+          ),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: selected ? AppColors.background : AppColors.text,
+            fontWeight: FontWeight.w900,
+            fontSize: 12,
           ),
         ),
       ),
@@ -692,41 +1306,93 @@ class _JoinMatchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final compact = constraints.maxWidth < 560;
-        final input = _TechField(
-          controller: inviteController,
-          label: 'INVITE CODE',
-          icon: Icons.key,
-          onChanged: (_) {},
-        );
-        final button = _ActionButton(
-          label: 'JOIN MATCH',
-          icon: Icons.login,
-          secondary: true,
-          onPressed: controller.loading
-              ? null
-              : () => controller.joinMatch(inviteController.text),
-        );
-        if (compact) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceBright,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const Row(
             children: [
-              input,
-              const SizedBox(height: 10),
-              button,
+              Icon(Icons.key, color: AppColors.secondary, size: 20),
+              SizedBox(width: 8),
+              Text(
+                'JOIN WITH CODE',
+                style: TextStyle(
+                  color: AppColors.secondary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.5,
+                ),
+              ),
             ],
-          );
-        }
-        return Row(
-          children: [
-            Expanded(child: input),
-            const SizedBox(width: 10),
-            SizedBox(width: 172, child: button),
-          ],
-        );
-      },
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: inviteController,
+            textCapitalization: TextCapitalization.characters,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp('[a-zA-Z0-9]')),
+              LengthLimitingTextInputFormatter(6),
+              TextInputFormatter.withFunction((oldValue, newValue) {
+                final upper = newValue.text.toUpperCase();
+                return newValue.copyWith(
+                  text: upper,
+                  selection: TextSelection.collapsed(offset: upper.length),
+                );
+              }),
+            ],
+            style: const TextStyle(
+              color: AppColors.primary,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 5,
+            ),
+            decoration: InputDecoration(
+              hintText: 'ABC123',
+              hintStyle: TextStyle(
+                color: AppColors.quiet.withValues(alpha: 0.42),
+                letterSpacing: 5,
+              ),
+              filled: true,
+              fillColor: AppColors.surfaceLow,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              enabledBorder: OutlineInputBorder(
+                borderSide: const BorderSide(color: AppColors.border),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderSide:
+                    const BorderSide(color: AppColors.secondary, width: 1.4),
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Ask your friend for the 6-character invite code.',
+            style: TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
+            ),
+          ),
+          const SizedBox(height: 12),
+          _ActionButton(
+            label: 'JOIN MATCH',
+            icon: Icons.login,
+            secondary: true,
+            onPressed: controller.loading
+                ? null
+                : () => controller.joinMatch(inviteController.text),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -736,51 +1402,129 @@ class _RulesSnapshot extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const rows = [
-      (Icons.grid_4x4, 'Chess is normal until a brain round starts.'),
-      (Icons.calculate, 'Answer fast math puzzles between chess phases.'),
-      (Icons.toll, 'Earn Brain Points from brain-round results.'),
-      (Icons.bolt, 'Spend points during your chess turn.'),
+    const steps = [
+      (Icons.grid_4x4, '1', 'Play chess', 'Normal legal chess moves.'),
+      (
+        Icons.calculate,
+        '2',
+        'Win brain rounds',
+        'Fast math battles pause play.'
+      ),
+      (Icons.bolt, '3', 'Spend BP', 'Use powerups during chess turns.'),
     ];
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final row in rows) ...[
-          _RuleLine(icon: row.$1, text: row.$2),
-          if (row != rows.last) const SizedBox(height: 12),
-        ],
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final horizontal = constraints.maxWidth >= 620;
+        final cards = [
+          for (final step in steps)
+            _RuleStepCard(
+              icon: step.$1,
+              number: step.$2,
+              title: step.$3,
+              body: step.$4,
+            ),
+        ];
+        if (horizontal) {
+          return Row(
+            children: [
+              for (final card in cards) ...[
+                Expanded(child: card),
+                if (card != cards.last) const SizedBox(width: 10),
+              ],
+            ],
+          );
+        }
+        return Column(
+          children: [
+            for (final card in cards) ...[
+              card,
+              if (card != cards.last) const SizedBox(height: 10),
+            ],
+          ],
+        );
+      },
     );
   }
 }
 
-class _RuleLine extends StatelessWidget {
-  const _RuleLine({
+class _RuleStepCard extends StatelessWidget {
+  const _RuleStepCard({
     required this.icon,
-    required this.text,
+    required this.number,
+    required this.title,
+    required this.body,
   });
 
   final IconData icon;
-  final String text;
+  final String number;
+  final String title;
+  final String body;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, color: AppColors.primary, size: 20),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              color: AppColors.text,
-              fontWeight: FontWeight.w800,
-              height: 1.35,
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceBright,
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.8)),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AppColors.secondaryContainer.withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              Icon(icon, color: AppColors.secondary, size: 22),
+              Positioned(
+                right: 4,
+                bottom: 3,
+                child: Text(
+                  number,
+                  style: const TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w900,
+                    fontFamily: 'Playfair Display',
+                    fontSize: 16,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  body,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
+                  ),
+                ),
+              ],
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -793,7 +1537,7 @@ class _PowerupGuide extends StatelessWidget {
     return _Panel(
       title: 'POWERUPS',
       child: SizedBox(
-        height: 230,
+        height: 286,
         child: PageView(
           padEnds: false,
           children: const [
@@ -803,8 +1547,10 @@ class _PowerupGuide extends StatelessWidget {
               cost: '1 BP',
               color: AppColors.primary,
               description: 'Add 30 seconds to your clock during chess phase.',
+              timing: 'Any active chess phase',
               detail:
                   'Use it any time during active play when you have at least 1 Brain Point.',
+              rule: 'Does not consume your turn.',
             ),
             _PowerupSlide(
               icon: Icons.replay,
@@ -812,8 +1558,10 @@ class _PowerupGuide extends StatelessWidget {
               cost: '3 BP',
               color: AppColors.warning,
               description: 'Return one captured pawn to an empty square.',
+              timing: 'Only on your turn',
               detail:
-                  'Tap Revive, then choose an empty square from ranks 2 through 7.',
+                  'Choose an empty square from ranks 2 through 7. Placement uses your turn.',
+              rule: 'Cannot revive onto occupied or promotion-rank squares.',
             ),
             _PowerupSlide(
               icon: Icons.double_arrow,
@@ -821,8 +1569,10 @@ class _PowerupGuide extends StatelessWidget {
               cost: '4 BP',
               color: AppColors.secondary,
               description: 'Arm one extra turn after your next legal move.',
+              timing: 'Only before your move',
               detail:
                   'Only works on your turn, outside check, and not on a brain-round trigger move.',
+              rule: 'First move cannot give check or finish the game.',
             ),
           ],
         ),
@@ -838,7 +1588,9 @@ class _PowerupSlide extends StatelessWidget {
     required this.cost,
     required this.color,
     required this.description,
+    required this.timing,
     required this.detail,
+    required this.rule,
   });
 
   final IconData icon;
@@ -846,7 +1598,9 @@ class _PowerupSlide extends StatelessWidget {
   final String cost;
   final Color color;
   final String description;
+  final String timing;
   final String detail;
+  final String rule;
 
   @override
   Widget build(BuildContext context) {
@@ -855,9 +1609,9 @@ class _PowerupSlide extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.surfaceLow,
-          border: Border.all(color: color.withValues(alpha: 0.65)),
-          borderRadius: BorderRadius.circular(8),
+          color: AppColors.surfaceBright,
+          border: Border.all(color: color.withValues(alpha: 0.48)),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -865,13 +1619,14 @@ class _PowerupSlide extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 58,
+                  height: 58,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.16),
-                    borderRadius: BorderRadius.circular(8),
+                    color: color.withValues(alpha: 0.14),
+                    border: Border.all(color: color.withValues(alpha: 0.32)),
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(icon, color: color),
+                  child: Icon(icon, color: color, size: 30),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -882,6 +1637,7 @@ class _PowerupSlide extends StatelessWidget {
                       color: AppColors.text,
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
+                      fontFamily: 'Playfair Display',
                     ),
                   ),
                 ),
@@ -898,6 +1654,12 @@ class _PowerupSlide extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
+            _PowerupMetaLine(
+              icon: Icons.schedule,
+              label: timing,
+              color: color,
+            ),
+            const SizedBox(height: 8),
             Text(
               detail,
               style: const TextStyle(
@@ -906,9 +1668,49 @@ class _PowerupSlide extends StatelessWidget {
                 height: 1.35,
               ),
             ),
+            const Spacer(),
+            _PowerupMetaLine(
+              icon: Icons.gavel,
+              label: rule,
+              color: AppColors.quiet,
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PowerupMetaLine extends StatelessWidget {
+  const _PowerupMetaLine({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 15, color: color),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              height: 1.25,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -985,6 +1787,8 @@ class _BoardColumn extends StatelessWidget {
         constraints: BoxConstraints(maxWidth: boardMax),
         child: Column(
           children: [
+            _GameTopStrip(controller: controller),
+            const SizedBox(height: 10),
             _PlayerBar(
               controller: controller,
               player: opponent,
@@ -1006,8 +1810,6 @@ class _BoardColumn extends StatelessWidget {
               fallbackName: controller.playerName,
               alignRight: false,
             ),
-            const SizedBox(height: 12),
-            _TurnStrip(controller: controller),
           ],
         ),
       ),
@@ -1022,6 +1824,149 @@ class _BoardColumn extends StatelessWidget {
   }
 }
 
+class _GameTopStrip extends StatelessWidget {
+  const _GameTopStrip({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    if (match == null) {
+      return const SizedBox.shrink();
+    }
+    final turnText = controller.isRevivePawnTargeting
+        ? 'Place revived pawn'
+        : match.isWaiting
+            ? 'Waiting for opponent'
+            : controller.canMove
+                ? 'Your move'
+                : '${match.sideToMove} to move';
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Container(
+            height: 58,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceBright.withValues(alpha: 0.9),
+              border: Border.all(color: AppColors.border),
+              borderRadius: BorderRadius.circular(14),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  controller.canMove
+                      ? Icons.radio_button_checked
+                      : Icons.info_outline,
+                  color: controller.canMove
+                      ? AppColors.secondary
+                      : AppColors.quiet,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    turnText.toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.9,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        SizedBox(
+          width: MediaQuery.sizeOf(context).width < 430 ? 176 : 220,
+          child: _BrainRoundToGo(controller: controller),
+        ),
+      ],
+    );
+  }
+}
+
+class _BrainRoundToGo extends StatelessWidget {
+  const _BrainRoundToGo({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    final interval = maxInt(1, match?.brainRoundIntervalMoves ?? 5) * 2;
+    final ply = match?.plyCount ?? 0;
+    final progress = match?.isBrainRound == true ? interval : ply % interval;
+    final movesLeft = maxInt(0, interval - progress);
+    final value = interval == 0 ? 0.0 : progress / interval;
+
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: AppColors.primaryContainer,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.12),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'BRAIN ROUND TO GO',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: AppColors.background,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+              ),
+              Text(
+                match?.isBrainRound == true ? 'NOW' : '$movesLeft',
+                style: const TextStyle(
+                  color: AppColors.secondaryContainer,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 7),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(999),
+            child: LinearProgressIndicator(
+              value: value.clamp(0.0, 1.0),
+              minHeight: 8,
+              backgroundColor: AppColors.background.withValues(alpha: 0.18),
+              color: AppColors.secondaryContainer,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BoardFrame extends StatelessWidget {
   const _BoardFrame({required this.controller});
 
@@ -1031,18 +1976,18 @@ class _BoardFrame extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0xff22201c),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.primaryContainer,
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
-            blurRadius: 28,
-            offset: const Offset(0, 18),
+            color: AppColors.primary.withValues(alpha: 0.24),
+            blurRadius: 24,
+            offset: const Offset(0, 14),
           ),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         child: ChessBoard(controller: controller),
       ),
     );
@@ -1067,16 +2012,20 @@ class _PlayerBar extends StatelessWidget {
     final match = controller.match;
     final isTurn = player != null && match?.sideToMove == player!.side;
     final clockMs = _displayClockMs(match, player, isTurn);
-    final accent = isTurn ? AppColors.primary : AppColors.muted;
+    final accent = isTurn ? AppColors.secondary : AppColors.quiet;
+    final dark = player?.playerId == controller.playerId;
 
     return Container(
       constraints: const BoxConstraints(minHeight: 64),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border:
-            Border.all(color: isTurn ? AppColors.primary : AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        color: dark ? AppColors.primaryContainer : AppColors.surfaceLow,
+        border: Border.all(
+          color: isTurn
+              ? AppColors.secondary
+              : AppColors.strongBorder.withValues(alpha: 0.25),
+        ),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Row(
         textDirection: alignRight ? TextDirection.rtl : TextDirection.ltr,
@@ -1085,9 +2034,9 @@ class _PlayerBar extends StatelessWidget {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: AppColors.surfaceHigh,
+              color: dark ? AppColors.surface : AppColors.surfaceBright,
               border: Border.all(color: accent),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(99),
             ),
             child: Icon(
               player?.side == 'BLACK' ? Icons.person_4 : Icons.person,
@@ -1109,8 +2058,8 @@ class _PlayerBar extends StatelessWidget {
                       child: Text(
                         (player?.playerName ?? fallbackName).toUpperCase(),
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.text,
+                        style: TextStyle(
+                          color: dark ? AppColors.background : AppColors.text,
                           fontWeight: FontWeight.w900,
                           fontSize: 15,
                         ),
@@ -1193,8 +2142,6 @@ class _GameInfoRail extends StatelessWidget {
       children: [
         _InvitePanel(controller: controller),
         const SizedBox(height: 14),
-        _BrainProgress(controller: controller),
-        const SizedBox(height: 14),
         _MoveLog(controller: controller),
         const SizedBox(height: 14),
         _EvaluationPanel(controller: controller),
@@ -1253,60 +2200,6 @@ class _InvitePanel extends StatelessWidget {
   }
 }
 
-class _BrainProgress extends StatelessWidget {
-  const _BrainProgress({required this.controller});
-
-  final MatchController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final match = controller.match;
-    final interval = maxInt(1, match?.brainRoundIntervalMoves ?? 5) * 2;
-    final ply = match?.plyCount ?? 0;
-    final progress = match?.isBrainRound == true ? interval : ply % interval;
-
-    return _Panel(
-      title: 'BRAIN ROUND',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Text(
-                match?.isBrainRound == true ? 'ACTIVE' : 'NEXT CHECKPOINT',
-                style: const TextStyle(
-                  color: AppColors.primary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const Spacer(),
-              Text(
-                '$progress / $interval',
-                style: const TextStyle(
-                  color: AppColors.text,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: LinearProgressIndicator(
-              value: interval == 0 ? 0 : progress / interval,
-              minHeight: 12,
-              backgroundColor: AppColors.surfaceHigh,
-              color: AppColors.primary,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _MoveLog extends StatelessWidget {
   const _MoveLog({required this.controller});
 
@@ -1315,6 +2208,7 @@ class _MoveLog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final moves = controller.match?.moves ?? const [];
+    final movePairs = _movePairs(moves);
     return _Panel(
       title: 'MOVES',
       child: SizedBox(
@@ -1329,45 +2223,202 @@ class _MoveLog extends StatelessWidget {
                   ),
                 ),
               )
-            : ListView.separated(
-                itemCount: moves.length,
-                separatorBuilder: (_, __) =>
-                    const Divider(color: AppColors.border, height: 1),
-                itemBuilder: (context, index) {
-                  final move = moves[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 36,
-                          child: Text(
-                            '${move.plyNumber}.',
-                            style: const TextStyle(color: AppColors.muted),
+            : Column(
+                children: [
+                  if (controller.isReviewingMove) ...[
+                    _HistoryModeBanner(controller: controller),
+                    const SizedBox(height: 8),
+                  ],
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: movePairs.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(color: AppColors.border, height: 1),
+                      itemBuilder: (context, index) {
+                        final pair = movePairs[index];
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 34,
+                                child: Text(
+                                  '${pair.number}.',
+                                  style:
+                                      const TextStyle(color: AppColors.muted),
+                                ),
+                              ),
+                              Expanded(
+                                child: _MoveNotationButton(
+                                  controller: controller,
+                                  move: pair.white,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: _MoveNotationButton(
+                                  controller: controller,
+                                  move: pair.black,
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            '${move.from}-${move.to}',
-                            style: const TextStyle(
-                              color: AppColors.text,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          move.side,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ],
+                        );
+                      },
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
+      ),
+    );
+  }
+
+  List<_MovePair> _movePairs(List<MoveModel> moves) {
+    final pairs = <int, _MovePair>{};
+    for (final move in moves) {
+      final number = (move.plyNumber + 1) ~/ 2;
+      final current = pairs[number] ?? _MovePair(number: number);
+      pairs[number] = move.side == 'WHITE' || move.plyNumber.isOdd
+          ? current.copyWith(white: move)
+          : current.copyWith(black: move);
+    }
+    return pairs.values.toList()..sort((a, b) => a.number.compareTo(b.number));
+  }
+}
+
+class _MovePair {
+  const _MovePair({
+    required this.number,
+    this.white,
+    this.black,
+  });
+
+  final int number;
+  final MoveModel? white;
+  final MoveModel? black;
+
+  _MovePair copyWith({
+    MoveModel? white,
+    MoveModel? black,
+  }) {
+    return _MovePair(
+      number: number,
+      white: white ?? this.white,
+      black: black ?? this.black,
+    );
+  }
+}
+
+class _HistoryModeBanner extends StatelessWidget {
+  const _HistoryModeBanner({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final move = controller.reviewMove;
+    final label = move == null
+        ? 'Viewing history'
+        : 'Viewing ${moveNotationFromFen(
+            fenBefore: move.fenBefore,
+            from: move.from,
+            to: move.to,
+            promotion: move.promotion,
+          )}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.primaryContainer.withValues(alpha: 0.18),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.36)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.history, color: AppColors.primary, size: 16),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: controller.returnToLivePosition,
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.primary,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              minimumSize: Size.zero,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: const Text(
+              'LIVE',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MoveNotationButton extends StatelessWidget {
+  const _MoveNotationButton({
+    required this.controller,
+    required this.move,
+  });
+
+  final MatchController controller;
+  final MoveModel? move;
+
+  @override
+  Widget build(BuildContext context) {
+    final currentMove = move;
+    if (currentMove == null) {
+      return const SizedBox(height: 34);
+    }
+
+    final selected = controller.reviewMove?.plyNumber == currentMove.plyNumber;
+    final notation = moveNotationFromFen(
+      fenBefore: currentMove.fenBefore,
+      from: currentMove.from,
+      to: currentMove.to,
+      promotion: currentMove.promotion,
+    );
+
+    return Material(
+      color: selected
+          ? AppColors.primaryContainer.withValues(alpha: 0.24)
+          : Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+      child: InkWell(
+        onTap: () => controller.viewMovePosition(currentMove),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          height: 34,
+          alignment: Alignment.centerLeft,
+          padding: const EdgeInsets.symmetric(horizontal: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: selected
+                  ? AppColors.primary.withValues(alpha: 0.62)
+                  : Colors.transparent,
+            ),
+          ),
+          child: Text(
+            notation,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: selected ? AppColors.primary : AppColors.text,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -1451,64 +2502,121 @@ class _PointRow extends StatelessWidget {
   }
 }
 
-class _TurnStrip extends StatelessWidget {
-  const _TurnStrip({required this.controller});
+class _HomeBottomNav extends StatelessWidget {
+  const _HomeBottomNav({
+    required this.onHome,
+    required this.onPlay,
+    required this.onPowerups,
+    required this.onProfile,
+  });
 
-  final MatchController controller;
+  final VoidCallback onHome;
+  final VoidCallback onPlay;
+  final VoidCallback onPowerups;
+  final VoidCallback onProfile;
 
   @override
   Widget build(BuildContext context) {
-    final match = controller.match;
-    if (match == null) {
+    if (MediaQuery.sizeOf(context).width >= 720) {
       return const SizedBox.shrink();
     }
-    final text = controller.isRevivePawnTargeting
-        ? 'Choose an empty square for revived pawn'
-        : match.isCompleted
-            ? match.resultReason ?? 'Completed'
-            : controller.canMove
-                ? 'Your move'
-                : match.isWaiting
-                    ? 'Waiting for opponent'
-                    : '${match.sideToMove} to move';
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            controller.canMove
-                ? Icons.radio_button_checked
-                : Icons.info_outline,
-            color: controller.canMove ? AppColors.primary : AppColors.muted,
-            size: 18,
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 0),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppColors.primaryContainer,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.2),
+                blurRadius: 18,
+                offset: const Offset(0, -8),
+              ),
+            ],
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              text.toUpperCase(),
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: AppColors.text,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceAround,
+            children: [
+              _HomeNavItem(
+                label: 'Home',
+                icon: Icons.home_outlined,
+                active: true,
+                onPressed: onHome,
+              ),
+              _HomeNavItem(
+                label: 'Play',
+                icon: Icons.extension_outlined,
+                onPressed: onPlay,
+              ),
+              _HomeNavItem(
+                label: 'Power-ups',
+                icon: Icons.bolt_outlined,
+                onPressed: onPowerups,
+              ),
+              _HomeNavItem(
+                label: 'Profile',
+                icon: Icons.person_outline,
+                onPressed: onProfile,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeNavItem extends StatelessWidget {
+  const _HomeNavItem({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.active = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onPressed;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground =
+        active ? Colors.white : AppColors.background.withValues(alpha: 0.62);
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(999),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: EdgeInsets.symmetric(
+          horizontal: active ? 16 : 10,
+          vertical: 8,
+        ),
+        decoration: BoxDecoration(
+          color: active ? AppColors.secondary : Colors.transparent,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, color: foreground, size: 22),
+            const SizedBox(height: 2),
+            Text(
+              label,
+              style: TextStyle(
+                color: foreground,
+                fontSize: 11,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 0.8,
               ),
             ),
-          ),
-          const SizedBox(width: 10),
-          SelectableText(
-            match.inviteCode,
-            style: const TextStyle(
-              color: AppColors.primary,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1529,10 +2637,17 @@ class _PowerToolbar extends StatelessWidget {
       child: SafeArea(
         top: false,
         child: Container(
-          height: 88,
-          decoration: const BoxDecoration(
-            color: AppColors.surfaceLow,
-            border: Border(top: BorderSide(color: AppColors.border)),
+          height: 98,
+          decoration: BoxDecoration(
+            color: AppColors.primaryContainer,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.primary.withValues(alpha: 0.2),
+                blurRadius: 18,
+                offset: const Offset(0, -8),
+              ),
+            ],
           ),
           child: Center(
             child: SingleChildScrollView(
@@ -1541,7 +2656,7 @@ class _PowerToolbar extends StatelessWidget {
               child: Row(
                 children: [
                   _PowerButton(
-                    label: 'EXTRA 4BP',
+                    label: 'EXTRA',
                     icon: Icons.double_arrow,
                     enabled: controller.canArmExtraMove,
                     primary: controller.me?.extraMoveArmed == true,
@@ -1601,26 +2716,31 @@ class _PowerButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final foreground = enabled
         ? primary
-            ? AppColors.background
-            : AppColors.text
-        : AppColors.muted;
-    final background =
-        primary && enabled ? AppColors.primary : AppColors.surface;
+            ? Colors.white
+            : AppColors.primary
+        : AppColors.quiet;
+    final background = primary && enabled
+        ? AppColors.secondary
+        : enabled
+            ? AppColors.surfaceLow
+            : AppColors.surfaceHigh;
     return AnimatedOpacity(
       duration: const Duration(milliseconds: 120),
       opacity: enabled ? 1 : 0.45,
       child: InkWell(
         onTap: enabled ? onPressed : null,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
-          width: 86,
-          height: 64,
+          width: 96,
+          height: 68,
           decoration: BoxDecoration(
             color: background,
             border: Border.all(
-              color: primary && enabled ? AppColors.primary : AppColors.border,
+              color: primary && enabled
+                  ? AppColors.secondary
+                  : AppColors.strongBorder.withValues(alpha: 0.32),
             ),
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1644,16 +2764,540 @@ class _PowerButton extends StatelessWidget {
   }
 }
 
+class _BrainRoundResultNotice extends StatefulWidget {
+  const _BrainRoundResultNotice({
+    required this.notice,
+    required this.playerId,
+    required this.onDismiss,
+    super.key,
+  });
+
+  final BrainRoundResultNotice notice;
+  final String playerId;
+  final ValueChanged<int> onDismiss;
+
+  @override
+  State<_BrainRoundResultNotice> createState() =>
+      _BrainRoundResultNoticeState();
+}
+
+class _BrainRoundResultNoticeState extends State<_BrainRoundResultNotice>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+  Timer? timer;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 420),
+    )..forward();
+    timer = Timer(const Duration(seconds: 7), () {
+      widget.onDismiss(widget.notice.id);
+    });
+  }
+
+  @override
+  void dispose() {
+    timer?.cancel();
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final notice = widget.notice;
+    final wonByMe = notice.winnerPlayerId == widget.playerId;
+    final title = notice.isTie
+        ? 'Brain Round Draw'
+        : wonByMe
+            ? 'You Won The Brain Round'
+            : '${notice.winnerName} Won The Brain Round';
+    final award = notice.isTie
+        ? 'Both players earned +${notice.awardedPoints} BP'
+        : '${notice.winnerName} earned +${notice.awardedPoints} BP';
+
+    return Positioned(
+      left: 12,
+      right: 12,
+      top: 0,
+      child: SafeArea(
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, child) {
+            final curved = Curves.easeOutBack.transform(controller.value);
+            return Opacity(
+              opacity: Curves.easeOut.transform(controller.value),
+              child: Transform.translate(
+                offset: Offset(0, -18 + 18 * controller.value),
+                child: Transform.scale(
+                  scale: 0.96 + 0.04 * curved,
+                  child: child,
+                ),
+              ),
+            );
+          },
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceBright,
+                  border: Border.all(
+                    color: AppColors.secondary.withValues(alpha: 0.62),
+                    width: 1.4,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primary.withValues(alpha: 0.18),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: AppColors.secondaryContainer
+                                .withValues(alpha: 0.52),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(
+                            Icons.psychology_alt,
+                            color: AppColors.secondary,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'ROUND ${notice.roundNumber} COMPLETE',
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.2,
+                                ),
+                              ),
+                              Text(
+                                title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.text,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.w900,
+                                  fontFamily: 'Playfair Display',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => widget.onDismiss(notice.id),
+                          icon: const Icon(Icons.close),
+                          color: AppColors.muted,
+                          tooltip: 'Dismiss',
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _BrainScoreTile(
+                            name: notice.whiteName,
+                            label: 'WHITE',
+                            score: notice.whiteScore,
+                            highlighted: notice.winnerPlayerId != null &&
+                                notice.whiteScore > notice.blackScore,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: _BrainScoreTile(
+                            name: notice.blackName,
+                            label: 'BLACK',
+                            score: notice.blackScore,
+                            highlighted: notice.winnerPlayerId != null &&
+                                notice.blackScore > notice.whiteScore,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            AppColors.primaryContainer.withValues(alpha: 0.16),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: AppColors.primary.withValues(alpha: 0.32),
+                        ),
+                      ),
+                      child: Text(
+                        award,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: AppColors.primary,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BrainScoreTile extends StatelessWidget {
+  const _BrainScoreTile({
+    required this.name,
+    required this.label,
+    required this.score,
+    required this.highlighted,
+  });
+
+  final String name;
+  final String label;
+  final int score;
+  final bool highlighted;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = highlighted ? AppColors.secondary : AppColors.primary;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: highlighted
+            ? AppColors.secondaryContainer.withValues(alpha: 0.34)
+            : AppColors.surfaceLow,
+        border: Border.all(
+          color: highlighted ? color : AppColors.border,
+        ),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 1,
+                  ),
+                ),
+                Text(
+                  name,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '$score',
+            style: TextStyle(
+              color: color,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Playfair Display',
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PowerupEffectOverlay extends StatefulWidget {
+  const _PowerupEffectOverlay({
+    required this.effect,
+    required this.onDismiss,
+    super.key,
+  });
+
+  final PowerupEffect effect;
+  final ValueChanged<int> onDismiss;
+
+  @override
+  State<_PowerupEffectOverlay> createState() => _PowerupEffectOverlayState();
+}
+
+class _PowerupEffectOverlayState extends State<_PowerupEffectOverlay>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller;
+
+  @override
+  void initState() {
+    super.initState();
+    controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 2600),
+    )
+      ..addStatusListener((status) {
+        if (status == AnimationStatus.completed) {
+          widget.onDismiss(widget.effect.id);
+        }
+      })
+      ..forward();
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final style = _PowerupEffectStyle.from(widget.effect.type);
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: AnimatedBuilder(
+          animation: controller,
+          builder: (context, _) {
+            final value = controller.value;
+            final opacity = value < 0.18
+                ? value / 0.18
+                : value > 0.78
+                    ? (1 - value) / 0.22
+                    : 1.0;
+            final visibleOpacity = opacity.clamp(0.0, 1.0).toDouble();
+            final entranceProgress = (value.clamp(0.0, 0.55).toDouble()) / 0.55;
+            final pulse = math.sin(value * math.pi * 3).abs();
+            return Opacity(
+              opacity: visibleOpacity,
+              child: Stack(
+                children: [
+                  CustomPaint(
+                    painter: _PowerupBurstPainter(
+                      color: style.color,
+                      progress: value,
+                      type: widget.effect.type,
+                    ),
+                    size: Size.infinite,
+                  ),
+                  Center(
+                    child: Transform.scale(
+                      scale: 0.86 +
+                          0.18 * Curves.easeOutBack.transform(entranceProgress),
+                      child: Container(
+                        width: 246,
+                        padding: const EdgeInsets.all(18),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceBright,
+                          border: Border.all(color: style.color, width: 2),
+                          borderRadius: BorderRadius.circular(18),
+                          boxShadow: [
+                            BoxShadow(
+                              color: style.color.withValues(alpha: 0.28),
+                              blurRadius: 32 + 14 * pulse,
+                              spreadRadius: 2 + 2 * pulse,
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 74,
+                              height: 74,
+                              decoration: BoxDecoration(
+                                color: style.color.withValues(alpha: 0.16),
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: style.color.withValues(alpha: 0.5),
+                                ),
+                              ),
+                              child: Icon(
+                                style.icon,
+                                color: style.color,
+                                size: 40,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              style.title,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: style.color,
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                fontFamily: 'Playfair Display',
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${widget.effect.playerName} used ${style.name}',
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.text,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              style.caption,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _PowerupEffectStyle {
+  const _PowerupEffectStyle({
+    required this.icon,
+    required this.color,
+    required this.name,
+    required this.title,
+    required this.caption,
+  });
+
+  final IconData icon;
+  final Color color;
+  final String name;
+  final String title;
+  final String caption;
+
+  factory _PowerupEffectStyle.from(PowerupEffectType type) {
+    return switch (type) {
+      PowerupEffectType.clockBoost => const _PowerupEffectStyle(
+          icon: Icons.more_time,
+          color: AppColors.primary,
+          name: 'Clock Boost',
+          title: '+30 Seconds',
+          caption: 'Clock pressure reset',
+        ),
+      PowerupEffectType.extraMove => const _PowerupEffectStyle(
+          icon: Icons.double_arrow,
+          color: AppColors.secondary,
+          name: 'Extra Move',
+          title: 'Extra Move Armed',
+          caption: 'One more turn is loaded',
+        ),
+      PowerupEffectType.revivePawn => const _PowerupEffectStyle(
+          icon: Icons.replay,
+          color: AppColors.warning,
+          name: 'Revive Pawn',
+          title: 'Pawn Revived',
+          caption: 'A captured pawn returns',
+        ),
+    };
+  }
+}
+
+class _PowerupBurstPainter extends CustomPainter {
+  const _PowerupBurstPainter({
+    required this.color,
+    required this.progress,
+    required this.type,
+  });
+
+  final Color color;
+  final double progress;
+  final PowerupEffectType type;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final maxRadius = size.shortestSide * 0.42;
+    final ringPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.2
+      ..color = color.withValues(alpha: (1 - progress).clamp(0.0, 1.0) * 0.38);
+    canvas.drawCircle(center, maxRadius * progress, ringPaint);
+    canvas.drawCircle(center, maxRadius * (progress * 0.72 + 0.18), ringPaint);
+
+    final streakPaint = Paint()
+      ..strokeWidth = type == PowerupEffectType.extraMove ? 4 : 3
+      ..strokeCap = StrokeCap.round
+      ..color = color.withValues(alpha: 0.38 * (1 - progress));
+    final count = type == PowerupEffectType.revivePawn ? 12 : 16;
+    for (var index = 0; index < count; index++) {
+      final angle = (math.pi * 2 / count) * index + progress * math.pi;
+      final start = maxRadius * (0.16 + progress * 0.34);
+      final end = start + 22 + 34 * progress;
+      final from = Offset(
+        center.dx + math.cos(angle) * start,
+        center.dy + math.sin(angle) * start,
+      );
+      final to = Offset(
+        center.dx + math.cos(angle) * end,
+        center.dy + math.sin(angle) * end,
+      );
+      canvas.drawLine(from, to, streakPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _PowerupBurstPainter oldDelegate) {
+    return oldDelegate.progress != progress ||
+        oldDelegate.color != color ||
+        oldDelegate.type != type;
+  }
+}
+
 class _EndGameResult extends StatefulWidget {
   const _EndGameResult({
     required this.match,
     required this.playerId,
+    required this.loading,
+    required this.onRematch,
     required this.onReview,
     required this.onCommand,
   });
 
   final MatchModel match;
   final String playerId;
+  final bool loading;
+  final Future<void> Function() onRematch;
   final VoidCallback onReview;
   final VoidCallback onCommand;
 
@@ -1701,6 +3345,28 @@ class _EndGameResultState extends State<_EndGameResult>
         : _GameResult.loss;
   }
 
+  List<_ConfettiParticle> _makeParticles(int seed) {
+    final random = math.Random(seed);
+    const colors = [
+      AppColors.primary,
+      AppColors.secondary,
+      AppColors.warning,
+      Color(0xfff472b6),
+      Color(0xfff8fafc),
+    ];
+    return List.generate(90, (index) {
+      return _ConfettiParticle(
+        x: random.nextDouble(),
+        y: -random.nextDouble(),
+        drift: random.nextDouble() * 0.7 - 0.35,
+        size: 5 + random.nextDouble() * 7,
+        speed: 0.55 + random.nextDouble() * 0.9,
+        rotation: random.nextDouble() * math.pi,
+        color: colors[index % colors.length],
+      );
+    });
+  }
+
   @override
   void dispose() {
     controller.dispose();
@@ -1713,6 +3379,8 @@ class _EndGameResultState extends State<_EndGameResult>
       _GameResult.win => _EndGameCelebration(
           match: widget.match,
           playerId: widget.playerId,
+          loading: widget.loading,
+          onRematch: widget.onRematch,
           onReview: widget.onReview,
           onCommand: widget.onCommand,
           controller: controller,
@@ -1721,12 +3389,16 @@ class _EndGameResultState extends State<_EndGameResult>
       _GameResult.loss => _EndGameDefeat(
           match: widget.match,
           playerId: widget.playerId,
+          loading: widget.loading,
+          onRematch: widget.onRematch,
           onReview: widget.onReview,
           onCommand: widget.onCommand,
         ),
       _GameResult.draw => _EndGameDraw(
           match: widget.match,
           playerId: widget.playerId,
+          loading: widget.loading,
+          onRematch: widget.onRematch,
           onReview: widget.onReview,
           onCommand: widget.onCommand,
         ),
@@ -1740,6 +3412,8 @@ class _EndGameCelebration extends StatelessWidget {
   const _EndGameCelebration({
     required this.match,
     required this.playerId,
+    required this.loading,
+    required this.onRematch,
     required this.onReview,
     required this.onCommand,
     required this.controller,
@@ -1748,6 +3422,8 @@ class _EndGameCelebration extends StatelessWidget {
 
   final MatchModel match;
   final String playerId;
+  final bool loading;
+  final Future<void> Function() onRematch;
   final VoidCallback onReview;
   final VoidCallback onCommand;
   final AnimationController controller;
@@ -1785,35 +3461,54 @@ class _EndGameCelebration extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
+            constraints: const BoxConstraints(maxWidth: 500),
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  border: Border.all(color: AppColors.primary, width: 1.5),
-                  borderRadius: BorderRadius.circular(10),
+                  color: AppColors.surfaceBright,
+                  border: Border.all(color: AppColors.border, width: 1.5),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 22,
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      blurRadius: 34,
+                      offset: const Offset(0, 18),
                     ),
                   ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.emoji_events,
-                        color: AppColors.primary, size: 48),
-                    const SizedBox(height: 12),
-                    Text(
+                    Container(
+                      width: 112,
+                      height: 112,
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryContainer,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.secondary.withValues(alpha: 0.22),
+                            blurRadius: 26,
+                          ),
+                        ],
+                      ),
+                      child: const Icon(
+                        Icons.emoji_events,
+                        color: AppColors.surfaceHigh,
+                        size: 58,
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
                       'YOU WON',
                       style: TextStyle(
                         color: AppColors.primary,
-                        fontSize: 28,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1826,40 +3521,14 @@ class _EndGameCelebration extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.replay, size: 18),
-                            label: const Text('REVIEW'),
-                            onPressed: onReview,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.primary,
-                              side: const BorderSide(color: AppColors.primary),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            icon: const Icon(Icons.home, size: 18),
-                            label: const Text('HOME'),
-                            onPressed: onCommand,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.primary,
-                              foregroundColor: AppColors.background,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    _EndGameActions(
+                      match: match,
+                      playerId: playerId,
+                      loading: loading,
+                      accentColor: AppColors.primary,
+                      onRematch: onRematch,
+                      onReview: onReview,
+                      onCommand: onCommand,
                     ),
                   ],
                 ),
@@ -1876,9 +3545,7 @@ class _EndGameCelebration extends StatelessWidget {
     if (reason != null && reason.isNotEmpty) {
       return reason;
     }
-    return match.winnerPlayerId == playerId
-        ? 'Checkmate'
-        : 'Game over';
+    return match.winnerPlayerId == playerId ? 'Checkmate' : 'Game over';
   }
 }
 
@@ -1886,12 +3553,16 @@ class _EndGameDefeat extends StatelessWidget {
   const _EndGameDefeat({
     required this.match,
     required this.playerId,
+    required this.loading,
+    required this.onRematch,
     required this.onReview,
     required this.onCommand,
   });
 
   final MatchModel match;
   final String playerId;
+  final bool loading;
+  final Future<void> Function() onRematch;
   final VoidCallback onReview;
   final VoidCallback onCommand;
 
@@ -1902,7 +3573,7 @@ class _EndGameDefeat extends StatelessWidget {
         children: [
           // Subtle dimming overlay
           Container(
-            color: Colors.black.withValues(alpha: 0.85),
+            color: AppColors.primary.withValues(alpha: 0.38),
           ),
           _buildDefeatCard(context),
         ],
@@ -1917,19 +3588,20 @@ class _EndGameDefeat extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
+            constraints: const BoxConstraints(maxWidth: 500),
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: AppColors.surfaceBright,
                   border: Border.all(color: AppColors.warning, width: 1.5),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 22,
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      blurRadius: 34,
+                      offset: const Offset(0, 18),
                     ),
                   ],
                 ),
@@ -1937,15 +3609,16 @@ class _EndGameDefeat extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     const Icon(Icons.sentiment_very_dissatisfied,
-                        color: AppColors.warning, size: 48),
+                        color: AppColors.warning, size: 58),
                     const SizedBox(height: 12),
                     Text(
                       'DEFEAT',
                       style: TextStyle(
                         color: AppColors.warning,
-                        fontSize: 28,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1958,40 +3631,14 @@ class _EndGameDefeat extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.replay, size: 18),
-                            label: const Text('REVIEW'),
-                            onPressed: onReview,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.warning,
-                              side: const BorderSide(color: AppColors.warning),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            icon: const Icon(Icons.home, size: 18),
-                            label: const Text('HOME'),
-                            onPressed: onCommand,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.warning,
-                              foregroundColor: AppColors.background,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    _EndGameActions(
+                      match: match,
+                      playerId: playerId,
+                      loading: loading,
+                      accentColor: AppColors.warning,
+                      onRematch: onRematch,
+                      onReview: onReview,
+                      onCommand: onCommand,
                     ),
                   ],
                 ),
@@ -2008,9 +3655,7 @@ class _EndGameDefeat extends StatelessWidget {
     if (reason != null && reason.isNotEmpty) {
       return reason;
     }
-    return match.winnerPlayerId == playerId
-        ? 'Checkmate'
-        : 'Game over';
+    return match.winnerPlayerId == playerId ? 'Checkmate' : 'Game over';
   }
 }
 
@@ -2018,12 +3663,16 @@ class _EndGameDraw extends StatelessWidget {
   const _EndGameDraw({
     required this.match,
     required this.playerId,
+    required this.loading,
+    required this.onRematch,
     required this.onReview,
     required this.onCommand,
   });
 
   final MatchModel match;
   final String playerId;
+  final bool loading;
+  final Future<void> Function() onRematch;
   final VoidCallback onReview;
   final VoidCallback onCommand;
 
@@ -2034,7 +3683,7 @@ class _EndGameDraw extends StatelessWidget {
         children: [
           // Subtle overlay
           Container(
-            color: Colors.black.withValues(alpha: 0.85),
+            color: AppColors.primary.withValues(alpha: 0.38),
           ),
           _buildDrawCard(context),
         ],
@@ -2049,19 +3698,20 @@ class _EndGameDraw extends StatelessWidget {
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
+            constraints: const BoxConstraints(maxWidth: 500),
             child: Material(
               color: Colors.transparent,
               child: Container(
-                padding: const EdgeInsets.all(18),
+                padding: const EdgeInsets.all(28),
                 decoration: BoxDecoration(
-                  color: AppColors.surface,
+                  color: AppColors.surfaceBright,
                   border: Border.all(color: AppColors.secondary, width: 1.5),
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(18),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.35),
-                      blurRadius: 22,
+                      color: AppColors.primary.withValues(alpha: 0.16),
+                      blurRadius: 34,
+                      offset: const Offset(0, 18),
                     ),
                   ],
                 ),
@@ -2075,9 +3725,10 @@ class _EndGameDraw extends StatelessWidget {
                       'DRAW',
                       style: TextStyle(
                         color: AppColors.secondary,
-                        fontSize: 28,
+                        fontSize: 38,
                         fontWeight: FontWeight.w900,
                         letterSpacing: 2,
+                        fontFamily: 'Playfair Display',
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -2090,40 +3741,14 @@ class _EndGameDraw extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(Icons.replay, size: 18),
-                            label: const Text('REVIEW'),
-                            onPressed: onReview,
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.secondary,
-                              side: const BorderSide(color: AppColors.secondary),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton.icon(
-                            icon: const Icon(Icons.home, size: 18),
-                            label: const Text('HOME'),
-                            onPressed: onCommand,
-                            style: FilledButton.styleFrom(
-                              backgroundColor: AppColors.secondary,
-                              foregroundColor: AppColors.background,
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                    _EndGameActions(
+                      match: match,
+                      playerId: playerId,
+                      loading: loading,
+                      accentColor: AppColors.secondary,
+                      onRematch: onRematch,
+                      onReview: onReview,
+                      onCommand: onCommand,
                     ),
                   ],
                 ),
@@ -2143,90 +3768,121 @@ class _EndGameDraw extends StatelessWidget {
     return 'Stalemate / Insufficient material';
   }
 }
-                          const Icon(
-                            Icons.emoji_events,
-                            color: AppColors.warning,
-                            size: 44,
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            winner,
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(
-                              color: AppColors.text,
-                              fontSize: 24,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            widget.match.resultReason ?? 'Game completed',
-                            style: const TextStyle(
-                              color: AppColors.muted,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Row(
-                            children: [
-                              Expanded(
-                                child: OutlinedButton.icon(
-                                  onPressed: widget.onReview,
-                                  icon: const Icon(Icons.visibility),
-                                  label: const Text('REVIEW'),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: FilledButton.icon(
-                                  onPressed: widget.onCommand,
-                                  icon: const Icon(Icons.tune),
-                                  label: const Text('COMMAND'),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
+
+class _EndGameActions extends StatelessWidget {
+  const _EndGameActions({
+    required this.match,
+    required this.playerId,
+    required this.loading,
+    required this.accentColor,
+    required this.onRematch,
+    required this.onReview,
+    required this.onCommand,
+  });
+
+  final MatchModel match;
+  final String playerId;
+  final bool loading;
+  final Color accentColor;
+  final Future<void> Function() onRematch;
+  final VoidCallback onReview;
+  final VoidCallback onCommand;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            icon: Icon(_rematchIcon(), size: 18),
+            label: Text(_rematchLabel()),
+            onPressed: _rematchEnabled() ? onRematch : null,
+            style: FilledButton.styleFrom(
+              backgroundColor: accentColor,
+              foregroundColor: AppColors.background,
+              disabledBackgroundColor: AppColors.surface,
+              disabledForegroundColor: AppColors.muted,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                icon: const Icon(Icons.replay, size: 18),
+                label: const Text('REVIEW'),
+                onPressed: onReview,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: accentColor,
+                  side: BorderSide(color: accentColor),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                icon: const Icon(Icons.home, size: 18),
+                label: const Text('HOME'),
+                onPressed: onCommand,
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primaryContainer,
+                  foregroundColor: AppColors.background,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 
-  String _winnerLabel() {
-    final winnerId = widget.match.winnerPlayerId;
-    if (winnerId == null) {
-      return 'Draw';
-    }
-    return winnerId == widget.playerId ? 'You won' : 'Game over';
+  bool _rematchEnabled() {
+    final requestedBy = match.rematchRequestedByPlayerId;
+    return !loading &&
+        match.rematchMatchId == null &&
+        (requestedBy == null || requestedBy.isEmpty || requestedBy != playerId);
   }
 
-  List<_ConfettiParticle> _makeParticles(int seed) {
-    final random = math.Random(seed);
-    const colors = [
-      AppColors.primary,
-      AppColors.secondary,
-      AppColors.warning,
-      Color(0xfff472b6),
-      Color(0xfff8fafc),
-    ];
-    return List.generate(90, (index) {
-      return _ConfettiParticle(
-        x: random.nextDouble(),
-        y: -random.nextDouble(),
-        drift: random.nextDouble() * 0.7 - 0.35,
-        size: 5 + random.nextDouble() * 7,
-        speed: 0.55 + random.nextDouble() * 0.9,
-        rotation: random.nextDouble() * math.pi,
-        color: colors[index % colors.length],
-      );
-    });
+  IconData _rematchIcon() {
+    final requestedBy = match.rematchRequestedByPlayerId;
+    if (match.rematchMatchId != null || loading) {
+      return Icons.hourglass_top;
+    }
+    if (requestedBy != null &&
+        requestedBy.isNotEmpty &&
+        requestedBy != playerId) {
+      return Icons.handshake;
+    }
+    return Icons.sync;
+  }
+
+  String _rematchLabel() {
+    final requestedBy = match.rematchRequestedByPlayerId;
+    if (match.rematchMatchId != null) {
+      return 'LOADING REMATCH';
+    }
+    if (requestedBy == null || requestedBy.isEmpty) {
+      return loading ? 'REQUESTING' : 'REMATCH';
+    }
+    if (requestedBy == playerId) {
+      return 'REMATCH REQUESTED';
+    }
+    return loading ? 'ACCEPTING' : 'ACCEPT REMATCH';
   }
 }
 
@@ -2309,9 +3965,17 @@ class _Panel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.surface.withValues(alpha: 0.92),
+        border:
+            Border.all(color: AppColors.strongBorder.withValues(alpha: 0.45)),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.07),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2321,14 +3985,14 @@ class _Panel extends StatelessWidget {
             Text(
               title!,
               style: const TextStyle(
-                color: AppColors.muted,
+                color: AppColors.secondary,
                 fontWeight: FontWeight.w900,
                 fontSize: 12,
-                letterSpacing: 1.2,
+                letterSpacing: 2.2,
               ),
             ),
             const SizedBox(height: 12),
-            const Divider(color: AppColors.border, height: 1),
+            Divider(color: AppColors.border.withValues(alpha: 0.7), height: 1),
             const SizedBox(height: 14),
           ],
           child,
@@ -2359,15 +4023,15 @@ class _TechField extends StatelessWidget {
       style:
           const TextStyle(color: AppColors.text, fontWeight: FontWeight.w700),
       decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: AppColors.muted),
+        prefixIcon: Icon(icon, color: AppColors.secondary),
         labelText: label,
         labelStyle: const TextStyle(
-          color: AppColors.muted,
+          color: AppColors.quiet,
           fontWeight: FontWeight.w900,
-          letterSpacing: 0.8,
+          letterSpacing: 1.2,
         ),
         filled: true,
-        fillColor: AppColors.background,
+        fillColor: AppColors.surfaceBright,
         enabledBorder: OutlineInputBorder(
           borderSide: const BorderSide(color: AppColors.border),
           borderRadius: BorderRadius.circular(8),
@@ -2416,8 +4080,12 @@ class _ActionButton extends StatelessWidget {
               icon: Icon(icon),
               label: Text(label),
               style: FilledButton.styleFrom(
-                backgroundColor: AppColors.primary,
+                backgroundColor: AppColors.primaryContainer,
                 foregroundColor: AppColors.background,
+                textStyle: const TextStyle(
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 1.2,
+                ),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),
@@ -2486,13 +4154,13 @@ class _TinyStat extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
       decoration: BoxDecoration(
         color: AppColors.surfaceLow,
-        border: Border.all(color: AppColors.border),
-        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.8)),
+        borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: AppColors.muted),
+          Icon(icon, size: 14, color: AppColors.secondary),
           const SizedBox(width: 5),
           Text(
             value,
@@ -2522,8 +4190,8 @@ class _StatusTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.14),
-        border: Border.all(color: color.withValues(alpha: 0.7)),
+        color: color.withValues(alpha: 0.12),
+        border: Border.all(color: color.withValues(alpha: 0.55)),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
@@ -2549,13 +4217,13 @@ class _LiveChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: connected ? AppColors.primary : AppColors.surfaceHigh,
+        color: connected ? AppColors.secondary : AppColors.surfaceHigh,
         borderRadius: BorderRadius.circular(99),
       ),
       child: Text(
         connected ? 'LIVE' : 'SYNC',
         style: TextStyle(
-          color: connected ? AppColors.background : AppColors.muted,
+          color: connected ? Colors.white : AppColors.quiet,
           fontSize: 11,
           fontWeight: FontWeight.w900,
         ),
@@ -2578,12 +4246,60 @@ class _ErrorBanner extends StatelessWidget {
         border: Border.all(color: AppColors.error),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: Text(
-        message,
-        style: const TextStyle(
-          color: AppColors.error,
-          fontWeight: FontWeight.w800,
-        ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                color: AppColors.error,
+                fontWeight: FontWeight.w800,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LoadingBanner extends StatelessWidget {
+  const _LoadingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.secondaryContainer.withValues(alpha: 0.32),
+        border: Border.all(color: AppColors.secondary.withValues(alpha: 0.32)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 18,
+            height: 18,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.4,
+              color: AppColors.secondary,
+            ),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Preparing your table...',
+              style: TextStyle(
+                color: AppColors.text,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2621,35 +4337,74 @@ class _BackgroundGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.surfaceLow.withValues(alpha: 0.95),
-            AppColors.background,
-          ],
-        ),
-      ),
+    return CustomPaint(
+      painter: const _ParchmentPainter(),
       child: const SizedBox.expand(),
     );
   }
 }
 
+class _ParchmentPainter extends CustomPainter {
+  const _ParchmentPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final paint = Paint()
+      ..shader = const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [
+          AppColors.background,
+          AppColors.surfaceLow,
+          AppColors.background,
+        ],
+      ).createShader(rect);
+    canvas.drawRect(rect, paint);
+
+    final squarePaint = Paint();
+    const cell = 56.0;
+    for (var y = 0.0; y < size.height; y += cell) {
+      for (var x = 0.0; x < size.width; x += cell) {
+        final even = ((x / cell).floor() + (y / cell).floor()).isEven;
+        squarePaint.color = (even ? AppColors.secondary : AppColors.primary)
+            .withValues(alpha: 0.018);
+        canvas.drawRect(Rect.fromLTWH(x, y, cell, cell), squarePaint);
+      }
+    }
+
+    final fleckPaint = Paint()
+      ..color = AppColors.strongBorder.withValues(alpha: 0.035);
+    final width = math.max(1, size.width.toInt());
+    final height = math.max(1, size.height.toInt());
+    for (var i = 0; i < 180; i++) {
+      final dx = (i * 37 % width).toDouble();
+      final dy = (i * 61 % height).toDouble();
+      canvas.drawCircle(Offset(dx, dy), i.isEven ? 0.8 : 0.45, fleckPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
 class AppColors {
-  static const background = Color(0xff0f1115);
-  static const surfaceLow = Color(0xff15181d);
-  static const surface = Color(0xff1d2026);
-  static const surfaceHigh = Color(0xff2a2f38);
-  static const border = Color(0xff333a45);
-  static const primary = Color(0xff81b64c);
-  static const secondary = Color(0xff4f8ddf);
-  static const warning = Color(0xfff4b942);
-  static const text = Color(0xfff0f3f5);
-  static const muted = Color(0xff9aa4b2);
-  static const error = Color(0xffff8a80);
+  static const background = Color(0xfffff8f1);
+  static const surfaceLow = Color(0xfffbf2e7);
+  static const surface = Color(0xfff5ede2);
+  static const surfaceHigh = Color(0xffe9e1d7);
+  static const surfaceBright = Color(0xffffffff);
+  static const border = Color(0xffd1c4bd);
+  static const strongBorder = Color(0xff8c6a50);
+  static const primary = Color(0xff170f0a);
+  static const primaryContainer = Color(0xff2d241e);
+  static const secondary = Color(0xff78583f);
+  static const secondaryContainer = Color(0xfffdd2b2);
+  static const warning = Color(0xffa69076);
+  static const text = Color(0xff1e1b15);
+  static const muted = Color(0xff4e4540);
+  static const quiet = Color(0xff7f756f);
+  static const error = Color(0xffba1a1a);
 }
 
 int maxInt(int a, int b) => a > b ? a : b;

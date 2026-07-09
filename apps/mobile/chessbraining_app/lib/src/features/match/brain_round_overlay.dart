@@ -95,7 +95,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
 
     return Positioned.fill(
       child: Material(
-        color: const Color(0xff07090d).withValues(alpha: 0.98),
+        color: const Color(0xfffff8f1),
         child: SafeArea(
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -120,10 +120,10 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                           child: LinearProgressIndicator(
                             minHeight: compact ? 8 : 10,
                             value: progress,
-                            backgroundColor: const Color(0xff252b34),
+                            backgroundColor: const Color(0xffe9e1d7),
                             color: secondsLeft <= 5
-                                ? const Color(0xffff8a80)
-                                : const Color(0xff4fcbff),
+                                ? const Color(0xffba1a1a)
+                                : const Color(0xff78583f),
                           ),
                         ),
                         SizedBox(height: compact ? 10 : 16),
@@ -167,7 +167,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              color: Color(0xffff8a80),
+                              color: Color(0xffba1a1a),
                               fontWeight: FontWeight.w800,
                             ),
                           ),
@@ -362,16 +362,17 @@ class _BrainHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.psychology, color: Color(0xff4fcbff)),
+        const Icon(Icons.close, color: Color(0xff170f0a), size: 28),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             'BRAIN ROUND',
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: const Color(0xff4fcbff),
+              color: const Color(0xff170f0a),
               fontSize: compact ? 22 : 28,
               fontWeight: FontWeight.w900,
+              fontFamily: 'Playfair Display',
             ),
           ),
         ),
@@ -419,11 +420,18 @@ class _PuzzleCard extends StatelessWidget {
                 : puzzle;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 120),
-      padding: EdgeInsets.all(compact ? 14 : 22),
+      padding: EdgeInsets.all(compact ? 18 : 30),
       decoration: BoxDecoration(
-        color: const Color(0xff121720),
-        border: Border.all(color: const Color(0xff303844)),
-        borderRadius: BorderRadius.circular(12),
+        color: Colors.white.withValues(alpha: 0.94),
+        border: Border.all(color: const Color(0xffd1c4bd)),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xff2d241e).withValues(alpha: 0.1),
+            blurRadius: 22,
+            offset: const Offset(0, 12),
+          ),
+        ],
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -432,9 +440,9 @@ class _PuzzleCard extends StatelessWidget {
             title,
             textAlign: TextAlign.center,
             style: const TextStyle(
-              color: Color(0xff94a3b8),
+              color: Color(0xff78583f),
               fontWeight: FontWeight.w900,
-              letterSpacing: 1.2,
+              letterSpacing: 3,
             ),
           ),
           SizedBox(height: compact ? 10 : 18),
@@ -444,9 +452,10 @@ class _PuzzleCard extends StatelessWidget {
               mainText,
               textAlign: TextAlign.center,
               style: TextStyle(
-                color: Colors.white,
+                color: const Color(0xff170f0a),
                 fontSize: compact ? 38 : 48,
                 fontWeight: FontWeight.w900,
+                fontFamily: 'Playfair Display',
               ),
             ),
           ),
@@ -455,14 +464,14 @@ class _PuzzleCard extends StatelessWidget {
             height: compact ? 48 : 58,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: const Color(0xff07090d),
-              border: Border.all(color: const Color(0xff303844)),
-              borderRadius: BorderRadius.circular(8),
+              color: const Color(0xfffff8f1),
+              border: Border.all(color: const Color(0xffe9e1d7)),
+              borderRadius: BorderRadius.circular(10),
             ),
             child: Text(
-              answer.isEmpty ? ' ' : answer,
+              answer.isEmpty ? '|' : answer,
               style: TextStyle(
-                color: const Color(0xffb9f7ff),
+                color: const Color(0xff170f0a),
                 fontSize: compact ? 28 : 34,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 4,
@@ -521,7 +530,7 @@ class _NumberPad extends StatelessWidget {
               Expanded(
                 child: _KeyButton(
                   icon: Icons.backspace_outlined,
-                  color: const Color(0xffff8a80),
+                  color: const Color(0xffba1a1a),
                   onPressed: enabled ? onBackspace : null,
                 ),
               ),
@@ -590,6 +599,15 @@ class _BrainFooter extends StatelessWidget {
                 : () => unawaited(onComplete()),
             icon: Icon(deadlinePassed ? Icons.done_all : Icons.lock_clock),
             label: Text(buttonLabel),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xff2d241e),
+              foregroundColor: const Color(0xfffff8f1),
+              disabledBackgroundColor: const Color(0xffe9e1d7),
+              disabledForegroundColor: const Color(0xff7f756f),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
           ),
         ),
       ],
@@ -625,10 +643,10 @@ class _KeyButton extends StatelessWidget {
         ? FilledButton(
             onPressed: onPressed,
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xff4fcbff),
-              foregroundColor: const Color(0xff06131a),
+              backgroundColor: const Color(0xff2d241e),
+              foregroundColor: const Color(0xfffff8f1),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             child: child,
@@ -636,10 +654,11 @@ class _KeyButton extends StatelessWidget {
         : OutlinedButton(
             onPressed: onPressed,
             style: OutlinedButton.styleFrom(
-              foregroundColor: color ?? Colors.white,
-              side: const BorderSide(color: Color(0xff303844)),
+              foregroundColor: color ?? const Color(0xff170f0a),
+              backgroundColor: const Color(0xfffbf2e7),
+              side: const BorderSide(color: Color(0xffd1c4bd)),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             child: child,
@@ -661,8 +680,8 @@ class _StatPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xff121720),
-        border: Border.all(color: const Color(0xff303844)),
+        color: const Color(0xfffbf2e7),
+        border: Border.all(color: const Color(0xffd1c4bd)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Column(
@@ -672,7 +691,7 @@ class _StatPill extends StatelessWidget {
           Text(
             label,
             style: const TextStyle(
-              color: Color(0xff94a3b8),
+              color: Color(0xff7f756f),
               fontSize: 9,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.8,
@@ -681,7 +700,7 @@ class _StatPill extends StatelessWidget {
           Text(
             value,
             style: const TextStyle(
-              color: Color(0xff81fbb8),
+              color: Color(0xff170f0a),
               fontSize: 16,
               fontWeight: FontWeight.w900,
             ),

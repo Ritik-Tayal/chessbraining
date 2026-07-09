@@ -31,6 +31,10 @@ public class MatchEntity {
 	@Column(nullable = false, length = 32)
 	private MatchPhase phase;
 
+	@Enumerated(EnumType.STRING)
+	@Column(length = 16)
+	private MatchmakingMode matchmakingMode;
+
 	@Column(nullable = false, length = 512)
 	private String fen;
 
@@ -48,6 +52,20 @@ public class MatchEntity {
 
 	@Column(length = 80)
 	private String blackPlayerName;
+
+	@Column
+	private Boolean whiteBot = false;
+
+	@Column
+	private Boolean blackBot = false;
+
+	@Enumerated(EnumType.STRING)
+	@Column(length = 16)
+	private BotDifficulty whiteBotDifficulty;
+
+	@Enumerated(EnumType.STRING)
+	@Column(length = 16)
+	private BotDifficulty blackBotDifficulty;
 
 	@Column(nullable = false)
 	private int timeControlSeconds;
@@ -90,6 +108,12 @@ public class MatchEntity {
 
 	@Column(length = 64)
 	private String resultReason;
+
+	@Column(length = 64)
+	private String rematchRequestedByPlayerId;
+
+	@Column(length = 36)
+	private String rematchMatchId;
 
 	@Column(nullable = false)
 	private Instant createdAt;
@@ -150,6 +174,14 @@ public class MatchEntity {
 		this.phase = phase;
 	}
 
+	public MatchmakingMode getMatchmakingMode() {
+		return matchmakingMode;
+	}
+
+	public void setMatchmakingMode(MatchmakingMode matchmakingMode) {
+		this.matchmakingMode = matchmakingMode;
+	}
+
 	public String getFen() {
 		return fen;
 	}
@@ -196,6 +228,38 @@ public class MatchEntity {
 
 	public void setBlackPlayerName(String blackPlayerName) {
 		this.blackPlayerName = blackPlayerName;
+	}
+
+	public boolean isWhiteBot() {
+		return Boolean.TRUE.equals(whiteBot);
+	}
+
+	public void setWhiteBot(boolean whiteBot) {
+		this.whiteBot = whiteBot;
+	}
+
+	public boolean isBlackBot() {
+		return Boolean.TRUE.equals(blackBot);
+	}
+
+	public void setBlackBot(boolean blackBot) {
+		this.blackBot = blackBot;
+	}
+
+	public BotDifficulty getWhiteBotDifficulty() {
+		return whiteBotDifficulty;
+	}
+
+	public void setWhiteBotDifficulty(BotDifficulty whiteBotDifficulty) {
+		this.whiteBotDifficulty = whiteBotDifficulty;
+	}
+
+	public BotDifficulty getBlackBotDifficulty() {
+		return blackBotDifficulty;
+	}
+
+	public void setBlackBotDifficulty(BotDifficulty blackBotDifficulty) {
+		this.blackBotDifficulty = blackBotDifficulty;
 	}
 
 	public int getTimeControlSeconds() {
@@ -308,6 +372,22 @@ public class MatchEntity {
 
 	public void setResultReason(String resultReason) {
 		this.resultReason = resultReason;
+	}
+
+	public String getRematchRequestedByPlayerId() {
+		return rematchRequestedByPlayerId;
+	}
+
+	public void setRematchRequestedByPlayerId(String rematchRequestedByPlayerId) {
+		this.rematchRequestedByPlayerId = rematchRequestedByPlayerId;
+	}
+
+	public String getRematchMatchId() {
+		return rematchMatchId;
+	}
+
+	public void setRematchMatchId(String rematchMatchId) {
+		this.rematchMatchId = rematchMatchId;
 	}
 
 	public Instant getCreatedAt() {

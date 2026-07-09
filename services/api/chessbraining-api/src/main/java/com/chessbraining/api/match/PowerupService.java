@@ -56,7 +56,7 @@ public class PowerupService {
 				requirePlayerTurn(match, side);
 				String revivedFen = chessService.revivePawn(match.getFen(), side, request.targetSquare());
 				spendBrainPoints(match, side, request.type().cost());
-				match.setFen(revivedFen);
+				matchService.completePowerupTurn(match, side, revivedFen);
 			}
 		}
 

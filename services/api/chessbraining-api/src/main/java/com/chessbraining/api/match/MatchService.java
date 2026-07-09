@@ -14,6 +14,7 @@ import com.chessbraining.api.common.ApiException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 @Service
 public class MatchService {
@@ -22,9 +23,14 @@ public class MatchService {
 	private static final int DEFAULT_BRAIN_ROUND_INTERVAL_MOVES = 5;
 	private static final int DEFAULT_BRAIN_ROUND_SECONDS = 30;
 	private static final int DOT_CONNECT_PUZZLE_COUNT = 5;
+	private static final int QUICKPLAY_WAITING_TTL_SECONDS = 600;
+	private static final int WINNER_BRAIN_POINTS = 2;
+	private static final int TIE_BRAIN_POINTS = 1;
 	private static final String BRAIN_ROUND_ACTIVE = "ACTIVE";
+	private static final String BRAIN_ROUND_COMPLETED = "COMPLETED";
 	private static final String INVITE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 	private static final SecureRandom RANDOM = new SecureRandom();
+	private final Object quickplayLock = new Object();
 
 	private final MatchRepository matchRepository;
 	private final MatchMoveRepository moveRepository;
@@ -34,6 +40,7 @@ public class MatchService {
 	private final MathPuzzleService mathPuzzleService;
 	private final DotConnectPuzzleService dotConnectPuzzleService;
 	private final tools.jackson.databind.ObjectMapper objectMapper;
+	private final TransactionTemplate transactionTemplate;
 
 	public MatchService(
 			MatchRepository matchRepository,
@@ -43,7 +50,8 @@ public class MatchService {
 			ClockService clockService,
 			MathPuzzleService mathPuzzleService,
 			DotConnectPuzzleService dotConnectPuzzleService,
-			tools.jackson.databind.ObjectMapper objectMapper) {
+			tools.jackson.databind.ObjectMapper objectMapper,
+			TransactionTemplate transactionTemplate) {
 		this.matchRepository = matchRepository;
 		this.moveRepository = moveRepository;
 		this.brainRoundRepository = brainRoundRepository;
@@ -52,14 +60,98 @@ public class MatchService {
 		this.mathPuzzleService = mathPuzzleService;
 		this.dotConnectPuzzleService = dotConnectPuzzleService;
 		this.objectMapper = objectMapper;
+		this.transactionTemplate = transactionTemplate;
 	}
 
 	@Transactional
 	public MatchResponse createMatch(CreateMatchRequest request) {
+		return createWaitingMatch(request, MatchmakingMode.PRIVATE);
+	}
+
+	@Transactional
+	public MatchResponse createBotMatch(CreateBotMatchRequest request) {
+		String humanPlayerId = playerIdOrNew(request == null ? null : request.playerId());
+		String humanPlayerName = playerNameOrDefault(request == null ? null : request.playerName(), "Player");
+		BotDifficulty difficulty = request == null || request.difficulty() == null
+				? BotDifficulty.NORMAL
+				: request.difficulty();
+		String humanSide = normalizePreferredSide(request == null ? null : request.preferredSide());
+		boolean humanPlaysWhite = !"BLACK".equals(humanSide);
+		String botPlayerId = "bot-" + difficulty.name().toLowerCase(Locale.ROOT) + "-" + UUID.randomUUID();
+
+		MatchEntity match = new MatchEntity();
+		match.setInviteCode(generateInviteCode());
+		match.setStatus(MatchStatus.ACTIVE);
+		match.setPhase(MatchPhase.CHESS_PHASE);
+		match.setMatchmakingMode(MatchmakingMode.PRIVATE);
+		match.setFen(ChessService.STARTING_FEN);
+		match.setSideToMove("WHITE");
+		match.setTimeControlSeconds(resolveTimeControlSeconds(request == null ? null : request.timeControlSeconds()));
+		match.setWhiteClockMs(match.getTimeControlSeconds() * 1000);
+		match.setBlackClockMs(match.getTimeControlSeconds() * 1000);
+		match.setBrainRoundIntervalMoves(resolveBrainRoundInterval(request == null ? null : request.brainRoundIntervalMoves()));
+		match.setStartedAt(Instant.now());
+
+		if (humanPlaysWhite) {
+			match.setWhitePlayerId(humanPlayerId);
+			match.setWhitePlayerName(humanPlayerName);
+			match.setBlackPlayerId(botPlayerId);
+			match.setBlackPlayerName(botName(difficulty));
+			match.setBlackBot(true);
+			match.setBlackBotDifficulty(difficulty);
+		} else {
+			match.setWhitePlayerId(botPlayerId);
+			match.setWhitePlayerName(botName(difficulty));
+			match.setWhiteBot(true);
+			match.setWhiteBotDifficulty(difficulty);
+			match.setBlackPlayerId(humanPlayerId);
+			match.setBlackPlayerName(humanPlayerName);
+		}
+		clockService.startClocks(match);
+		MatchEntity saved = matchRepository.save(match);
+		return toResponse(saved, List.of());
+	}
+
+	public MatchResponse quickplay(CreateMatchRequest request) {
+		synchronized (quickplayLock) {
+			return transactionTemplate.execute(status -> quickplayInTransaction(request));
+		}
+	}
+
+	private MatchResponse quickplayInTransaction(CreateMatchRequest request) {
+		String playerId = playerIdOrNew(request == null ? null : request.playerId());
+		CreateMatchRequest normalizedRequest = new CreateMatchRequest(
+				playerId,
+				request == null ? null : request.playerName(),
+				request == null ? null : request.timeControlSeconds(),
+				request == null ? null : request.brainRoundIntervalMoves());
+		Instant activeSince = Instant.now().minusSeconds(QUICKPLAY_WAITING_TTL_SECONDS);
+
+		return matchRepository
+				.findFirstByStatusAndMatchmakingModeAndWhitePlayerIdAndCreatedAtAfterOrderByCreatedAtAsc(
+						MatchStatus.WAITING_FOR_OPPONENT,
+						MatchmakingMode.QUICKPLAY,
+						playerId,
+						activeSince)
+				.map(match -> toResponse(match, List.of()))
+				.or(() -> matchRepository
+						.findFirstByStatusAndMatchmakingModeAndWhitePlayerIdNotAndCreatedAtAfterOrderByCreatedAtAsc(
+								MatchStatus.WAITING_FOR_OPPONENT,
+								MatchmakingMode.QUICKPLAY,
+								playerId,
+								activeSince)
+						.map(match -> joinExistingMatch(match, new JoinMatchRequest(match.getInviteCode(),
+								playerId,
+								normalizedRequest.playerName()))))
+				.orElseGet(() -> createWaitingMatch(normalizedRequest, MatchmakingMode.QUICKPLAY));
+	}
+
+	private MatchResponse createWaitingMatch(CreateMatchRequest request, MatchmakingMode matchmakingMode) {
 		MatchEntity match = new MatchEntity();
 		match.setInviteCode(generateInviteCode());
 		match.setStatus(MatchStatus.WAITING_FOR_OPPONENT);
 		match.setPhase(MatchPhase.WAITING_FOR_OPPONENT);
+		match.setMatchmakingMode(matchmakingMode);
 		match.setFen(ChessService.STARTING_FEN);
 		match.setSideToMove("WHITE");
 		match.setWhitePlayerId(playerIdOrNew(request == null ? null : request.playerId()));
@@ -69,18 +161,6 @@ public class MatchService {
 		match.setBlackClockMs(match.getTimeControlSeconds() * 1000);
 		match.setBrainRoundIntervalMoves(resolveBrainRoundInterval(request == null ? null : request.brainRoundIntervalMoves()));
 		return toResponse(matchRepository.save(match), List.of());
-	}
-
-	@Transactional
-	public MatchResponse quickplay(CreateMatchRequest request) {
-		String playerId = playerIdOrEmpty(request == null ? null : request.playerId());
-		return matchRepository.findFirstByStatusAndWhitePlayerIdNotOrderByCreatedAtAsc(
-						MatchStatus.WAITING_FOR_OPPONENT,
-						playerId)
-				.map(match -> joinExistingMatch(match, new JoinMatchRequest(match.getInviteCode(),
-						request == null ? null : request.playerId(),
-						request == null ? null : request.playerName())))
-				.orElseGet(() -> createMatch(request));
 	}
 
 	@Transactional
@@ -216,6 +296,65 @@ public class MatchService {
 		return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
 	}
 
+	@Transactional
+	public MatchResponse requestRematch(String matchId, String playerId) {
+		MatchEntity match = loadMatchForUpdate(matchId);
+		requirePlayerInMatch(match, playerId);
+		if (match.getStatus() != MatchStatus.COMPLETED || match.getPhase() != MatchPhase.COMPLETED) {
+			throw new ApiException(HttpStatus.CONFLICT, "REMATCH_NOT_AVAILABLE",
+					"Rematch can only be requested after a completed match.");
+		}
+		if (match.getBlackPlayerId() == null) {
+			throw new ApiException(HttpStatus.CONFLICT, "REMATCH_REQUIRES_TWO_PLAYERS",
+					"Rematch requires both players from the completed match.");
+		}
+		if (match.getRematchMatchId() != null) {
+			return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
+		}
+
+		String requester = playerId.trim();
+		String currentRequest = match.getRematchRequestedByPlayerId();
+		if (currentRequest == null || currentRequest.isBlank()) {
+			match.setRematchRequestedByPlayerId(requester);
+			MatchEntity saved = matchRepository.save(match);
+			return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
+		}
+		if (currentRequest.equals(requester)) {
+			return toResponse(match, moveRepository.findByMatchIdOrderByPlyNumberAsc(match.getId()));
+		}
+
+		MatchEntity rematch = createRematchMatch(match);
+		MatchEntity savedRematch = matchRepository.save(rematch);
+		match.setRematchMatchId(savedRematch.getId());
+		MatchEntity saved = matchRepository.save(match);
+		return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
+	}
+
+	private MatchEntity createRematchMatch(MatchEntity previous) {
+		MatchEntity match = new MatchEntity();
+		match.setInviteCode(generateInviteCode());
+		match.setStatus(MatchStatus.ACTIVE);
+		match.setPhase(MatchPhase.CHESS_PHASE);
+		match.setMatchmakingMode(MatchmakingMode.PRIVATE);
+		match.setFen(ChessService.STARTING_FEN);
+		match.setSideToMove("WHITE");
+		match.setWhitePlayerId(previous.getBlackPlayerId());
+		match.setWhitePlayerName(previous.getBlackPlayerName());
+		match.setWhiteBot(previous.isBlackBot());
+		match.setWhiteBotDifficulty(previous.getBlackBotDifficulty());
+		match.setBlackPlayerId(previous.getWhitePlayerId());
+		match.setBlackPlayerName(previous.getWhitePlayerName());
+		match.setBlackBot(previous.isWhiteBot());
+		match.setBlackBotDifficulty(previous.getWhiteBotDifficulty());
+		match.setTimeControlSeconds(previous.getTimeControlSeconds());
+		match.setWhiteClockMs(match.getTimeControlSeconds() * 1000);
+		match.setBlackClockMs(match.getTimeControlSeconds() * 1000);
+		match.setBrainRoundIntervalMoves(previous.getBrainRoundIntervalMoves());
+		match.setStartedAt(Instant.now());
+		clockService.startClocks(match);
+		return match;
+	}
+
 	private MatchResponse joinExistingMatch(MatchEntity match, JoinMatchRequest request) {
 		if (match.getStatus() != MatchStatus.WAITING_FOR_OPPONENT) {
 			throw new ApiException(HttpStatus.CONFLICT, "MATCH_ALREADY_STARTED", "Match already has two players.");
@@ -280,6 +419,27 @@ public class MatchService {
 		int intervalPlyCount = match.getBrainRoundIntervalMoves() * 2;
 		int nextPly = match.getPlyCount() + 1;
 		return intervalPlyCount > 0 && nextPly > 0 && nextPly % intervalPlyCount == 0;
+	}
+
+	void completePowerupTurn(MatchEntity match, String movingSide, String fenAfterPowerup) {
+		String nextSide = oppositeSide(movingSide);
+		match.setFen(chessService.withSideToMove(fenAfterPowerup, nextSide));
+		match.setSideToMove(nextSide);
+		match.setPlyCount(match.getPlyCount() + 1);
+		clearExtraMoveState(match, movingSide);
+
+		String timedOutWinner = clockService.tickAfterMove(match);
+		if (timedOutWinner != null) {
+			completeMatch(match, timedOutWinner, "TIMEOUT");
+		}
+		else if (shouldStartBrainRound(match)) {
+			clockService.pauseForBrainRound(match);
+			startBrainRound(match);
+		}
+	}
+
+	private String oppositeSide(String side) {
+		return "WHITE".equals(side) ? "BLACK" : "WHITE";
 	}
 
 	private boolean isExtraMoveArmed(MatchEntity match, String side) {
@@ -389,21 +549,43 @@ public class MatchService {
 				match.getPlyCount(),
 				match.getBrainRoundIntervalMoves(),
 				match.getBrainRoundCount(),
+				latestBrainRoundResult(match),
 				new PlayerResponse(match.getWhitePlayerId(), match.getWhitePlayerName(), "WHITE",
 						match.getWhiteBrainPoints(), match.getWhiteClockMs(),
 						match.isWhiteExtraMoveArmed(), match.isWhiteExtraMoveActive(),
-						chessService.revivablePawnCount(match.getFen(), "WHITE")),
+						chessService.revivablePawnCount(match.getFen(), "WHITE"),
+						match.isWhiteBot(), match.getWhiteBotDifficulty()),
 				match.getBlackPlayerId() == null ? null :
 						new PlayerResponse(match.getBlackPlayerId(), match.getBlackPlayerName(), "BLACK",
 								match.getBlackBrainPoints(), match.getBlackClockMs(),
 								match.isBlackExtraMoveArmed(), match.isBlackExtraMoveActive(),
-								chessService.revivablePawnCount(match.getFen(), "BLACK")),
+								chessService.revivablePawnCount(match.getFen(), "BLACK"),
+								match.isBlackBot(), match.getBlackBotDifficulty()),
 				match.getWinnerPlayerId(),
 				match.getResultReason(),
+				match.getRematchRequestedByPlayerId(),
+				match.getRematchMatchId(),
 				moves.stream().map(this::toMoveResponse).toList(),
 				match.getClockDeadlineAt(),
 				match.getCreatedAt(),
 				match.getUpdatedAt());
+	}
+
+	private BrainRoundResultResponse latestBrainRoundResult(MatchEntity match) {
+		if (match.getPhase() == MatchPhase.BRAIN_ROUND || match.getBrainRoundCount() == 0) {
+			return null;
+		}
+		return brainRoundRepository
+				.findFirstByMatchIdAndStatusOrderByRoundNumberDesc(match.getId(), BRAIN_ROUND_COMPLETED)
+				.map(round -> new BrainRoundResultResponse(
+						round.getId(),
+						round.getRoundNumber(),
+						round.getWhiteCorrectCount(),
+						round.getBlackCorrectCount(),
+						round.getWinnerPlayerId(),
+						round.getWinnerPlayerId() == null ? TIE_BRAIN_POINTS : WINNER_BRAIN_POINTS,
+						round.getCompletedAt()))
+				.orElse(null);
 	}
 
 	private MoveResponse toMoveResponse(MatchMoveEntity move) {
@@ -414,6 +596,7 @@ public class MatchService {
 				move.getFromSquare(),
 				move.getToSquare(),
 				move.getPromotion(),
+				move.getFenBefore(),
 				move.getFenAfter(),
 				move.getCreatedAt());
 	}
@@ -455,15 +638,28 @@ public class MatchService {
 		return value;
 	}
 
+	private String normalizePreferredSide(String value) {
+		if (value == null || value.isBlank()) {
+			return "WHITE";
+		}
+		String normalized = value.trim().toUpperCase(Locale.ROOT);
+		return "BLACK".equals(normalized) ? "BLACK" : "WHITE";
+	}
+
+	private String botName(BotDifficulty difficulty) {
+		return switch (difficulty) {
+			case EASY -> "NeuroBot Easy";
+			case NORMAL -> "NeuroBot";
+			case HARD -> "NeuroBot Hard";
+			case EXPERT -> "NeuroBot Expert";
+		};
+	}
+
 	private String playerIdOrNew(String playerId) {
 		if (!isBlank(playerId)) {
 			return playerId.trim();
 		}
 		return "player_" + UUID.randomUUID();
-	}
-
-	private String playerIdOrEmpty(String playerId) {
-		return isBlank(playerId) ? "" : playerId.trim();
 	}
 
 	private String playerNameOrDefault(String playerName, String fallback) {

@@ -9,10 +9,13 @@ class MatchModel {
     required this.plyCount,
     required this.brainRoundIntervalMoves,
     required this.brainRoundCount,
+    required this.latestBrainRoundResult,
     required this.white,
     required this.black,
     required this.winnerPlayerId,
     required this.resultReason,
+    required this.rematchRequestedByPlayerId,
+    required this.rematchMatchId,
     required this.moves,
     required this.clockDeadlineAt,
   });
@@ -26,10 +29,13 @@ class MatchModel {
   final int plyCount;
   final int brainRoundIntervalMoves;
   final int brainRoundCount;
+  final BrainRoundResultModel? latestBrainRoundResult;
   final PlayerModel white;
   final PlayerModel? black;
   final String? winnerPlayerId;
   final String? resultReason;
+  final String? rematchRequestedByPlayerId;
+  final String? rematchMatchId;
   final List<MoveModel> moves;
   final DateTime? clockDeadlineAt;
 
@@ -37,6 +43,7 @@ class MatchModel {
   bool get isChessPhase => phase == 'CHESS_PHASE';
   bool get isBrainRound => phase == 'BRAIN_ROUND';
   bool get isCompleted => phase == 'COMPLETED';
+  bool get isDraw => isCompleted && winnerPlayerId == null;
 
   PlayerModel? playerById(String playerId) {
     if (white.playerId == playerId) {
@@ -46,6 +53,35 @@ class MatchModel {
       return black;
     }
     return null;
+  }
+
+  MatchModel copyWith({
+    String? fen,
+    String? sideToMove,
+    int? plyCount,
+    List<MoveModel>? moves,
+    DateTime? clockDeadlineAt,
+  }) {
+    return MatchModel(
+      matchId: matchId,
+      inviteCode: inviteCode,
+      status: status,
+      phase: phase,
+      fen: fen ?? this.fen,
+      sideToMove: sideToMove ?? this.sideToMove,
+      plyCount: plyCount ?? this.plyCount,
+      brainRoundIntervalMoves: brainRoundIntervalMoves,
+      brainRoundCount: brainRoundCount,
+      latestBrainRoundResult: latestBrainRoundResult,
+      white: white,
+      black: black,
+      winnerPlayerId: winnerPlayerId,
+      resultReason: resultReason,
+      rematchRequestedByPlayerId: rematchRequestedByPlayerId,
+      rematchMatchId: rematchMatchId,
+      moves: moves ?? this.moves,
+      clockDeadlineAt: clockDeadlineAt ?? this.clockDeadlineAt,
+    );
   }
 
   factory MatchModel.fromJson(Map<String, dynamic> json) {
@@ -59,12 +95,19 @@ class MatchModel {
       plyCount: json['plyCount'] as int,
       brainRoundIntervalMoves: json['brainRoundIntervalMoves'] as int,
       brainRoundCount: json['brainRoundCount'] as int,
+      latestBrainRoundResult: json['latestBrainRoundResult'] == null
+          ? null
+          : BrainRoundResultModel.fromJson(
+              json['latestBrainRoundResult'] as Map<String, dynamic>,
+            ),
       white: PlayerModel.fromJson(json['white'] as Map<String, dynamic>),
       black: json['black'] == null
           ? null
           : PlayerModel.fromJson(json['black'] as Map<String, dynamic>),
       winnerPlayerId: json['winnerPlayerId'] as String?,
       resultReason: json['resultReason'] as String?,
+      rematchRequestedByPlayerId: json['rematchRequestedByPlayerId'] as String?,
+      rematchMatchId: json['rematchMatchId'] as String?,
       moves: (json['moves'] as List<dynamic>)
           .map((item) => MoveModel.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -85,6 +128,8 @@ class PlayerModel {
     required this.extraMoveArmed,
     required this.extraMoveActive,
     required this.revivablePawns,
+    required this.bot,
+    required this.botDifficulty,
   });
 
   final String playerId;
@@ -95,6 +140,8 @@ class PlayerModel {
   final bool extraMoveArmed;
   final bool extraMoveActive;
   final int revivablePawns;
+  final bool bot;
+  final String? botDifficulty;
 
   factory PlayerModel.fromJson(Map<String, dynamic> json) {
     return PlayerModel(
@@ -106,6 +153,8 @@ class PlayerModel {
       extraMoveArmed: json['extraMoveArmed'] as bool? ?? false,
       extraMoveActive: json['extraMoveActive'] as bool? ?? false,
       revivablePawns: json['revivablePawns'] as int? ?? 0,
+      bot: json['bot'] as bool? ?? false,
+      botDifficulty: json['botDifficulty'] as String?,
     );
   }
 }
@@ -118,6 +167,7 @@ class MoveModel {
     required this.from,
     required this.to,
     required this.promotion,
+    required this.fenBefore,
     required this.fenAfter,
   });
 
@@ -127,9 +177,11 @@ class MoveModel {
   final String from;
   final String to;
   final String? promotion;
+  final String fenBefore;
   final String fenAfter;
 
   factory MoveModel.fromJson(Map<String, dynamic> json) {
+    final fenAfter = json['fenAfter'] as String;
     return MoveModel(
       plyNumber: json['plyNumber'] as int,
       playerId: json['playerId'] as String,
@@ -137,7 +189,8 @@ class MoveModel {
       from: json['from'] as String,
       to: json['to'] as String,
       promotion: json['promotion'] as String?,
-      fenAfter: json['fenAfter'] as String,
+      fenBefore: json['fenBefore'] as String? ?? '',
+      fenAfter: fenAfter,
     );
   }
 }
@@ -162,6 +215,40 @@ class LegalMoveModel {
   }
 }
 
+class BrainRoundResultModel {
+  const BrainRoundResultModel({
+    required this.roundId,
+    required this.roundNumber,
+    required this.whiteCorrectCount,
+    required this.blackCorrectCount,
+    required this.winnerPlayerId,
+    required this.awardedBrainPoints,
+    required this.completedAt,
+  });
+
+  final String roundId;
+  final int roundNumber;
+  final int whiteCorrectCount;
+  final int blackCorrectCount;
+  final String? winnerPlayerId;
+  final int awardedBrainPoints;
+  final DateTime completedAt;
+
+  bool get isTie => winnerPlayerId == null;
+
+  factory BrainRoundResultModel.fromJson(Map<String, dynamic> json) {
+    return BrainRoundResultModel(
+      roundId: json['roundId'] as String,
+      roundNumber: json['roundNumber'] as int,
+      whiteCorrectCount: json['whiteCorrectCount'] as int,
+      blackCorrectCount: json['blackCorrectCount'] as int,
+      winnerPlayerId: json['winnerPlayerId'] as String?,
+      awardedBrainPoints: json['awardedBrainPoints'] as int,
+      completedAt: DateTime.parse(json['completedAt'] as String),
+    );
+  }
+}
+
 class BrainRoundModel {
   const BrainRoundModel({
     required this.roundId,
@@ -177,6 +264,7 @@ class BrainRoundModel {
     required this.winnerPlayerId,
     required this.startedAt,
     required this.expiresAt,
+    required this.completedAt,
   });
 
   final String roundId;
@@ -192,6 +280,9 @@ class BrainRoundModel {
   final String? winnerPlayerId;
   final DateTime startedAt;
   final DateTime expiresAt;
+  final DateTime? completedAt;
+
+  bool get isCompleted => status == 'COMPLETED';
 
   bool get isMathPuzzle => puzzleType == 'MENTAL_MATH';
   bool get isDotConnect => puzzleType == 'DOT_CONNECT';
@@ -213,6 +304,9 @@ class BrainRoundModel {
       winnerPlayerId: json['winnerPlayerId'] as String?,
       startedAt: DateTime.parse(json['startedAt'] as String),
       expiresAt: DateTime.parse(json['expiresAt'] as String),
+      completedAt: json['completedAt'] == null
+          ? null
+          : DateTime.parse(json['completedAt'] as String),
     );
   }
 }

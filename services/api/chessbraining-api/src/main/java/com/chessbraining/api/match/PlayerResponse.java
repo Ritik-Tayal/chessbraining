@@ -8,5 +8,7 @@ public record PlayerResponse(
 		int clockMs,
 		boolean extraMoveArmed,
 		boolean extraMoveActive,
-		int revivablePawns) {
+		int revivablePawns,
+		boolean bot,
+		BotDifficulty botDifficulty) {
 }

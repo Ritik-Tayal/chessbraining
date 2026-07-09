@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'fen.dart';
 import 'match_controller.dart';
 
-class ChessBoard extends StatelessWidget {
+class ChessBoard extends StatefulWidget {
   const ChessBoard({
     required this.controller,
     super.key,
@@ -13,70 +13,219 @@ class ChessBoard extends StatelessWidget {
   final MatchController controller;
 
   @override
+  State<ChessBoard> createState() => _ChessBoardState();
+}
+
+class _ChessBoardState extends State<ChessBoard>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _moveController;
+  BoardMoveAnimation? _activeMove;
+  int? _seenMoveAnimationId;
+
+  @override
+  void initState() {
+    super.initState();
+    _moveController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 170),
+    );
+    _syncMoveAnimation();
+  }
+
+  @override
+  void didUpdateWidget(covariant ChessBoard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _syncMoveAnimation();
+  }
+
+  @override
+  void dispose() {
+    _moveController.dispose();
+    super.dispose();
+  }
+
+  void _syncMoveAnimation() {
+    final move = widget.controller.boardMoveAnimation;
+    if (move == null || move.id == _seenMoveAnimationId) {
+      return;
+    }
+    _seenMoveAnimationId = move.id;
+    _activeMove = move;
+    _moveController
+      ..stop()
+      ..forward(from: 0).whenComplete(() {
+        if (!mounted) {
+          return;
+        }
+        setState(() => _activeMove = null);
+      });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final match = controller.match;
+    final match = widget.controller.match;
     if (match == null) {
       return const SizedBox.shrink();
     }
 
-    final board = parseFenBoard(match.fen);
-    final isBlackPerspective = controller.me?.side == 'BLACK';
+    final board = parseFenBoard(widget.controller.boardFen ?? match.fen);
+    final isBlackPerspective = widget.controller.me?.side == 'BLACK';
     final files = isBlackPerspective
         ? const ['h', 'g', 'f', 'e', 'd', 'c', 'b', 'a']
         : const ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
     final ranks = isBlackPerspective
         ? const [1, 2, 3, 4, 5, 6, 7, 8]
         : const [8, 7, 6, 5, 4, 3, 2, 1];
-    final lastMove = match.moves.isEmpty ? null : match.moves.last;
+    final lastMove = widget.controller.boardLastMove;
 
     return Container(
-      padding: const EdgeInsets.all(10),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xff312e2b),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xff463f39), width: 2),
+        color: const Color(0xff2d241e),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xff170f0a), width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.22),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: AspectRatio(
         aspectRatio: 1,
-        child: GridView.builder(
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 8,
-          ),
-          itemCount: 64,
-          itemBuilder: (context, index) {
-            final fileIndex = index % 8;
-            final rankIndex = index ~/ 8;
-            final square = '${files[fileIndex]}${ranks[rankIndex]}';
-            final piece = board[square];
-            final isLight = (fileIndex + rankIndex).isEven;
-            final isSelected = controller.selectedSquare == square;
-            final isTarget = controller.isLegalTarget(square);
-            final isPowerupTarget = controller.isPowerupTarget(square);
-            final isLastMove =
-                lastMove?.from == square || lastMove?.to == square;
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final squareSize = constraints.biggest.shortestSide / 8;
+            final children = <Widget>[];
+            for (var index = 0; index < 64; index++) {
+              final fileIndex = index % 8;
+              final rankIndex = index ~/ 8;
+              final square = '${files[fileIndex]}${ranks[rankIndex]}';
+              final isLight = (fileIndex + rankIndex).isEven;
+              final isSelected = widget.controller.selectedSquare == square;
+              final isTarget = widget.controller.isLegalTarget(square);
+              final isPowerupTarget = widget.controller.isPowerupTarget(square);
+              final isLastMove =
+                  lastMove?.from == square || lastMove?.to == square;
 
-            return _BoardSquare(
-              square: square,
-              piece: piece,
-              isLight: isLight,
-              isSelected: isSelected,
-              isTarget: isTarget,
-              isPowerupTarget: isPowerupTarget,
-              isLastMove: isLastMove,
-              onTap: () => controller.selectSquare(square),
-            );
+              children.add(
+                Positioned(
+                  left: fileIndex * squareSize,
+                  top: rankIndex * squareSize,
+                  width: squareSize,
+                  height: squareSize,
+                  child: _BoardSquare(
+                    square: square,
+                    isLight: isLight,
+                    isSelected: isSelected,
+                    isTarget: isTarget,
+                    isPowerupTarget: isPowerupTarget,
+                    isLastMove: isLastMove,
+                    onTap: () => widget.controller.selectSquare(square),
+                  ),
+                ),
+              );
+            }
+
+            final activeMove =
+                widget.controller.isReviewingMove ? null : _activeMove;
+            for (final entry in board.entries) {
+              if (activeMove != null && entry.key == activeMove.to) {
+                continue;
+              }
+              final offset = _squareOffset(
+                entry.key,
+                files,
+                ranks,
+                squareSize,
+              );
+              children.add(
+                Positioned(
+                  left: offset.dx,
+                  top: offset.dy,
+                  width: squareSize,
+                  height: squareSize,
+                  child: IgnorePointer(
+                    child: Center(
+                      child: _PieceVector(
+                        piece: entry.value,
+                        size: squareSize * 0.82,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            if (activeMove != null) {
+              children.add(
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: AnimatedBuilder(
+                      animation: _moveController,
+                      builder: (context, child) {
+                        final from = _squareOffset(
+                          activeMove.from,
+                          files,
+                          ranks,
+                          squareSize,
+                        );
+                        final to = _squareOffset(
+                          activeMove.to,
+                          files,
+                          ranks,
+                          squareSize,
+                        );
+                        final progress = Curves.easeOutCubic
+                            .transform(_moveController.value);
+                        final offset = Offset.lerp(from, to, progress)!;
+                        return Transform.translate(
+                          offset: offset,
+                          child: Align(
+                            alignment: Alignment.topLeft,
+                            child: SizedBox(
+                              width: squareSize,
+                              height: squareSize,
+                              child: child,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Center(
+                        child: _PieceVector(
+                          piece: activeMove.piece,
+                          size: squareSize * 0.82,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            return Stack(children: children);
           },
         ),
       ),
     );
+  }
+
+  Offset _squareOffset(
+    String square,
+    List<String> files,
+    List<int> ranks,
+    double squareSize,
+  ) {
+    final fileIndex = files.indexOf(square[0]);
+    final rankIndex = ranks.indexOf(int.parse(square.substring(1)));
+    return Offset(fileIndex * squareSize, rankIndex * squareSize);
   }
 }
 
 class _BoardSquare extends StatelessWidget {
   const _BoardSquare({
     required this.square,
-    required this.piece,
     required this.isLight,
     required this.isSelected,
     required this.isTarget,
@@ -86,7 +235,6 @@ class _BoardSquare extends StatelessWidget {
   });
 
   final String square;
-  final String? piece;
   final bool isLight;
   final bool isSelected;
   final bool isTarget;
@@ -96,15 +244,14 @@ class _BoardSquare extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final base = isLight ? const Color(0xffeeeed2) : const Color(0xff769656);
-    final pieceValue = piece;
+    final base = isLight ? const Color(0xfff5ede2) : const Color(0xff8c6a50);
 
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        splashColor: const Color(0xff10b981).withValues(alpha: 0.14),
-        highlightColor: const Color(0xff10b981).withValues(alpha: 0.08),
+        splashColor: const Color(0xfffdd2b2).withValues(alpha: 0.28),
+        highlightColor: const Color(0xfffdd2b2).withValues(alpha: 0.18),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           decoration: BoxDecoration(
@@ -120,9 +267,9 @@ class _BoardSquare extends StatelessWidget {
                   square,
                   style: TextStyle(
                     color: isLight
-                        ? const Color(0xff769656)
-                        : const Color(0xffeeeed2),
-                    fontSize: 11,
+                        ? const Color(0xff8c6a50).withValues(alpha: 0.62)
+                        : const Color(0xfff5ede2).withValues(alpha: 0.62),
+                    fontSize: 10,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
@@ -134,25 +281,16 @@ class _BoardSquare extends StatelessWidget {
                     height: isPowerupTarget ? 24 : 16,
                     decoration: BoxDecoration(
                       color: (isPowerupTarget
-                              ? const Color(0xfff59e0b)
-                              : const Color(0xff3b82f6))
+                              ? const Color(0xff78583f)
+                              : const Color(0xff2d241e))
                           .withValues(alpha: 0.32),
                       shape: BoxShape.circle,
                       border: Border.all(
                         color: isPowerupTarget
-                            ? const Color(0xfff59e0b)
-                            : const Color(0xff3b82f6),
+                            ? const Color(0xff78583f)
+                            : const Color(0xff2d241e),
                       ),
                     ),
-                  ),
-                ),
-              if (pieceValue != null)
-                Center(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      final size = constraints.biggest.shortestSide * 0.82;
-                      return _PieceVector(piece: pieceValue, size: size);
-                    },
                   ),
                 ),
             ],
@@ -164,29 +302,29 @@ class _BoardSquare extends StatelessWidget {
 
   Color _squareColor(Color base) {
     if (isSelected) {
-      return const Color(0xfff6f669);
+      return const Color(0xfffdd2b2);
     }
     if (isLastMove) {
-      return Color.lerp(base, const Color(0xffffef5f), 0.48)!;
+      return Color.lerp(base, const Color(0xfffdd2b2), 0.55)!;
     }
     if (isPowerupTarget) {
-      return Color.lerp(base, const Color(0xffffa726), 0.35)!;
+      return Color.lerp(base, const Color(0xfff8dec1), 0.45)!;
     }
     return base;
   }
 
   Color _borderColor() {
     if (isSelected) {
-      return const Color(0xfff6f669);
+      return const Color(0xff170f0a);
     }
     if (isTarget) {
-      return const Color(0xff3b82f6);
+      return const Color(0xff2d241e);
     }
     if (isPowerupTarget) {
-      return const Color(0xfff59e0b);
+      return const Color(0xff78583f);
     }
     if (isLastMove) {
-      return const Color(0xffffef5f).withValues(alpha: 0.85);
+      return const Color(0xfffdd2b2).withValues(alpha: 0.95);
     }
     return Colors.transparent;
   }
@@ -214,8 +352,8 @@ class _PieceVector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final white = isWhitePiece(piece);
-    final fill = white ? const Color(0xfff8fafc) : const Color(0xff2a2f38);
-    final stroke = white ? const Color(0xff65758b) : const Color(0xff0b0f14);
+    final fill = white ? const Color(0xfffffbf4) : const Color(0xff2d241e);
+    final stroke = white ? const Color(0xffa69076) : const Color(0xff170f0a);
 
     return DecoratedBox(
       decoration: BoxDecoration(

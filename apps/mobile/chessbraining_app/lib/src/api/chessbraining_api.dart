@@ -55,6 +55,24 @@ class ChessbrainingApi {
     });
   }
 
+  Future<MatchModel> createBotMatch({
+    required String playerId,
+    required String playerName,
+    required String difficulty,
+    String preferredSide = 'WHITE',
+    int timeControlSeconds = 300,
+    int brainRoundIntervalMoves = 5,
+  }) {
+    return _postMatch('/matches/bot', {
+      'playerId': playerId,
+      'playerName': playerName,
+      'difficulty': difficulty,
+      'preferredSide': preferredSide,
+      'timeControlSeconds': timeControlSeconds,
+      'brainRoundIntervalMoves': brainRoundIntervalMoves,
+    });
+  }
+
   Future<MatchModel> joinMatch({
     required String inviteCode,
     required String playerId,
@@ -157,14 +175,14 @@ class ChessbrainingApi {
     return BrainRoundSubmissionModel.fromJson(body as Map<String, dynamic>);
   }
 
-  Future<MatchModel> completeBrainRound({
+  Future<BrainRoundModel> completeBrainRound({
     required String matchId,
   }) async {
     final response = await _withTimeout(
       _client.post(_uri('/matches/$matchId/brain-rounds/current/complete')),
     );
-    _decodeResponse(response);
-    return getMatch(matchId);
+    final body = _decodeResponse(response);
+    return BrainRoundModel.fromJson(body as Map<String, dynamic>);
   }
 
   Future<AnswerResultModel> submitDotConnectPath({
@@ -206,6 +224,15 @@ class ChessbrainingApi {
     required String playerId,
   }) {
     return _postMatch('/matches/$matchId/resign', {
+      'playerId': playerId,
+    });
+  }
+
+  Future<MatchModel> requestRematch({
+    required String matchId,
+    required String playerId,
+  }) {
+    return _postMatch('/matches/$matchId/rematch', {
       'playerId': playerId,
     });
   }
