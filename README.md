@@ -171,6 +171,7 @@ Run the backend locally with database environment variables set:
 $env:SPRING_DATASOURCE_URL="jdbc:postgresql://host/database?sslmode=require"
 $env:SPRING_DATASOURCE_USERNAME="database_user"
 $env:SPRING_DATASOURCE_PASSWORD="database_password"
+$env:SPRING_JPA_HIBERNATE_DDL_AUTO="none"
 .\mvnw.cmd spring-boot:run
 ```
 

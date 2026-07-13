@@ -32,6 +32,7 @@ The app reads database connection settings from environment variables:
 $env:SPRING_DATASOURCE_URL="jdbc:postgresql://host/database?sslmode=require"
 $env:SPRING_DATASOURCE_USERNAME="database_user"
 $env:SPRING_DATASOURCE_PASSWORD="database_password"
+$env:SPRING_JPA_HIBERNATE_DDL_AUTO="none"
 ```
 
 Use `services/api/chessbraining-api/.env.example` as the template. Do not commit real credentials.
