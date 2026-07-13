@@ -424,6 +424,9 @@ class MatchController extends ChangeNotifier {
     notifyListeners();
     try {
       final round = await _api.getCurrentBrainRound(current.matchId);
+      if (match?.matchId != current.matchId || match?.isBrainRound != true) {
+        return;
+      }
       brainRound = round;
       if (round.isCompleted) {
         _setMatch(await _api.getMatch(current.matchId));
@@ -778,9 +781,7 @@ class MatchController extends ChangeNotifier {
 
   void _setMatch(MatchModel value) {
     final currentMatch = match;
-    if (currentMatch != null &&
-        value.matchId == currentMatch.matchId &&
-        value.plyCount < currentMatch.plyCount) {
+    if (currentMatch != null && _isStaleMatchSnapshot(currentMatch, value)) {
       return;
     }
 
@@ -859,6 +860,30 @@ class MatchController extends ChangeNotifier {
       notifyListeners();
       unawaited(_loadLegalMoves().then((_) => notifyListeners()));
     }
+  }
+
+  bool _isStaleMatchSnapshot(MatchModel current, MatchModel incoming) {
+    if (incoming.matchId != current.matchId) {
+      return false;
+    }
+    if (incoming.plyCount < current.plyCount) {
+      return true;
+    }
+    if (incoming.plyCount == current.plyCount &&
+        incoming.brainRoundCount < current.brainRoundCount) {
+      return true;
+    }
+    if (current.isCompleted && !incoming.isCompleted) {
+      return true;
+    }
+    if (current.latestBrainRoundResult != null &&
+        incoming.isBrainRound &&
+        !current.isBrainRound &&
+        incoming.brainRoundCount <=
+            current.latestBrainRoundResult!.roundNumber) {
+      return true;
+    }
+    return false;
   }
 
   void _connectRealtimeIfNeeded(String? previousMatchId) {
