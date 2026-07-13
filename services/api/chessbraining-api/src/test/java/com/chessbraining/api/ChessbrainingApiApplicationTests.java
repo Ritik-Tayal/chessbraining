@@ -410,6 +410,50 @@ class ChessbrainingApiApplicationTests {
 	}
 
 	@Test
+	void defaultIntervalGameplayReachesBrainRoundAndResumesChess() throws Exception {
+		JsonNode joined = createJoinedMatch(5);
+		String matchId = joined.get("matchId").asText();
+
+		submitMove(matchId, "white-player", "e2", "e4");
+		submitMove(matchId, "black-player", "e7", "e5");
+		submitMove(matchId, "white-player", "g1", "f3");
+		submitMove(matchId, "black-player", "b8", "c6");
+		submitMove(matchId, "white-player", "f1", "c4");
+		submitMove(matchId, "black-player", "g8", "f6");
+		submitMove(matchId, "white-player", "d2", "d3");
+		submitMove(matchId, "black-player", "f8", "c5");
+		submitMove(matchId, "white-player", "c2", "c3");
+		submitMove(matchId, "black-player", "d7", "d6");
+
+		JsonNode brainRoundMatch = objectMapper.readTree(
+				mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+						.andExpect(status().isOk())
+						.andExpect(jsonPath("$.plyCount").value(10))
+						.andExpect(jsonPath("$.brainRoundCount").value(1))
+						.andExpect(jsonPath("$.phase").value("BRAIN_ROUND"))
+						.andReturn()
+						.getResponse()
+						.getContentAsString());
+		org.junit.jupiter.api.Assertions.assertEquals(10, brainRoundMatch.get("plyCount").asInt());
+
+		JsonNode round = currentBrainRound(matchId);
+		submitEveryBrainRoundPuzzle(matchId, "white-player", round);
+		submitEveryBrainRoundPuzzle(matchId, "black-player", round);
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
+				.andExpect(jsonPath("$.latestBrainRoundResult.roundNumber").value(1));
+
+		submitMove(matchId, "white-player", "b1", "d2");
+
+		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.phase").value("CHESS_PHASE"))
+				.andExpect(jsonPath("$.plyCount").value(11));
+	}
+
+	@Test
 	void brainRoundBatchSubmissionScoresAndAutoCompletes() throws Exception {
 		JsonNode joined = createJoinedMatch(1);
 		String matchId = joined.get("matchId").asText();

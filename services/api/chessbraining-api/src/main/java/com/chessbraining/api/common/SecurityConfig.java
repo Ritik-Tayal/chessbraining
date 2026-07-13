@@ -23,9 +23,7 @@ public class SecurityConfig {
 				.csrf(AbstractHttpConfigurer::disable)
 				.cors(Customizer.withDefaults())
 				.authorizeHttpRequests(authorize -> authorize
-						.requestMatchers("/api/v1/health", "/api/v1/matches/**", "/ws/**").permitAll()
-						.anyRequest().authenticated())
-				.httpBasic(Customizer.withDefaults())
+						.anyRequest().permitAll())
 				.build();
 	}
 
