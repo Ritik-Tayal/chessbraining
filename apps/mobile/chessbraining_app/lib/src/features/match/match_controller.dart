@@ -440,13 +440,35 @@ class MatchController extends ChangeNotifier {
       }
       error = _friendlyError(exception);
       SoundService.instance.playError();
+      unawaited(_recoverFromBrainRoundLoadFailure());
     } catch (exception) {
       error = _friendlyError(exception);
       SoundService.instance.playError();
+      unawaited(_recoverFromBrainRoundLoadFailure());
     } finally {
       brainRoundLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _recoverFromBrainRoundLoadFailure() async {
+    final current = match;
+    if (current == null || !current.isBrainRound) {
+      return;
+    }
+    // The match is stuck in a brain round but its data could not be loaded.
+    // Avoid a permanently blocked board by letting the server finish the round
+    // (or expire it) and returning to the chess phase so play can continue.
+    try {
+      await _api.completeBrainRound(matchId: current.matchId);
+    } catch (_) {
+      // Server will expire the round on its own if completion is rejected.
+    }
+    final latest = await _api.getMatch(current.matchId);
+    if (!latest.isBrainRound) {
+      brainRound = null;
+    }
+    _setMatch(latest);
   }
 
   Future<AnswerResultModel?> submitBrainRoundAnswer({

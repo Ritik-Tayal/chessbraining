@@ -11,6 +11,8 @@ import com.chessbraining.api.chess.ChessMoveResult;
 import com.chessbraining.api.chess.ChessService;
 import com.chessbraining.api.chess.LegalMoveResponse;
 import com.chessbraining.api.common.ApiException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +37,8 @@ public class MatchService {
 	private final MatchRepository matchRepository;
 	private final MatchMoveRepository moveRepository;
 	private final BrainRoundRepository brainRoundRepository;
-	private final ChessService chessService;
+	private final 	ChessService chessService;
+	private static final Logger log = LoggerFactory.getLogger(MatchService.class);
 	private final ClockService clockService;
 	private final MathPuzzleService mathPuzzleService;
 	private final DotConnectPuzzleService dotConnectPuzzleService;
@@ -505,6 +508,10 @@ public class MatchService {
 		round.setPuzzleType(puzzleType);
 		round.setStartedAt(now);
 		round.setExpiresAt(now.plusSeconds(DEFAULT_BRAIN_ROUND_SECONDS));
+		round.setWhiteCorrectCount(0);
+		round.setBlackCorrectCount(0);
+		round.setWhiteAnsweredMask(0);
+		round.setBlackAnsweredMask(0);
 
 		try {
 			if (useDotConnect) {
@@ -518,14 +525,23 @@ public class MatchService {
 				round.setPuzzleAnswers(objectMapper.writeValueAsString(puzzleSet.answers()));
 				round.setTotalQuestions(puzzleSet.expressions().size());
 			}
-		} catch (tools.jackson.core.JacksonException e) {
-			throw new org.springframework.web.server.ResponseStatusException(
-					org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR, "Failed to serialize puzzles");
+		} catch (Exception e) {
+			// The triggering chess move must never be lost because brain-round
+			// puzzle generation/serialization failed. Fall back to mental math so
+			// the round still starts and the match continues.
+			log.warn("Brain round puzzle setup failed for {}; falling back to MENTAL_MATH", puzzleType, e);
+			MathPuzzleService.PuzzleSet fallback = mathPuzzleService.generatePuzzles();
+			round.setPuzzleType(BrainRoundPuzzleType.MENTAL_MATH.name());
+			try {
+				round.setPuzzleExpressions(objectMapper.writeValueAsString(fallback.expressions()));
+				round.setPuzzleAnswers(objectMapper.writeValueAsString(fallback.answers()));
+			} catch (tools.jackson.core.JacksonException ignored) {
+				round.setPuzzleExpressions("[]");
+				round.setPuzzleAnswers("[]");
+			}
+			round.setTotalQuestions(fallback.expressions().size());
 		}
-		round.setWhiteCorrectCount(0);
-		round.setBlackCorrectCount(0);
-		round.setWhiteAnsweredMask(0);
-		round.setBlackAnsweredMask(0);
+
 		brainRoundRepository.save(round);
 	}
 

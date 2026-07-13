@@ -22,6 +22,7 @@ class BrainRoundOverlay extends StatefulWidget {
 
 class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   Timer? timer;
+  DateTime? _lastNullReload;
   final Map<int, int> answersByQuestion = {};
   String answer = '';
   int questionIndex = 0;
@@ -43,7 +44,19 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
         return;
       }
       final round = widget.controller.brainRound;
-      if (round != null && _remainingSeconds(round) == 0) {
+      if (round == null) {
+        // Round data failed to load; retry periodically so the overlay can
+        // self-heal once the server expires/completes the round.
+        final now = DateTime.now();
+        if (_lastNullReload == null ||
+            now.difference(_lastNullReload!) > const Duration(seconds: 3)) {
+          _lastNullReload = now;
+          unawaited(widget.controller.loadCurrentBrainRound());
+        }
+        setState(() {});
+        return;
+      }
+      if (_remainingSeconds(round) == 0) {
         setState(() => finished = true);
         timer?.cancel();
         if (scoreSubmitted) {
