@@ -206,6 +206,27 @@ class ChessbrainingApi {
     return AnswerResultModel.fromJson(body as Map<String, dynamic>);
   }
 
+  Future<BrainRoundModel> submitMemoryTurn({
+    required String matchId,
+    required String playerId,
+    required int firstIndex,
+    required int secondIndex,
+  }) async {
+    final response = await _withTimeout(
+      _client.post(
+        _uri('/matches/$matchId/brain-rounds/current/memory-turns'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'playerId': playerId,
+          'firstIndex': firstIndex,
+          'secondIndex': secondIndex,
+        }),
+      ),
+    );
+    final body = _decodeResponse(response);
+    return BrainRoundModel.fromJson(body as Map<String, dynamic>);
+  }
+
   Future<MatchModel> applyPowerup({
     required String matchId,
     required String playerId,

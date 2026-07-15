@@ -672,6 +672,40 @@ class MatchController extends ChangeNotifier {
     return null;
   }
 
+  Future<BrainRoundModel?> submitMemoryTurn({
+    required int firstIndex,
+    required int secondIndex,
+  }) async {
+    final current = match;
+    if (current == null) {
+      return null;
+    }
+    try {
+      final result = await _api.submitMemoryTurn(
+        matchId: current.matchId,
+        playerId: playerId,
+        firstIndex: firstIndex,
+        secondIndex: secondIndex,
+      );
+      brainRound = result;
+      if (result.isCompleted) {
+        _setMatch(await _api.getMatch(current.matchId));
+      } else {
+        await refresh();
+      }
+      notifyListeners();
+      return result;
+    } on ApiException catch (exception) {
+      error = exception.message;
+      SoundService.instance.playError();
+    } catch (exception) {
+      error = exception.toString();
+      SoundService.instance.playError();
+    }
+    notifyListeners();
+    return null;
+  }
+
   Future<void> resign() {
     final current = match;
     if (current == null) {

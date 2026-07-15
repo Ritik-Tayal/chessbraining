@@ -34,6 +34,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   int dotConnectSolvedCount = 0;
   final Map<int, List<List<int>>> dotConnectPaths = {};
   final Map<int, bool> dotConnectResults = {};
+  final List<int> memorySelection = [];
 
   @override
   void initState() {
@@ -59,7 +60,9 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       if (_remainingSeconds(round) == 0) {
         setState(() => finished = true);
         timer?.cancel();
-        if (scoreSubmitted) {
+        if (round.isMemory) {
+          unawaited(widget.controller.completeBrainRound());
+        } else if (scoreSubmitted) {
           unawaited(widget.controller.completeBrainRound());
         } else if (round.isDotConnect) {
           unawaited(_submitDotConnectPaths());
@@ -100,7 +103,9 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     final secondsLeft = round == null ? 30 : _remainingSeconds(round);
     final totalSeconds = round == null ? 30 : _durationSeconds(round);
     final progress = totalSeconds == 0 ? 0.0 : secondsLeft / totalSeconds;
-    final answeredCount = round?.isDotConnect == true
+    final answeredCount = round?.isMemory == true
+        ? serverScore
+        : round?.isDotConnect == true
         ? dotConnectSolvedCount
         : answersByQuestion.length;
     final displayedScore =
@@ -110,8 +115,11 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
         ? '$displayedScore'
         : '$answeredCount/${round?.totalQuestions ?? 0}';
     final deadlinePassed = round != null && secondsLeft == 0;
-    final roundTitle =
-        round?.isDotConnect == true ? 'DOT CONNECT' : 'MENTAL MATH';
+    final roundTitle = round?.isMemory == true
+        ? 'MEMORY'
+        : round?.isDotConnect == true
+            ? 'DOT CONNECT'
+            : 'MENTAL MATH';
 
     return Positioned.fill(
       child: Material(
@@ -150,7 +158,16 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                         SizedBox(height: compact ? 10 : 16),
                         Expanded(
                           flex: compact ? 5 : 6,
-                          child: round?.isDotConnect == true
+                          child: round?.isMemory == true
+                              ? _MemoryBoard(
+                                  round: round!,
+                                  playerSide: widget.controller.me?.side,
+                                  selected: memorySelection,
+                                  enabled: _inputEnabled,
+                                  submitting: submitting,
+                                  onCardTap: _onMemoryCardTap,
+                                )
+                              : round?.isDotConnect == true
                               ? DotConnectPuzzleWidget(
                                   puzzles: puzzles,
                                   enabled: _inputEnabled,
@@ -168,7 +185,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                                 ),
                         ),
                         SizedBox(height: compact ? 10 : 14),
-                        if (round?.isDotConnect != true)
+                        if (round?.isDotConnect != true && round?.isMemory != true)
                           Expanded(
                             flex: compact ? 5 : 4,
                             child: _NumberPad(
@@ -221,6 +238,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
         !finished &&
         !submitting &&
         !scoreSubmitted &&
+        (!round.isMemory || round.memoryBoard?.turnSide == widget.controller.me?.side) &&
         _remainingSeconds(round) > 0;
   }
 
@@ -310,6 +328,10 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   }
 
   Future<void> _handleComplete() async {
+    if (widget.controller.brainRound?.isMemory == true) {
+      await widget.controller.completeBrainRound();
+      return;
+    }
     if (!scoreSubmitted) {
       if (widget.controller.brainRound?.isDotConnect == true) {
         await _submitDotConnectPaths();
@@ -369,6 +391,48 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       await widget.controller.completeBrainRound();
     } else {
       unawaited(widget.controller.refresh());
+    }
+  }
+
+  void _onMemoryCardTap(int index) {
+    final round = widget.controller.brainRound;
+    final board = round?.memoryBoard;
+    if (round == null || board == null || !_inputEnabled) {
+      return;
+    }
+    final card = board.cards.firstWhere((item) => item.index == index);
+    if (card.matched || memorySelection.contains(index)) {
+      return;
+    }
+    setState(() => memorySelection.add(index));
+    if (memorySelection.length == 2) {
+      final first = memorySelection[0];
+      final second = memorySelection[1];
+      unawaited(_submitMemoryTurn(first, second));
+    }
+  }
+
+  Future<void> _submitMemoryTurn(int firstIndex, int secondIndex) async {
+    setState(() => submitting = true);
+    final result = await widget.controller.submitMemoryTurn(
+      firstIndex: firstIndex,
+      secondIndex: secondIndex,
+    );
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      submitting = false;
+      memorySelection.clear();
+      if (result?.isCompleted == true) {
+        finished = true;
+      }
+    });
+    if (result?.isCompleted == true) {
+      SoundService.instance.playBrainRoundEnd();
+      timer?.cancel();
+    } else {
+      SoundService.instance.playNotify();
     }
   }
 }
@@ -584,6 +648,224 @@ class _NumberPad extends StatelessWidget {
         ),
       ],
     );
+  }
+}
+
+class _MemoryBoard extends StatelessWidget {
+  const _MemoryBoard({
+    required this.round,
+    required this.playerSide,
+    required this.selected,
+    required this.enabled,
+    required this.submitting,
+    required this.onCardTap,
+  });
+
+  final BrainRoundModel round;
+  final String? playerSide;
+  final List<int> selected;
+  final bool enabled;
+  final bool submitting;
+  final ValueChanged<int> onCardTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final board = round.memoryBoard;
+    if (board == null || board.cards.isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xff78583f)),
+      );
+    }
+    final myTurn = board.turnSide == playerSide;
+    final status = submitting
+        ? 'LOCKING TURN'
+        : myTurn
+            ? 'YOUR TURN'
+            : '${board.turnSide} THINKING';
+    return Column(
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: _MemoryScoreTile(
+                label: 'WHITE PAIRS',
+                value: round.whiteCorrectCount,
+                active: board.turnSide == 'WHITE',
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _MemoryScoreTile(
+                label: 'BLACK PAIRS',
+                value: round.blackCorrectCount,
+                active: board.turnSide == 'BLACK',
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        Text(
+          status,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Color(0xff78583f),
+            fontWeight: FontWeight.w900,
+            letterSpacing: 2,
+          ),
+        ),
+        const SizedBox(height: 10),
+        Expanded(
+          child: GridView.builder(
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 4,
+              mainAxisSpacing: 8,
+              crossAxisSpacing: 8,
+              childAspectRatio: 0.86,
+            ),
+            itemCount: board.cards.length,
+            itemBuilder: (context, index) {
+              final card = board.cards[index];
+              final isSelected = selected.contains(card.index);
+              return _MemoryCard(
+                card: card,
+                selected: isSelected,
+                enabled: enabled && !card.matched,
+                onTap: () => onCardTap(card.index),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MemoryScoreTile extends StatelessWidget {
+  const _MemoryScoreTile({
+    required this.label,
+    required this.value,
+    required this.active,
+  });
+
+  final String label;
+  final int value;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: active ? const Color(0xff2d241e) : const Color(0xfffbf2e7),
+        border: Border.all(color: const Color(0xffd1c4bd)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: active ? const Color(0xfffff8f1) : const Color(0xff78583f),
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 1,
+              ),
+            ),
+          ),
+          Text(
+            '$value',
+            style: TextStyle(
+              color: active ? const Color(0xfffff8f1) : const Color(0xff170f0a),
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MemoryCard extends StatelessWidget {
+  const _MemoryCard({
+    required this.card,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final MemoryCardModel card;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final faceUp = card.revealed || selected;
+    return AnimatedScale(
+      scale: selected ? 0.96 : 1,
+      duration: const Duration(milliseconds: 120),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(12),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            decoration: BoxDecoration(
+              color: card.matched
+                  ? const Color(0xffd6ead5)
+                  : faceUp
+                      ? Colors.white
+                      : const Color(0xff2d241e),
+              border: Border.all(
+                color: selected
+                    ? const Color(0xffb56b2d)
+                    : card.matched
+                        ? const Color(0xff5f8f5a)
+                        : const Color(0xffd1c4bd),
+                width: selected ? 3 : 1,
+              ),
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xff2d241e).withValues(alpha: 0.12),
+                  blurRadius: 14,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Text(
+                faceUp ? _pieceSymbol(card.piece) : '?',
+                style: TextStyle(
+                  color: faceUp ? const Color(0xff170f0a) : const Color(0xfffff8f1),
+                  fontSize: 34,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _pieceSymbol(String? piece) {
+    return switch (piece) {
+      'PAWN' => 'P',
+      'KNIGHT' => 'N',
+      'BISHOP' => 'B',
+      'ROOK' => 'R',
+      'QUEEN' => 'Q',
+      'KING' => 'K',
+      _ => '?',
+    };
   }
 }
 
