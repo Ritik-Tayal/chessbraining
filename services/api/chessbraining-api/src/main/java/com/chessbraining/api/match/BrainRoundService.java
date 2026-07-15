@@ -25,6 +25,7 @@ public class BrainRoundService {
 	private final MatchRepository matchRepository;
 	private final MathPuzzleService mathPuzzleService;
 	private final DotConnectPuzzleService dotConnectPuzzleService;
+	private final MemoryPuzzleService memoryPuzzleService;
 	private final ClockService clockService;
 	private final ObjectMapper objectMapper;
 
@@ -33,12 +34,14 @@ public class BrainRoundService {
 			MatchRepository matchRepository,
 			MathPuzzleService mathPuzzleService,
 			DotConnectPuzzleService dotConnectPuzzleService,
+			MemoryPuzzleService memoryPuzzleService,
 			ClockService clockService,
 			ObjectMapper objectMapper) {
 		this.brainRoundRepository = brainRoundRepository;
 		this.matchRepository = matchRepository;
 		this.mathPuzzleService = mathPuzzleService;
 		this.dotConnectPuzzleService = dotConnectPuzzleService;
+		this.memoryPuzzleService = memoryPuzzleService;
 		this.clockService = clockService;
 		this.objectMapper = objectMapper;
 	}
@@ -213,7 +216,7 @@ public class BrainRoundService {
 		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
 		requireActiveBrainRoundMatch(match);
-		if (!isExpired(round) && !bothPlayersAnsweredAll(round)) {
+		if (!isExpired(round) && !isRoundFullySolved(round)) {
 			throw new ApiException(HttpStatus.CONFLICT, "BRAIN_ROUND_STILL_ACTIVE",
 					"Brain round can only complete after the deadline or after both players answer all questions.");
 		}
@@ -286,6 +289,47 @@ public class BrainRoundService {
 				correct,
 				playerCorrectCount,
 				round.getTotalQuestions());
+	}
+
+	@Transactional
+	public BrainRoundResponse submitMemoryTurn(String matchId, SubmitMemoryTurnRequest request) {
+		if (request == null) {
+			throw new ApiException(HttpStatus.BAD_REQUEST, "MEMORY_TURN_REQUIRED", "Memory turn request is required.");
+		}
+
+		BrainRoundEntity round = loadActiveRound(matchId);
+		MatchEntity match = loadMatchForUpdate(matchId);
+		requireActiveBrainRoundMatch(match);
+		String side = requirePlayerInMatch(match, request.playerId());
+
+		if (isExpired(round)) {
+			return completeActiveRound(round, match);
+		}
+
+		requirePuzzleType(round, BrainRoundPuzzleType.MEMORY, "NOT_MEMORY_ROUND",
+				"This brain round is not a memory puzzle.");
+
+		MemoryPuzzleService.MemoryState state = parseMemoryState(round.getPuzzleAnswers());
+		MemoryPuzzleService.TurnResult result = memoryPuzzleService.playTurn(
+				state,
+				side,
+				request.firstIndex(),
+				request.secondIndex());
+		if (result.matched()) {
+			if ("WHITE".equals(side)) {
+				round.setWhiteCorrectCount(round.getWhiteCorrectCount() + 1);
+			} else {
+				round.setBlackCorrectCount(round.getBlackCorrectCount() + 1);
+			}
+		}
+
+		round.setPuzzleAnswers(writeMemoryState(result.state()));
+		round.setPuzzleExpressions(writePublicMemoryBoard(result.state()));
+		if (result.completed()) {
+			return completeActiveRound(round, match);
+		}
+		brainRoundRepository.save(round);
+		return toResponse(round, parseExpressions(round.getPuzzleExpressions()));
 	}
 
 	private BrainRoundResponse completeActiveRound(BrainRoundEntity round, MatchEntity match) {
@@ -367,6 +411,13 @@ public class BrainRoundService {
 				(round.getBlackAnsweredMask() & allAnsweredMask) == allAnsweredMask;
 	}
 
+	private boolean isRoundFullySolved(BrainRoundEntity round) {
+		if (BrainRoundPuzzleType.MEMORY.name().equals(round.getPuzzleType())) {
+			return memoryPuzzleService.allMatched(parseMemoryState(round.getPuzzleAnswers()));
+		}
+		return bothPlayersAnsweredAll(round);
+	}
+
 	private int allAnsweredMask(BrainRoundEntity round) {
 		return (1 << round.getTotalQuestions()) - 1;
 	}
@@ -386,6 +437,33 @@ public class BrainRoundService {
 		} catch (JacksonException e) {
 			throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "ANSWER_PARSE_ERROR",
 					"Failed to parse answer data.");
+		}
+	}
+
+	private MemoryPuzzleService.MemoryState parseMemoryState(String json) {
+		try {
+			return objectMapper.readValue(json, MemoryPuzzleService.MemoryState.class);
+		} catch (JacksonException e) {
+			throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "MEMORY_STATE_PARSE_ERROR",
+					"Failed to parse memory board data.");
+		}
+	}
+
+	private String writeMemoryState(MemoryPuzzleService.MemoryState state) {
+		try {
+			return objectMapper.writeValueAsString(state);
+		} catch (JacksonException e) {
+			throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "MEMORY_STATE_WRITE_ERROR",
+					"Failed to save memory board data.");
+		}
+	}
+
+	private String writePublicMemoryBoard(MemoryPuzzleService.MemoryState state) {
+		try {
+			return objectMapper.writeValueAsString(new String[] { memoryPuzzleService.publicBoardJson(state) });
+		} catch (JacksonException e) {
+			throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "MEMORY_BOARD_WRITE_ERROR",
+					"Failed to save memory board view.");
 		}
 	}
 

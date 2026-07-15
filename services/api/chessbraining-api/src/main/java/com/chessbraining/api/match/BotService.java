@@ -94,10 +94,8 @@ public class BotService {
 		if (match.phase() == MatchPhase.BRAIN_ROUND) {
 			if (submitBotBrainRound(match)) {
 				MatchResponse latest = matchService.getMatch(matchId);
-				if (latest.phase() != MatchPhase.BRAIN_ROUND) {
-					realtimeService.publishMatchState(latest);
-					return latest;
-				}
+				realtimeService.publishMatchState(latest);
+				return latest;
 			}
 			return null;
 		}
@@ -196,11 +194,15 @@ public class BotService {
 		BrainRoundEntity round = brainRoundRepository
 				.findFirstByMatchIdAndStatusOrderByStartedAtDesc(match.matchId(), BRAIN_ROUND_ACTIVE)
 				.orElse(null);
-		if (round == null || botAlreadyAnswered(round, bot.side())) {
+		if (round == null ||
+				(!BrainRoundPuzzleType.MEMORY.name().equals(round.getPuzzleType()) && botAlreadyAnswered(round, bot.side()))) {
 			return false;
 		}
 		if (BrainRoundPuzzleType.DOT_CONNECT.name().equals(round.getPuzzleType())) {
 			return submitBotDotConnectRound(match, bot, round);
+		}
+		if (BrainRoundPuzzleType.MEMORY.name().equals(round.getPuzzleType())) {
+			return submitBotMemoryTurn(match, bot, round);
 		}
 		List<Integer> answers = parseAnswers(round.getPuzzleAnswers());
 		int targetScore = botScore(bot, round.getTotalQuestions(), match.brainRoundCount());
@@ -240,6 +242,59 @@ public class BotService {
 			}
 		}
 		return submittedCount > 0 && matchService.getMatch(match.matchId()).phase() != MatchPhase.BRAIN_ROUND;
+	}
+
+	private boolean submitBotMemoryTurn(MatchResponse match, PlayerResponse bot, BrainRoundEntity round) {
+		MemoryPuzzleService.MemoryState state = parseMemoryState(round.getPuzzleAnswers());
+		if (!bot.side().equals(state.turnSide())) {
+			return false;
+		}
+		List<Integer> pair = chooseBotMemoryPair(bot, state, match.brainRoundCount());
+		if (pair.size() < 2) {
+			return false;
+		}
+		try {
+			brainRoundService.submitMemoryTurn(
+					match.matchId(),
+					new SubmitMemoryTurnRequest(bot.playerId(), pair.get(0), pair.get(1)));
+			return true;
+		} catch (ApiException ex) {
+			if ("NOT_IN_BRAIN_ROUND".equals(ex.getCode()) ||
+					"BRAIN_ROUND_NOT_FOUND".equals(ex.getCode())) {
+				return false;
+			}
+			throw ex;
+		}
+	}
+
+	private List<Integer> chooseBotMemoryPair(PlayerResponse bot, MemoryPuzzleService.MemoryState state, int roundNumber) {
+		boolean shouldMatch = botScore(bot, state.cards().size() / 2, roundNumber) > 0 && RANDOM.nextDouble() < difficulty(bot).brainMean();
+		if (shouldMatch) {
+			for (int i = 0; i < state.cards().size(); i++) {
+				if (memoryMatched(state, i)) {
+					continue;
+				}
+				for (int j = i + 1; j < state.cards().size(); j++) {
+					if (!memoryMatched(state, j) && state.cards().get(i).equals(state.cards().get(j))) {
+						return List.of(i, j);
+					}
+				}
+			}
+		}
+		List<Integer> unmatched = new ArrayList<>();
+		for (int i = 0; i < state.cards().size(); i++) {
+			if (!memoryMatched(state, i)) {
+				unmatched.add(i);
+			}
+		}
+		if (unmatched.size() < 2) {
+			return List.of();
+		}
+		return List.of(unmatched.get(0), unmatched.get(1));
+	}
+
+	private boolean memoryMatched(MemoryPuzzleService.MemoryState state, int index) {
+		return (state.matchedMask() & (1 << index)) != 0;
 	}
 
 	private int botScore(PlayerResponse bot, int totalQuestions, int roundNumber) {
@@ -315,6 +370,14 @@ public class BotService {
 			return List.of(objectMapper.readValue(json, String[].class));
 		} catch (tools.jackson.core.JacksonException e) {
 			throw new IllegalStateException("Failed to parse bot brain-round puzzles.", e);
+		}
+	}
+
+	private MemoryPuzzleService.MemoryState parseMemoryState(String json) {
+		try {
+			return objectMapper.readValue(json, MemoryPuzzleService.MemoryState.class);
+		} catch (tools.jackson.core.JacksonException e) {
+			throw new IllegalStateException("Failed to parse bot memory state.", e);
 		}
 	}
 

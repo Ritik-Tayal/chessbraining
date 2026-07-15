@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class MatchModel {
   const MatchModel({
     required this.matchId,
@@ -377,6 +379,22 @@ class BrainRoundModel {
 
   bool get isMathPuzzle => puzzleType == 'MENTAL_MATH';
   bool get isDotConnect => puzzleType == 'DOT_CONNECT';
+  bool get isMemory => puzzleType == 'MEMORY';
+
+  MemoryBoardModel? get memoryBoard {
+    if (!isMemory || puzzles.isEmpty) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(puzzles.first);
+      if (decoded is Map<String, dynamic>) {
+        return MemoryBoardModel.fromJson(decoded);
+      }
+    } on FormatException {
+      return null;
+    }
+    return null;
+  }
 
   factory BrainRoundModel.fromJson(Map<String, dynamic> json) {
     return BrainRoundModel(
@@ -398,6 +416,56 @@ class BrainRoundModel {
       completedAt: json['completedAt'] == null
           ? null
           : DateTime.parse(json['completedAt'] as String),
+    );
+  }
+}
+
+class MemoryBoardModel {
+  const MemoryBoardModel({
+    required this.turnSide,
+    required this.lastMatched,
+    required this.lastFlipped,
+    required this.cards,
+  });
+
+  final String turnSide;
+  final bool lastMatched;
+  final List<int> lastFlipped;
+  final List<MemoryCardModel> cards;
+
+  factory MemoryBoardModel.fromJson(Map<String, dynamic> json) {
+    return MemoryBoardModel(
+      turnSide: json['turnSide'] as String? ?? 'WHITE',
+      lastMatched: json['lastMatched'] as bool? ?? false,
+      lastFlipped: (json['lastFlipped'] as List<dynamic>? ?? const [])
+          .map((item) => (item as num).toInt())
+          .toList(),
+      cards: (json['cards'] as List<dynamic>? ?? const [])
+          .map((item) => MemoryCardModel.fromJson(item as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+}
+
+class MemoryCardModel {
+  const MemoryCardModel({
+    required this.index,
+    required this.matched,
+    required this.revealed,
+    required this.piece,
+  });
+
+  final int index;
+  final bool matched;
+  final bool revealed;
+  final String? piece;
+
+  factory MemoryCardModel.fromJson(Map<String, dynamic> json) {
+    return MemoryCardModel(
+      index: (json['index'] as num).toInt(),
+      matched: json['matched'] as bool? ?? false,
+      revealed: json['revealed'] as bool? ?? false,
+      piece: json['piece'] as String?,
     );
   }
 }
