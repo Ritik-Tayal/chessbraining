@@ -3,6 +3,7 @@ package com.chessbraining.api;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -25,6 +26,7 @@ import com.chessbraining.api.match.MatchRepository;
 import com.chessbraining.api.match.MatchResponse;
 import com.chessbraining.api.match.MatchService;
 import com.chessbraining.api.match.MatchStatus;
+import com.chessbraining.api.match.MemoryPuzzleService;
 import com.chessbraining.api.match.CreateMatchRequest;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -307,9 +309,14 @@ class ChessbrainingApiApplicationTests {
 						.andReturn()
 						.getResponse()
 						.getContentAsString());
-		org.junit.jupiter.api.Assertions.assertEquals(
-				round.get("puzzles").size(),
-				round.get("totalQuestions").asInt());
+		if (BrainRoundPuzzleType.MEMORY.name().equals(round.get("puzzleType").asText())) {
+			org.junit.jupiter.api.Assertions.assertEquals(1, round.get("puzzles").size());
+			org.junit.jupiter.api.Assertions.assertEquals(6, round.get("totalQuestions").asInt());
+		} else {
+			org.junit.jupiter.api.Assertions.assertEquals(
+					round.get("puzzles").size(),
+					round.get("totalQuestions").asInt());
+		}
 
 		mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
 				.andExpect(status().isConflict())
@@ -360,7 +367,7 @@ class ChessbrainingApiApplicationTests {
 						.andExpect(jsonPath("$.correctAnswer").doesNotExist())
 						.andExpect(jsonPath("$.totalQuestions").value(totalQuestions));
 			}
-		} else {
+		} else if ("DOT_CONNECT".equals(puzzleType)) {
 			for (int i = 0; i < totalQuestions; i++) {
 				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/paths", matchId)
 								.contentType(MediaType.APPLICATION_JSON)
@@ -375,16 +382,27 @@ class ChessbrainingApiApplicationTests {
 						.andExpect(jsonPath("$.correct").isBoolean())
 						.andExpect(jsonPath("$.totalQuestions").value(totalQuestions));
 			}
+		} else {
+			submitEveryMemoryPuzzle(matchId);
 		}
 
-		expireActiveBrainRound(matchId);
-
-		JsonNode completed = objectMapper.readTree(
-				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
-						.andExpect(status().isOk())
-						.andReturn()
-						.getResponse()
-						.getContentAsString());
+		JsonNode completed;
+		if (hasActiveBrainRound(matchId)) {
+			expireActiveBrainRound(matchId);
+			completed = objectMapper.readTree(
+					mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId))
+							.andExpect(status().isOk())
+							.andReturn()
+							.getResponse()
+							.getContentAsString());
+		} else {
+			completed = objectMapper.readTree(
+					mockMvc.perform(get("/api/v1/matches/{matchId}/brain-rounds/latest-result", matchId))
+							.andExpect(status().isOk())
+							.andReturn()
+							.getResponse()
+							.getContentAsString());
+		}
 
 		int whiteCorrect = completed.get("whiteCorrectCount").asInt();
 		int blackCorrect = completed.get("blackCorrectCount").asInt();
@@ -484,7 +502,7 @@ class ChessbrainingApiApplicationTests {
 					.andExpect(jsonPath("$.playerAnsweredCount").value(totalQuestions))
 					.andExpect(jsonPath("$.totalQuestions").value(totalQuestions))
 					.andExpect(jsonPath("$.roundCompleted").value(true));
-		} else {
+		} else if ("DOT_CONNECT".equals(puzzleType)) {
 			for (int i = 0; i < totalQuestions; i++) {
 				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/paths", matchId)
 								.contentType(MediaType.APPLICATION_JSON)
@@ -510,6 +528,8 @@ class ChessbrainingApiApplicationTests {
 										""".formatted(i)))
 						.andExpect(status().isOk());
 			}
+		} else {
+			submitEveryMemoryPuzzle(matchId);
 		}
 
 		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
@@ -1205,6 +1225,9 @@ class ChessbrainingApiApplicationTests {
 	}
 
 	private void submitEveryBrainRoundPuzzle(String matchId, String playerId) throws Exception {
+		if (!hasActiveBrainRound(matchId)) {
+			return;
+		}
 		submitEveryBrainRoundPuzzle(matchId, playerId, currentBrainRound(matchId));
 	}
 
@@ -1212,6 +1235,8 @@ class ChessbrainingApiApplicationTests {
 		String puzzleType = round.get("puzzleType").asText();
 		if (BrainRoundPuzzleType.DOT_CONNECT.name().equals(puzzleType)) {
 			submitEveryDotConnectPuzzle(matchId, playerId, round);
+		} else if (BrainRoundPuzzleType.MEMORY.name().equals(puzzleType)) {
+			submitEveryMemoryPuzzle(matchId);
 		} else {
 			submitEveryMathPuzzle(matchId, playerId, round);
 		}
@@ -1251,11 +1276,64 @@ class ChessbrainingApiApplicationTests {
 		}
 	}
 
+	private void submitEveryMemoryPuzzle(String matchId) throws Exception {
+		while (true) {
+			BrainRoundEntity round = brainRoundRepository
+					.findFirstByMatchIdAndStatusOrderByStartedAtDesc(matchId, "ACTIVE")
+					.orElse(null);
+			if (round == null || !BrainRoundPuzzleType.MEMORY.name().equals(round.getPuzzleType())) {
+				return;
+			}
+			MemoryPuzzleService.MemoryState state = objectMapper.readValue(
+					round.getPuzzleAnswers(),
+					MemoryPuzzleService.MemoryState.class);
+			List<Integer> pair = firstUnmatchedPair(state);
+			if (pair.isEmpty()) {
+				return;
+			}
+			MatchEntity match = matchRepository.findById(matchId).orElseThrow();
+			String playerId = "WHITE".equals(state.turnSide()) ? match.getWhitePlayerId() : match.getBlackPlayerId();
+			mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/memory-turns", matchId)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{
+									  "playerId": "%s",
+									  "firstIndex": %d,
+									  "secondIndex": %d
+									}
+									""".formatted(playerId, pair.get(0), pair.get(1))))
+					.andExpect(status().isOk());
+		}
+	}
+
+	private List<Integer> firstUnmatchedPair(MemoryPuzzleService.MemoryState state) {
+		for (int i = 0; i < state.cards().size(); i++) {
+			if ((state.matchedMask() & (1 << i)) != 0) {
+				continue;
+			}
+			for (int j = i + 1; j < state.cards().size(); j++) {
+				if ((state.matchedMask() & (1 << j)) == 0 && state.cards().get(i).equals(state.cards().get(j))) {
+					return List.of(i, j);
+				}
+			}
+		}
+		return List.of();
+	}
+
 	private void forceActiveRoundPuzzleType(String matchId, String puzzleType) {
 		BrainRoundEntity round = brainRoundRepository
 				.findFirstByMatchIdAndStatusOrderByStartedAtDesc(matchId, "ACTIVE")
 				.orElseThrow();
 		round.setPuzzleType(puzzleType);
+		if (BrainRoundPuzzleType.MENTAL_MATH.name().equals(puzzleType)) {
+			round.setPuzzleExpressions("[\"1 + 1\",\"2 + 2\"]");
+			round.setPuzzleAnswers("[2,4]");
+			round.setTotalQuestions(2);
+			round.setWhiteAnsweredMask(0);
+			round.setBlackAnsweredMask(0);
+			round.setWhiteCorrectCount(0);
+			round.setBlackCorrectCount(0);
+		}
 		brainRoundRepository.save(round);
 	}
 
@@ -1266,6 +1344,12 @@ class ChessbrainingApiApplicationTests {
 						.andReturn()
 						.getResponse()
 						.getContentAsString());
+	}
+
+	private boolean hasActiveBrainRound(String matchId) {
+		return brainRoundRepository
+				.findFirstByMatchIdAndStatusOrderByStartedAtDesc(matchId, "ACTIVE")
+				.isPresent();
 	}
 
 	private String brainRoundSubmissionJson(String playerId, int answerCount) {
@@ -1289,7 +1373,10 @@ class ChessbrainingApiApplicationTests {
 	private void expireActiveBrainRound(String matchId) {
 		BrainRoundEntity round = brainRoundRepository
 				.findFirstByMatchIdAndStatusOrderByStartedAtDesc(matchId, "ACTIVE")
-				.orElseThrow();
+				.orElse(null);
+		if (round == null) {
+			return;
+		}
 		round.setExpiresAt(Instant.now().minusSeconds(1));
 		brainRoundRepository.save(round);
 	}

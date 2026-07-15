@@ -74,6 +74,15 @@ public class BrainRoundController {
 		return response;
 	}
 
+	@PostMapping("/current/memory-turns")
+	public BrainRoundResponse submitMemoryTurn(
+			@PathVariable String matchId,
+			@RequestBody SubmitMemoryTurnRequest request) {
+		BrainRoundResponse response = brainRoundService.submitMemoryTurn(matchId, request);
+		publishIfRoundFinished(matchId);
+		return response;
+	}
+
 	private void publishIfRoundFinished(String matchId) {
 		MatchResponse match = matchService.getMatch(matchId);
 		if (match.phase() != MatchPhase.BRAIN_ROUND) {

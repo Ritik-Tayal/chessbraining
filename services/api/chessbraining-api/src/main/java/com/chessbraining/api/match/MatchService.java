@@ -24,6 +24,7 @@ public class MatchService {
 	private static final int DEFAULT_TIME_CONTROL_SECONDS = 300;
 	private static final int DEFAULT_BRAIN_ROUND_INTERVAL_MOVES = 5;
 	private static final int DEFAULT_BRAIN_ROUND_SECONDS = 30;
+	private static final int MEMORY_BRAIN_ROUND_SECONDS = 120;
 	private static final int DOT_CONNECT_PUZZLE_COUNT = 5;
 	private static final int QUICKPLAY_WAITING_TTL_SECONDS = 600;
 	private static final int WINNER_BRAIN_POINTS = 2;
@@ -42,6 +43,7 @@ public class MatchService {
 	private final ClockService clockService;
 	private final MathPuzzleService mathPuzzleService;
 	private final DotConnectPuzzleService dotConnectPuzzleService;
+	private final MemoryPuzzleService memoryPuzzleService;
 	private final tools.jackson.databind.ObjectMapper objectMapper;
 	private final TransactionTemplate transactionTemplate;
 
@@ -53,6 +55,7 @@ public class MatchService {
 			ClockService clockService,
 			MathPuzzleService mathPuzzleService,
 			DotConnectPuzzleService dotConnectPuzzleService,
+			MemoryPuzzleService memoryPuzzleService,
 			tools.jackson.databind.ObjectMapper objectMapper,
 			TransactionTemplate transactionTemplate) {
 		this.matchRepository = matchRepository;
@@ -62,6 +65,7 @@ public class MatchService {
 		this.clockService = clockService;
 		this.mathPuzzleService = mathPuzzleService;
 		this.dotConnectPuzzleService = dotConnectPuzzleService;
+		this.memoryPuzzleService = memoryPuzzleService;
 		this.objectMapper = objectMapper;
 		this.transactionTemplate = transactionTemplate;
 	}
@@ -495,10 +499,8 @@ public class MatchService {
 		match.setPhase(MatchPhase.BRAIN_ROUND);
 		match.setBrainRoundCount(match.getBrainRoundCount() + 1);
 
-		boolean useDotConnect = RANDOM.nextBoolean();
-		String puzzleType = useDotConnect
-				? BrainRoundPuzzleType.DOT_CONNECT.name()
-				: BrainRoundPuzzleType.MENTAL_MATH.name();
+		BrainRoundPuzzleType selectedType = BrainRoundPuzzleType.values()[RANDOM.nextInt(BrainRoundPuzzleType.values().length)];
+		String puzzleType = selectedType.name();
 		Instant now = Instant.now();
 
 		BrainRoundEntity round = new BrainRoundEntity();
@@ -507,18 +509,27 @@ public class MatchService {
 		round.setStatus(BRAIN_ROUND_ACTIVE);
 		round.setPuzzleType(puzzleType);
 		round.setStartedAt(now);
-		round.setExpiresAt(now.plusSeconds(DEFAULT_BRAIN_ROUND_SECONDS));
+		round.setExpiresAt(now.plusSeconds(selectedType == BrainRoundPuzzleType.MEMORY
+				? MEMORY_BRAIN_ROUND_SECONDS
+				: DEFAULT_BRAIN_ROUND_SECONDS));
 		round.setWhiteCorrectCount(0);
 		round.setBlackCorrectCount(0);
 		round.setWhiteAnsweredMask(0);
 		round.setBlackAnsweredMask(0);
 
 		try {
-			if (useDotConnect) {
+			if (selectedType == BrainRoundPuzzleType.DOT_CONNECT) {
 				DotConnectPuzzleService.PuzzleSet puzzleSet = dotConnectPuzzleService.generatePuzzleSet(DOT_CONNECT_PUZZLE_COUNT);
 				round.setPuzzleExpressions(objectMapper.writeValueAsString(puzzleSet.puzzles()));
 				round.setPuzzleAnswers(objectMapper.writeValueAsString(puzzleSet.answers()));
 				round.setTotalQuestions(puzzleSet.puzzles().size());
+			} else if (selectedType == BrainRoundPuzzleType.MEMORY) {
+				MemoryPuzzleService.MemoryState state = memoryPuzzleService.newGame();
+				round.setPuzzleExpressions(objectMapper.writeValueAsString(new String[] {
+						memoryPuzzleService.publicBoardJson(state)
+				}));
+				round.setPuzzleAnswers(objectMapper.writeValueAsString(state));
+				round.setTotalQuestions(memoryPuzzleService.pairCount());
 			} else {
 				MathPuzzleService.PuzzleSet puzzleSet = mathPuzzleService.generatePuzzles();
 				round.setPuzzleExpressions(objectMapper.writeValueAsString(puzzleSet.expressions()));

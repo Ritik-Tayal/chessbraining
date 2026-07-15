@@ -2,5 +2,6 @@ package com.chessbraining.api.match;
 
 public enum BrainRoundPuzzleType {
 	MENTAL_MATH,
-	DOT_CONNECT
+	DOT_CONNECT,
+	MEMORY
 }
