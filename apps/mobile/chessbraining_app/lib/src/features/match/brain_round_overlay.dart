@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:chess_vectors_flutter/chess_vectors_flutter.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/match_models.dart';
@@ -106,8 +107,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     final answeredCount = round?.isMemory == true
         ? serverScore
         : round?.isDotConnect == true
-        ? dotConnectSolvedCount
-        : answersByQuestion.length;
+            ? dotConnectSolvedCount
+            : answersByQuestion.length;
     final displayedScore =
         scoreSubmitted ? max(score, serverScore) : answeredCount;
     final scoreLabel = scoreSubmitted ? 'SCORE' : 'DONE';
@@ -168,24 +169,26 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                                   onCardTap: _onMemoryCardTap,
                                 )
                               : round?.isDotConnect == true
-                              ? DotConnectPuzzleWidget(
-                                  puzzles: puzzles,
-                                  enabled: _inputEnabled,
-                                  onPuzzleSolved: _onDotConnectSolved,
-                                )
-                              : _PuzzleCard(
-                                  puzzle: currentPuzzle,
-                                  answer: answer,
-                                  finished: finished,
-                                  scoreSubmitted: scoreSubmitted,
-                                  submitting: submitting,
-                                  questionIndex: questionIndex,
-                                  totalQuestions: round?.totalQuestions ?? 0,
-                                  compact: compact,
-                                ),
+                                  ? DotConnectPuzzleWidget(
+                                      puzzles: puzzles,
+                                      enabled: _inputEnabled,
+                                      onPuzzleSolved: _onDotConnectSolved,
+                                    )
+                                  : _PuzzleCard(
+                                      puzzle: currentPuzzle,
+                                      answer: answer,
+                                      finished: finished,
+                                      scoreSubmitted: scoreSubmitted,
+                                      submitting: submitting,
+                                      questionIndex: questionIndex,
+                                      totalQuestions:
+                                          round?.totalQuestions ?? 0,
+                                      compact: compact,
+                                    ),
                         ),
                         SizedBox(height: compact ? 10 : 14),
-                        if (round?.isDotConnect != true && round?.isMemory != true)
+                        if (round?.isDotConnect != true &&
+                            round?.isMemory != true)
                           Expanded(
                             flex: compact ? 5 : 4,
                             child: _NumberPad(
@@ -238,7 +241,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
         !finished &&
         !submitting &&
         !scoreSubmitted &&
-        (!round.isMemory || round.memoryBoard?.turnSide == widget.controller.me?.side) &&
+        (!round.isMemory ||
+            round.memoryBoard?.turnSide == widget.controller.me?.side) &&
         _remainingSeconds(round) > 0;
   }
 
@@ -770,7 +774,8 @@ class _MemoryScoreTile extends StatelessWidget {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: active ? const Color(0xfffff8f1) : const Color(0xff78583f),
+                color:
+                    active ? const Color(0xfffff8f1) : const Color(0xff78583f),
                 fontSize: 11,
                 fontWeight: FontWeight.w900,
                 letterSpacing: 1,
@@ -841,31 +846,59 @@ class _MemoryCard extends StatelessWidget {
               ],
             ),
             child: Center(
-              child: Text(
-                faceUp ? _pieceSymbol(card.piece) : '?',
-                style: TextStyle(
-                  color: faceUp ? const Color(0xff170f0a) : const Color(0xfffff8f1),
-                  fontSize: 34,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
+              child: faceUp
+                  ? _MemoryPiece(piece: card.piece)
+                  : Icon(
+                      Icons.psychology_alt,
+                      color: const Color(0xfffff8f1).withValues(alpha: 0.72),
+                      size: 30,
+                    ),
             ),
           ),
         ),
       ),
     );
   }
+}
 
-  String _pieceSymbol(String? piece) {
-    return switch (piece) {
-      'PAWN' => 'P',
-      'KNIGHT' => 'N',
-      'BISHOP' => 'B',
-      'ROOK' => 'R',
-      'QUEEN' => 'Q',
-      'KING' => 'K',
-      _ => '?',
-    };
+class _MemoryPiece extends StatelessWidget {
+  const _MemoryPiece({required this.piece});
+
+  final String? piece;
+
+  @override
+  Widget build(BuildContext context) {
+    const fill = Color(0xfffffbf4);
+    const stroke = Color(0xff170f0a);
+    const size = 46.0;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: const Color(0xfff5ede2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.14),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(7),
+        child: switch (piece) {
+          'PAWN' => WhitePawn(size: size, fillColor: fill, strokeColor: stroke),
+          'KNIGHT' =>
+            WhiteKnight(size: size, fillColor: fill, strokeColor: stroke),
+          'BISHOP' =>
+            WhiteBishop(size: size, fillColor: fill, strokeColor: stroke),
+          'ROOK' => WhiteRook(size: size, fillColor: fill, strokeColor: stroke),
+          'QUEEN' =>
+            WhiteQueen(size: size, fillColor: fill, strokeColor: stroke),
+          'KING' => WhiteKing(size: size, fillColor: fill, strokeColor: stroke),
+          _ => const Icon(Icons.help_outline, color: stroke, size: 34),
+        },
+      ),
+    );
   }
 }
 
