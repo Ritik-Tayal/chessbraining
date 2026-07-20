@@ -105,6 +105,7 @@ class MatchController extends ChangeNotifier {
   String botPreferredSide = 'WHITE';
 
   MatchModel? match;
+  BrainMatchModel? brainMatch;
   GuestProfileModel? profile;
   BrainRoundModel? brainRound;
   List<LegalMoveModel> legalMoves = const [];
@@ -115,6 +116,7 @@ class MatchController extends ChangeNotifier {
   bool brainRoundLoading = false;
   bool realtimeConnected = false;
   bool movePending = false;
+  String brainMatchMode = 'RANDOM';
   BoardMoveAnimation? boardMoveAnimation;
   String? reviewFen;
   MoveModel? reviewMove;
@@ -126,7 +128,10 @@ class MatchController extends ChangeNotifier {
   int _brainRoundResultSequence = 0;
   String? _lastBrainRoundResultRoundId;
   String? _loadingRematchMatchId;
+  String? _loadingBrainRematchMatchId;
   Timer? _profileSaveDebounce;
+  Timer? _brainMatchPoller;
+  String? _brainPollingMatchId;
 
   PlayerModel? get me => match?.playerById(playerId);
   bool get isMyTurn => me != null && match?.sideToMove == me!.side;
@@ -345,6 +350,122 @@ class MatchController extends ChangeNotifier {
       ));
       SoundService.instance.playNotify();
     });
+  }
+
+  void setBrainMatchMode(String value) {
+    brainMatchMode = value;
+    notifyListeners();
+  }
+
+  Future<void> createBrainMatch() {
+    return _run(() async {
+      _setBrainMatch(await _api.createBrainMatch(
+        playerId: playerId,
+        playerName: playerName,
+        mode: brainMatchMode,
+      ));
+      SoundService.instance.playNotify();
+    });
+  }
+
+  Future<void> joinBrainMatch(String inviteCode) {
+    return _run(() async {
+      _setBrainMatch(await _api.joinBrainMatch(
+        inviteCode: inviteCode,
+        playerId: playerId,
+        playerName: playerName,
+      ));
+      SoundService.instance.playNotify();
+    });
+  }
+
+  Future<void> refreshBrainMatch() {
+    final current = brainMatch;
+    if (current == null) {
+      return Future.value();
+    }
+    return _run(() async {
+      _setBrainMatch(await _api.getBrainMatch(current.matchId));
+    });
+  }
+
+  Future<void> submitBrainArenaAnswers(Map<int, int> answers) {
+    final current = brainMatch;
+    if (current == null || !current.isActive) {
+      return Future.value();
+    }
+    return _run(() async {
+      _setBrainMatch(await _api.submitBrainMatchAnswers(
+        matchId: current.matchId,
+        playerId: playerId,
+        answers: answers,
+      ));
+    });
+  }
+
+  Future<void> submitBrainArenaPath({
+    required int puzzleIndex,
+    required List<List<int>> path,
+  }) {
+    final current = brainMatch;
+    if (current == null || !current.isActive) {
+      return Future.value();
+    }
+    return _run(() async {
+      _setBrainMatch(await _api.submitBrainMatchPath(
+        matchId: current.matchId,
+        playerId: playerId,
+        puzzleIndex: puzzleIndex,
+        path: path,
+      ));
+    });
+  }
+
+  Future<void> submitBrainArenaMemoryTurn({
+    required int firstIndex,
+    required int secondIndex,
+  }) {
+    final current = brainMatch;
+    if (current == null || !current.isActive) {
+      return Future.value();
+    }
+    return _run(() async {
+      _setBrainMatch(await _api.submitBrainMatchMemoryTurn(
+        matchId: current.matchId,
+        playerId: playerId,
+        firstIndex: firstIndex,
+        secondIndex: secondIndex,
+      ));
+    });
+  }
+
+  Future<void> completeBrainArena() {
+    final current = brainMatch;
+    if (current == null || !current.isActive) {
+      return Future.value();
+    }
+    return _run(() async {
+      _setBrainMatch(await _api.completeBrainMatch(matchId: current.matchId));
+    });
+  }
+
+  Future<void> requestBrainArenaRematch() {
+    final current = brainMatch;
+    if (current == null || !current.isCompleted) {
+      return Future.value();
+    }
+    return _run(() async {
+      _setBrainMatch(await _api.requestBrainMatchRematch(
+        matchId: current.matchId,
+        playerId: playerId,
+      ));
+    });
+  }
+
+  void leaveBrainArena() {
+    brainMatch = null;
+    _disconnectBrainPolling();
+    notifyListeners();
   }
 
   Future<void> refresh() {
@@ -1038,6 +1159,71 @@ class MatchController extends ChangeNotifier {
     }));
   }
 
+  void _setBrainMatch(BrainMatchModel value) {
+    final previous = brainMatch;
+    brainMatch = value;
+    _connectBrainPollingIfNeeded(value);
+    _loadAcceptedBrainRematchIfNeeded(value);
+
+    final justStarted = previous?.isActive != true && value.isActive;
+    final justCompleted = previous?.isCompleted != true && value.isCompleted;
+    if (justStarted) {
+      SoundService.instance.playBrainRoundStart();
+    } else if (justCompleted) {
+      SoundService.instance.playBrainRoundEnd();
+    }
+    notifyListeners();
+  }
+
+  void _connectBrainPollingIfNeeded(BrainMatchModel value) {
+    if (_brainPollingMatchId == value.matchId) {
+      return;
+    }
+    _disconnectBrainPolling();
+    _brainPollingMatchId = value.matchId;
+    _brainMatchPoller = Timer.periodic(const Duration(seconds: 2), (_) {
+      final current = brainMatch;
+      if (current == null || current.matchId != _brainPollingMatchId) {
+        _disconnectBrainPolling();
+        return;
+      }
+      unawaited(_api.getBrainMatch(current.matchId).then((latest) {
+        if (brainMatch?.matchId == latest.matchId) {
+          _setBrainMatch(latest);
+        }
+      }).catchError((Object exception) {
+        // Polling is only for realtime feel. User-triggered actions still
+        // surface errors through the normal loading path.
+      }));
+    });
+  }
+
+  void _disconnectBrainPolling() {
+    _brainMatchPoller?.cancel();
+    _brainMatchPoller = null;
+    _brainPollingMatchId = null;
+  }
+
+  void _loadAcceptedBrainRematchIfNeeded(BrainMatchModel value) {
+    final rematchMatchId = value.rematchMatchId;
+    if (!value.isCompleted ||
+        rematchMatchId == null ||
+        rematchMatchId.isEmpty ||
+        _loadingBrainRematchMatchId == rematchMatchId) {
+      return;
+    }
+    _loadingBrainRematchMatchId = rematchMatchId;
+    unawaited(_api.getBrainMatch(rematchMatchId).then((rematch) {
+      _loadingBrainRematchMatchId = null;
+      _setBrainMatch(rematch);
+    }).catchError((Object exception) {
+      _loadingBrainRematchMatchId = null;
+      error = _friendlyError(exception);
+      SoundService.instance.playError();
+      notifyListeners();
+    }));
+  }
+
   BoardMoveAnimation? _animationForServerMove(
     MatchModel? previous,
     MatchModel next,
@@ -1232,6 +1418,12 @@ class MatchController extends ChangeNotifier {
           'Open this invite on a second device or share it with a friend.',
         'MATCH_ALREADY_STARTED' =>
           'That table already has two players. Create a new private match instead.',
+        'BRAIN_MATCH_NOT_FOUND' =>
+          'That brain match could not be found. Check the code and try again.',
+        'BRAIN_MATCH_FULL' =>
+          'That brain match already has two players. Create a new one instead.',
+        'BRAIN_MATCH_COMPLETED' =>
+          'That brain match has already finished. Create a rematch instead.',
         'INVITE_CODE_REQUIRED' =>
           'Enter the 6-character invite code from your friend.',
         'INSUFFICIENT_BRAIN_POINTS' =>
@@ -1257,6 +1449,7 @@ class MatchController extends ChangeNotifier {
   @override
   void dispose() {
     _profileSaveDebounce?.cancel();
+    _disconnectBrainPolling();
     _socket?.disconnect();
     super.dispose();
   }
