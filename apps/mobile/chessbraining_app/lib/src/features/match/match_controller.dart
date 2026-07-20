@@ -105,11 +105,13 @@ class MatchController extends ChangeNotifier {
   String botPreferredSide = 'WHITE';
 
   MatchModel? match;
+  GuestProfileModel? profile;
   BrainRoundModel? brainRound;
   List<LegalMoveModel> legalMoves = const [];
   String? selectedSquare;
   String? error;
   bool loading = false;
+  bool profileLoading = false;
   bool brainRoundLoading = false;
   bool realtimeConnected = false;
   bool movePending = false;
@@ -124,6 +126,7 @@ class MatchController extends ChangeNotifier {
   int _brainRoundResultSequence = 0;
   String? _lastBrainRoundResultRoundId;
   String? _loadingRematchMatchId;
+  Timer? _profileSaveDebounce;
 
   PlayerModel? get me => match?.playerById(playerId);
   bool get isMyTurn => me != null && match?.sideToMove == me!.side;
@@ -207,7 +210,51 @@ class MatchController extends ChangeNotifier {
   void updatePlayerName(String value) {
     playerName = value.trim().isEmpty ? 'Player' : value.trim();
     unawaited(GuestSession.saveName(playerName));
+    _profileSaveDebounce?.cancel();
+    _profileSaveDebounce = Timer(const Duration(milliseconds: 650), () {
+      unawaited(saveProfileName(playerName));
+    });
     notifyListeners();
+  }
+
+  Future<void> loadProfile() async {
+    if (profileLoading) {
+      return;
+    }
+    profileLoading = true;
+    notifyListeners();
+    try {
+      profile = await _api.getGuestProfile(playerId);
+      if (profile != null && profile!.playerName.trim().isNotEmpty) {
+        playerName = profile!.playerName;
+        unawaited(GuestSession.saveName(playerName));
+      } else {
+        profile = await _api.updateGuestProfile(
+          playerId: playerId,
+          playerName: playerName,
+        );
+      }
+      error = null;
+    } catch (_) {
+      // Profile data enriches the home screen; match play should remain usable
+      // when Render is waking up or offline.
+    } finally {
+      profileLoading = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> saveProfileName(String value) async {
+    final name = value.trim().isEmpty ? 'Player' : value.trim();
+    try {
+      profile = await _api.updateGuestProfile(
+        playerId: playerId,
+        playerName: name,
+      );
+      notifyListeners();
+    } catch (_) {
+      // Local guest name is already saved, so keep play unblocked.
+    }
   }
 
   void dismissPowerupEffect(int id) {
@@ -897,6 +944,7 @@ class MatchController extends ChangeNotifier {
           SoundService.instance.playMatchEndLoss();
         }
       }
+      unawaited(loadProfile());
     } else if (brainRoundJustStarted) {
       SoundService.instance.playBrainRoundStart();
     } else if (brainRoundJustEnded) {
@@ -1182,6 +1230,7 @@ class MatchController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _profileSaveDebounce?.cancel();
     _socket?.disconnect();
     super.dispose();
   }

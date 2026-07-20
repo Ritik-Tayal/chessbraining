@@ -217,6 +217,97 @@ class LegalMoveModel {
   }
 }
 
+class GuestProfileModel {
+  const GuestProfileModel({
+    required this.playerId,
+    required this.playerName,
+    required this.rating,
+    required this.gamesPlayed,
+    required this.activeMatches,
+    required this.wins,
+    required this.losses,
+    required this.draws,
+    required this.recentMatches,
+  });
+
+  final String playerId;
+  final String playerName;
+  final int rating;
+  final int gamesPlayed;
+  final int activeMatches;
+  final int wins;
+  final int losses;
+  final int draws;
+  final List<MatchHistoryModel> recentMatches;
+
+  factory GuestProfileModel.fromJson(Map<String, dynamic> json) {
+    return GuestProfileModel(
+      playerId: json['playerId'] as String,
+      playerName: json['playerName'] as String,
+      rating: json['rating'] as int? ?? 1000,
+      gamesPlayed: json['gamesPlayed'] as int? ?? 0,
+      activeMatches: json['activeMatches'] as int? ?? 0,
+      wins: json['wins'] as int? ?? 0,
+      losses: json['losses'] as int? ?? 0,
+      draws: json['draws'] as int? ?? 0,
+      recentMatches: (json['recentMatches'] as List<dynamic>? ?? const [])
+          .map((item) => MatchHistoryModel.fromJson(
+                item as Map<String, dynamic>,
+              ))
+          .toList(),
+    );
+  }
+}
+
+class MatchHistoryModel {
+  const MatchHistoryModel({
+    required this.matchId,
+    required this.inviteCode,
+    required this.opponentName,
+    required this.opponentBot,
+    required this.opponentDifficulty,
+    required this.result,
+    required this.resultReason,
+    required this.ratingChange,
+    required this.ratingAfter,
+    required this.plyCount,
+    required this.brainRoundCount,
+    required this.playedAt,
+  });
+
+  final String matchId;
+  final String inviteCode;
+  final String opponentName;
+  final bool opponentBot;
+  final String? opponentDifficulty;
+  final String result;
+  final String? resultReason;
+  final int ratingChange;
+  final int ratingAfter;
+  final int plyCount;
+  final int brainRoundCount;
+  final DateTime? playedAt;
+
+  factory MatchHistoryModel.fromJson(Map<String, dynamic> json) {
+    return MatchHistoryModel(
+      matchId: json['matchId'] as String,
+      inviteCode: json['inviteCode'] as String,
+      opponentName: json['opponentName'] as String? ?? 'Waiting player',
+      opponentBot: json['opponentBot'] as bool? ?? false,
+      opponentDifficulty: json['opponentDifficulty'] as String?,
+      result: json['result'] as String? ?? 'ACTIVE',
+      resultReason: json['resultReason'] as String?,
+      ratingChange: json['ratingChange'] as int? ?? 0,
+      ratingAfter: json['ratingAfter'] as int? ?? 1000,
+      plyCount: json['plyCount'] as int? ?? 0,
+      brainRoundCount: json['brainRoundCount'] as int? ?? 0,
+      playedAt: json['playedAt'] == null
+          ? null
+          : DateTime.parse(json['playedAt'] as String),
+    );
+  }
+}
+
 class BrainRoundResultModel {
   const BrainRoundResultModel({
     required this.roundId,

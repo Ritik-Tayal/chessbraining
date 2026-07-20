@@ -21,8 +21,7 @@ class SoundService {
   SoundService._();
   static final SoundService instance = SoundService._();
 
-  AudioPlayer? _player;
-  bool _configured = false;
+  final Map<GameSound, AudioPlayer> _players = {};
   bool _enabled = true;
   double _volume = 0.6;
 
@@ -35,19 +34,23 @@ class SoundService {
 
   void setVolume(double value) {
     _volume = value.clamp(0.0, 1.0);
-    _player?.setVolume(_volume);
+    for (final player in _players.values) {
+      player.setVolume(_volume);
+    }
   }
 
   Future<void> play(GameSound sound) async {
     if (!_enabled) return;
     try {
-      final player = _player ??= AudioPlayer();
-      if (!_configured) {
+      var player = _players[sound];
+      if (player == null) {
+        player = AudioPlayer();
+        _players[sound] = player;
         await player.setPlayerMode(PlayerMode.lowLatency);
         await player.setReleaseMode(ReleaseMode.stop);
-        await player.setVolume(_volume);
-        _configured = true;
       }
+      await player.stop();
+      await player.setVolume(_volume);
       await player.play(AssetSource(sound.assetPath));
     } catch (e) {
       if (kDebugMode) {
@@ -68,8 +71,9 @@ class SoundService {
   Future<void> playNotify() => play(GameSound.notify);
 
   void dispose() {
-    _player?.dispose();
-    _player = null;
-    _configured = false;
+    for (final player in _players.values) {
+      player.dispose();
+    }
+    _players.clear();
   }
 }

@@ -1,6 +1,7 @@
 package com.chessbraining.api.match;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 
 import jakarta.persistence.LockModeType;
@@ -36,4 +37,12 @@ public interface MatchRepository extends JpaRepository<MatchEntity, String> {
 			Instant createdAt);
 
 	boolean existsByInviteCode(String inviteCode);
+
+	List<MatchEntity> findByWhitePlayerIdOrBlackPlayerIdOrderByCreatedAtAsc(
+			String whitePlayerId,
+			String blackPlayerId);
+
+	List<MatchEntity> findTop20ByWhitePlayerIdOrBlackPlayerIdOrderByCreatedAtDesc(
+			String whitePlayerId,
+			String blackPlayerId);
 }
