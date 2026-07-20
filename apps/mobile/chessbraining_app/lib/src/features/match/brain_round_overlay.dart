@@ -21,6 +21,58 @@ class BrainRoundOverlay extends StatefulWidget {
   State<BrainRoundOverlay> createState() => _BrainRoundOverlayState();
 }
 
+class _BrainRoundInfo {
+  const _BrainRoundInfo({
+    required this.title,
+    required this.subtitle,
+    required this.instruction,
+    required this.icon,
+    required this.accent,
+    required this.deep,
+  });
+
+  final String title;
+  final String subtitle;
+  final String instruction;
+  final IconData icon;
+  final Color accent;
+  final Color deep;
+
+  static _BrainRoundInfo fromRound(BrainRoundModel? round) {
+    if (round?.isMemory == true) {
+      return const _BrainRoundInfo(
+        title: 'Memory Match',
+        subtitle: 'Find more chess-piece pairs before time runs out.',
+        instruction:
+            'Flip two cards. A match scores a pair and keeps the turn; a miss passes the turn.',
+        icon: Icons.grid_view_rounded,
+        accent: Color(0xff7c5cff),
+        deep: Color(0xff22143d),
+      );
+    }
+    if (round?.isDotConnect == true) {
+      return const _BrainRoundInfo(
+        title: 'Dot Connect',
+        subtitle: 'Draw paths through every glowing dot.',
+        instruction:
+            'Tap adjacent cells to build a path. Visit every dot, then solve the next board.',
+        icon: Icons.route_rounded,
+        accent: Color(0xff0f9f7a),
+        deep: Color(0xff0d3029),
+      );
+    }
+    return const _BrainRoundInfo(
+      title: 'Math Sprint',
+      subtitle: 'Answer fast. Every correct answer adds to your score.',
+      instruction:
+          'Use the keypad, submit, and keep moving. Your answers are scored together.',
+      icon: Icons.calculate_rounded,
+      accent: Color(0xffb56b2d),
+      deep: Color(0xff351c0d),
+    );
+  }
+}
+
 class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   Timer? timer;
   DateTime? _lastNullReload;
@@ -35,6 +87,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   int dotConnectSolvedCount = 0;
   final Map<int, List<List<int>>> dotConnectPaths = {};
   final Map<int, bool> dotConnectResults = {};
+  final Set<int> dotConnectSubmitted = {};
+  final Set<int> dotConnectPending = {};
   final List<int> memorySelection = [];
 
   @override
@@ -116,119 +170,143 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
         ? '$displayedScore'
         : '$answeredCount/${round?.totalQuestions ?? 0}';
     final deadlinePassed = round != null && secondsLeft == 0;
-    final roundTitle = round?.isMemory == true
-        ? 'MEMORY'
-        : round?.isDotConnect == true
-            ? 'DOT CONNECT'
-            : 'MENTAL MATH';
+    final info = _BrainRoundInfo.fromRound(round);
 
     return Positioned.fill(
       child: Material(
-        color: const Color(0xfffff8f1),
-        child: SafeArea(
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final compact = constraints.maxHeight < 720;
-              return Padding(
-                padding: EdgeInsets.all(compact ? 10 : 16),
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 620),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        _BrainHeader(
-                          title: roundTitle,
-                          scoreLabel: scoreLabel,
-                          scoreValue: scoreValue,
-                          secondsLeft: secondsLeft,
-                          compact: compact,
-                        ),
-                        SizedBox(height: compact ? 10 : 14),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: LinearProgressIndicator(
-                            minHeight: compact ? 8 : 10,
-                            value: progress,
-                            backgroundColor: const Color(0xffe9e1d7),
-                            color: secondsLeft <= 5
-                                ? const Color(0xffba1a1a)
-                                : const Color(0xff78583f),
+        color: info.deep,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                info.deep,
+                const Color(0xff170f0a),
+                const Color(0xfffff8f1),
+              ],
+              stops: const [0, 0.42, 1],
+            ),
+          ),
+          child: SafeArea(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final compact = constraints.maxHeight < 720;
+                return Padding(
+                  padding: EdgeInsets.all(compact ? 10 : 16),
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 640),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _BrainHeader(
+                            info: info,
+                            scoreLabel: scoreLabel,
+                            scoreValue: scoreValue,
+                            secondsLeft: secondsLeft,
+                            compact: compact,
                           ),
-                        ),
-                        SizedBox(height: compact ? 10 : 16),
-                        Expanded(
-                          flex: compact ? 5 : 6,
-                          child: round?.isMemory == true
-                              ? _MemoryBoard(
-                                  round: round!,
-                                  playerSide: widget.controller.me?.side,
-                                  selected: memorySelection,
-                                  enabled: _inputEnabled,
-                                  submitting: submitting,
-                                  onCardTap: _onMemoryCardTap,
-                                )
-                              : round?.isDotConnect == true
-                                  ? DotConnectPuzzleWidget(
-                                      puzzles: puzzles,
-                                      enabled: _inputEnabled,
-                                      onPuzzleSolved: _onDotConnectSolved,
-                                    )
-                                  : _PuzzleCard(
-                                      puzzle: currentPuzzle,
-                                      answer: answer,
-                                      finished: finished,
-                                      scoreSubmitted: scoreSubmitted,
-                                      submitting: submitting,
-                                      questionIndex: questionIndex,
-                                      totalQuestions:
-                                          round?.totalQuestions ?? 0,
-                                      compact: compact,
-                                    ),
-                        ),
-                        SizedBox(height: compact ? 10 : 14),
-                        if (round?.isDotConnect != true &&
-                            round?.isMemory != true)
+                          SizedBox(height: compact ? 10 : 14),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(999),
+                            child: LinearProgressIndicator(
+                              minHeight: compact ? 8 : 10,
+                              value: progress,
+                              backgroundColor:
+                                  Colors.white.withValues(alpha: 0.14),
+                              color: secondsLeft <= 5
+                                  ? const Color(0xffff6b6b)
+                                  : info.accent,
+                            ),
+                          ),
+                          SizedBox(height: compact ? 10 : 14),
+                          _BrainInstruction(info: info, compact: compact),
+                          SizedBox(height: compact ? 10 : 14),
                           Expanded(
-                            flex: compact ? 5 : 4,
-                            child: _NumberPad(
-                              enabled: _inputEnabled,
-                              onAppend: _append,
-                              onBackspace: _backspace,
-                              onSubmit: _inputEnabled && answer.isNotEmpty
-                                  ? _submit
-                                  : null,
+                            flex: compact ? 5 : 6,
+                            child: AnimatedSwitcher(
+                              duration: const Duration(milliseconds: 260),
+                              switchInCurve: Curves.easeOutCubic,
+                              switchOutCurve: Curves.easeOutCubic,
+                              child: round?.isMemory == true
+                                  ? _MemoryBoard(
+                                      key: const ValueKey('memory'),
+                                      round: round!,
+                                      playerSide: widget.controller.me?.side,
+                                      selected: memorySelection,
+                                      enabled: _inputEnabled,
+                                      submitting: submitting,
+                                      onCardTap: _onMemoryCardTap,
+                                    )
+                                  : round?.isDotConnect == true
+                                      ? _DotConnectArena(
+                                          key: const ValueKey('dot-connect'),
+                                          puzzles: puzzles,
+                                          enabled: _inputEnabled,
+                                          onPuzzleSolved: _onDotConnectSolved,
+                                        )
+                                      : _PuzzleCard(
+                                          key: ValueKey('math-$questionIndex'),
+                                          puzzle: currentPuzzle,
+                                          answer: answer,
+                                          finished: finished,
+                                          scoreSubmitted: scoreSubmitted,
+                                          submitting: submitting,
+                                          questionIndex: questionIndex,
+                                          totalQuestions:
+                                              round?.totalQuestions ?? 0,
+                                          compact: compact,
+                                          accent: info.accent,
+                                        ),
                             ),
                           ),
-                        SizedBox(height: compact ? 8 : 12),
-                        if (widget.controller.error != null) ...[
-                          Text(
-                            widget.controller.error!,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Color(0xffba1a1a),
-                              fontWeight: FontWeight.w800,
+                          SizedBox(height: compact ? 10 : 14),
+                          if (round?.isDotConnect != true &&
+                              round?.isMemory != true)
+                            Expanded(
+                              flex: compact ? 5 : 4,
+                              child: _NumberPad(
+                                enabled: _inputEnabled,
+                                onAppend: _append,
+                                onBackspace: _backspace,
+                                onSubmit: _inputEnabled && answer.isNotEmpty
+                                    ? _submit
+                                    : null,
+                                accent: info.accent,
+                              ),
                             ),
+                          SizedBox(height: compact ? 8 : 12),
+                          if (widget.controller.error != null) ...[
+                            Text(
+                              widget.controller.error!,
+                              textAlign: TextAlign.center,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xffff6b6b),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                          ],
+                          _BrainFooter(
+                            whitePoints: match.white.brainPoints,
+                            blackPoints: match.black?.brainPoints ?? 0,
+                            secondsLeft: secondsLeft,
+                            deadlinePassed: deadlinePassed,
+                            submitting: submitting,
+                            scoreSubmitted: scoreSubmitted,
+                            onComplete: _handleComplete,
+                            accent: info.accent,
                           ),
-                          const SizedBox(height: 8),
                         ],
-                        _BrainFooter(
-                          whitePoints: match.white.brainPoints,
-                          blackPoints: match.black?.brainPoints ?? 0,
-                          secondsLeft: secondsLeft,
-                          deadlinePassed: deadlinePassed,
-                          submitting: submitting,
-                          scoreSubmitted: scoreSubmitted,
-                          onComplete: _handleComplete,
-                        ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ),
@@ -354,12 +432,40 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       dotConnectPaths[puzzleIndex] = path;
       dotConnectResults[puzzleIndex] = correct;
     });
+    unawaited(_submitDotConnectPathNow(puzzleIndex, path));
 
     final round = widget.controller.brainRound;
     if (round != null && dotConnectSolvedCount >= round.totalQuestions) {
       setState(() => finished = true);
-      unawaited(_submitDotConnectPaths());
+      unawaited(widget.controller.refresh());
     }
+  }
+
+  Future<void> _submitDotConnectPathNow(
+    int puzzleIndex,
+    List<List<int>> path,
+  ) async {
+    if (dotConnectSubmitted.contains(puzzleIndex)) {
+      return;
+    }
+    if (dotConnectPending.contains(puzzleIndex)) {
+      return;
+    }
+    dotConnectPending.add(puzzleIndex);
+    final result = await widget.controller.submitDotConnectPath(
+      puzzleIndex: puzzleIndex,
+      path: path,
+    );
+    dotConnectPending.remove(puzzleIndex);
+    if (result != null) {
+      dotConnectSubmitted.add(puzzleIndex);
+    }
+    if (!mounted || result == null) {
+      return;
+    }
+    setState(() {
+      score = result.playerCorrectCount;
+    });
   }
 
   Future<void> _submitDotConnectPaths() async {
@@ -373,10 +479,18 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     final deadlinePassed = _remainingSeconds(round) == 0;
 
     for (final entry in dotConnectPaths.entries) {
+      if (dotConnectSubmitted.contains(entry.key) ||
+          dotConnectPending.contains(entry.key)) {
+        if (dotConnectResults[entry.key] == true) {
+          totalCorrect++;
+        }
+        continue;
+      }
       final result = await widget.controller.submitDotConnectPath(
         puzzleIndex: entry.key,
         path: entry.value,
       );
+      dotConnectSubmitted.add(entry.key);
       if (result != null && result.correct) {
         totalCorrect++;
       }
@@ -443,14 +557,14 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
 
 class _BrainHeader extends StatelessWidget {
   const _BrainHeader({
-    required this.title,
+    required this.info,
     required this.scoreLabel,
     required this.scoreValue,
     required this.secondsLeft,
     required this.compact,
   });
 
-  final String title;
+  final _BrainRoundInfo info;
   final String scoreLabel;
   final String scoreValue;
   final int secondsLeft;
@@ -460,24 +574,94 @@ class _BrainHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: [
-        const Icon(Icons.close, color: Color(0xff170f0a), size: 28),
-        const SizedBox(width: 10),
+        Container(
+          width: compact ? 42 : 50,
+          height: compact ? 42 : 50,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.12),
+            border: Border.all(color: info.accent),
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Icon(info.icon, color: info.accent, size: compact ? 22 : 26),
+        ),
+        const SizedBox(width: 12),
         Expanded(
-          child: Text(
-            title,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: const Color(0xff170f0a),
-              fontSize: compact ? 22 : 28,
-              fontWeight: FontWeight.w900,
-              fontFamily: 'Playfair Display',
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                info.title,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: compact ? 22 : 30,
+                  fontWeight: FontWeight.w900,
+                  fontFamily: 'Playfair Display',
+                ),
+              ),
+              if (!compact) ...[
+                const SizedBox(height: 3),
+                Text(
+                  info.subtitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
         _StatPill(label: scoreLabel, value: scoreValue),
         const SizedBox(width: 8),
         _StatPill(label: 'TIME', value: '${secondsLeft}s'),
       ],
+    );
+  }
+}
+
+class _BrainInstruction extends StatelessWidget {
+  const _BrainInstruction({
+    required this.info,
+    required this.compact,
+  });
+
+  final _BrainRoundInfo info;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 14,
+        vertical: compact ? 9 : 11,
+      ),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.1),
+        border: Border.all(color: info.accent.withValues(alpha: 0.62)),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.tips_and_updates, color: info.accent, size: 18),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              info.instruction,
+              maxLines: compact ? 1 : 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.82),
+                height: 1.25,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -492,6 +676,8 @@ class _PuzzleCard extends StatelessWidget {
     required this.questionIndex,
     required this.totalQuestions,
     required this.compact,
+    required this.accent,
+    super.key,
   });
 
   final String puzzle;
@@ -502,6 +688,7 @@ class _PuzzleCard extends StatelessWidget {
   final int questionIndex;
   final int totalQuestions;
   final bool compact;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -521,7 +708,7 @@ class _PuzzleCard extends StatelessWidget {
       padding: EdgeInsets.all(compact ? 18 : 30),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.94),
-        border: Border.all(color: const Color(0xffd1c4bd)),
+        border: Border.all(color: accent.withValues(alpha: 0.5), width: 1.4),
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
@@ -537,8 +724,8 @@ class _PuzzleCard extends StatelessWidget {
           Text(
             title,
             textAlign: TextAlign.center,
-            style: const TextStyle(
-              color: Color(0xff78583f),
+            style: TextStyle(
+              color: accent,
               fontWeight: FontWeight.w900,
               letterSpacing: 3,
             ),
@@ -588,12 +775,14 @@ class _NumberPad extends StatelessWidget {
     required this.onAppend,
     required this.onBackspace,
     required this.onSubmit,
+    required this.accent,
   });
 
   final bool enabled;
   final ValueChanged<String> onAppend;
   final VoidCallback onBackspace;
   final VoidCallback? onSubmit;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -612,6 +801,7 @@ class _NumberPad extends StatelessWidget {
                   Expanded(
                     child: _KeyButton(
                       label: value,
+                      accent: accent,
                       onPressed: enabled ? () => onAppend(value) : null,
                     ),
                   ),
@@ -629,6 +819,7 @@ class _NumberPad extends StatelessWidget {
                 child: _KeyButton(
                   icon: Icons.backspace_outlined,
                   color: const Color(0xffba1a1a),
+                  accent: accent,
                   onPressed: enabled ? onBackspace : null,
                 ),
               ),
@@ -636,6 +827,7 @@ class _NumberPad extends StatelessWidget {
               Expanded(
                 child: _KeyButton(
                   label: '0',
+                  accent: accent,
                   onPressed: enabled ? () => onAppend('0') : null,
                 ),
               ),
@@ -644,6 +836,7 @@ class _NumberPad extends StatelessWidget {
                 child: _KeyButton(
                   icon: Icons.check_circle_outline,
                   filled: true,
+                  accent: accent,
                   onPressed: onSubmit,
                 ),
               ),
@@ -657,6 +850,7 @@ class _NumberPad extends StatelessWidget {
 
 class _MemoryBoard extends StatelessWidget {
   const _MemoryBoard({
+    super.key,
     required this.round,
     required this.playerSide,
     required this.selected,
@@ -741,6 +935,44 @@ class _MemoryBoard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DotConnectArena extends StatelessWidget {
+  const _DotConnectArena({
+    super.key,
+    required this.puzzles,
+    required this.enabled,
+    required this.onPuzzleSolved,
+  });
+
+  final List<String> puzzles;
+  final bool enabled;
+  final void Function(int puzzleIndex, bool correct, List<List<int>> path)
+      onPuzzleSolved;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.94),
+        border: Border.all(color: const Color(0xff0f9f7a), width: 1.4),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xff0f9f7a).withValues(alpha: 0.16),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: DotConnectPuzzleWidget(
+        puzzles: puzzles,
+        enabled: enabled,
+        onPuzzleSolved: onPuzzleSolved,
+      ),
     );
   }
 }
@@ -911,6 +1143,7 @@ class _BrainFooter extends StatelessWidget {
     required this.submitting,
     required this.scoreSubmitted,
     required this.onComplete,
+    required this.accent,
   });
 
   final int whitePoints;
@@ -920,6 +1153,7 @@ class _BrainFooter extends StatelessWidget {
   final bool submitting;
   final bool scoreSubmitted;
   final Future<void> Function() onComplete;
+  final Color accent;
 
   @override
   Widget build(BuildContext context) {
@@ -945,7 +1179,7 @@ class _BrainFooter extends StatelessWidget {
             icon: Icon(deadlinePassed ? Icons.done_all : Icons.lock_clock),
             label: Text(buttonLabel),
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xff2d241e),
+              backgroundColor: accent,
               foregroundColor: const Color(0xfffff8f1),
               disabledBackgroundColor: const Color(0xffe9e1d7),
               disabledForegroundColor: const Color(0xff7f756f),
@@ -966,6 +1200,7 @@ class _KeyButton extends StatelessWidget {
     this.icon,
     this.color,
     this.filled = false,
+    required this.accent,
     required this.onPressed,
   });
 
@@ -973,6 +1208,7 @@ class _KeyButton extends StatelessWidget {
   final IconData? icon;
   final Color? color;
   final bool filled;
+  final Color accent;
   final VoidCallback? onPressed;
 
   @override
@@ -988,7 +1224,7 @@ class _KeyButton extends StatelessWidget {
         ? FilledButton(
             onPressed: onPressed,
             style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xff2d241e),
+              backgroundColor: accent,
               foregroundColor: const Color(0xfffff8f1),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -1001,7 +1237,7 @@ class _KeyButton extends StatelessWidget {
             style: OutlinedButton.styleFrom(
               foregroundColor: color ?? const Color(0xff170f0a),
               backgroundColor: const Color(0xfffbf2e7),
-              side: const BorderSide(color: Color(0xffd1c4bd)),
+              side: BorderSide(color: accent.withValues(alpha: 0.34)),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),

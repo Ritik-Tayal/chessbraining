@@ -959,6 +959,8 @@ class MatchController extends ChangeNotifier {
 
     if (brainRoundJustEnded && value.latestBrainRoundResult != null) {
       _showBrainRoundResultFromMatch(value.latestBrainRoundResult!, value);
+    } else if (brainRoundJustEnded) {
+      unawaited(_loadLatestBrainRoundResult(value));
     }
 
     if (value.isBrainRound) {
@@ -1151,6 +1153,26 @@ class MatchController extends ChangeNotifier {
       awardedPoints: result.awardedBrainPoints,
     );
     _lastBrainRoundResultRoundId = result.roundId;
+  }
+
+  Future<void> _loadLatestBrainRoundResult(MatchModel currentMatch) async {
+    try {
+      final result = await _api.getLatestBrainRoundResult(currentMatch.matchId);
+      final notice = BrainRoundResultModel(
+        roundId: result.roundId,
+        roundNumber: result.roundNumber,
+        whiteCorrectCount: result.whiteCorrectCount,
+        blackCorrectCount: result.blackCorrectCount,
+        winnerPlayerId: result.winnerPlayerId,
+        awardedBrainPoints: result.winnerPlayerId == null ? 1 : 2,
+        completedAt: result.completedAt ?? DateTime.now().toUtc(),
+      );
+      _showBrainRoundResultFromMatch(notice, currentMatch);
+      notifyListeners();
+    } catch (_) {
+      // The match snapshot usually carries latestBrainRoundResult. This fetch
+      // only hardens edge cases around websocket/order timing.
+    }
   }
 
   String _oppositeSide(String side) => side == 'WHITE' ? 'BLACK' : 'WHITE';

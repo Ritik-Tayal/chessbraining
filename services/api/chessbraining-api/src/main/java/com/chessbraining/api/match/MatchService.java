@@ -624,8 +624,8 @@ public class MatchService {
 				.map(round -> new BrainRoundResultResponse(
 						round.getId(),
 						round.getRoundNumber(),
-						round.getWhiteCorrectCount(),
-						round.getBlackCorrectCount(),
+						round.getWhiteScore() == null ? round.getWhiteCorrectCount() : round.getWhiteScore(),
+						round.getBlackScore() == null ? round.getBlackCorrectCount() : round.getBlackScore(),
 						round.getWinnerPlayerId(),
 						round.getWinnerPlayerId() == null ? TIE_BRAIN_POINTS : WINNER_BRAIN_POINTS,
 						round.getCompletedAt()))
