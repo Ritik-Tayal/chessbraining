@@ -5,12 +5,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/match_models.dart';
+import '../../services/sound_service.dart';
 import 'brain_round_overlay.dart';
 import 'chess_board.dart';
 import 'fen.dart';
 import 'match_controller.dart';
 
 enum _ScreenPage { command, play }
+
+enum _HomeTab { home, bot, history, powerups, profile }
 
 class MatchScreen extends StatefulWidget {
   const MatchScreen({
@@ -28,14 +31,10 @@ class _MatchScreenState extends State<MatchScreen> {
   final playerNameController = TextEditingController();
   final inviteController = TextEditingController();
   final commandScrollController = ScrollController();
-  final homeSectionKey = GlobalKey();
-  final playSectionKey = GlobalKey();
-  final historySectionKey = GlobalKey();
-  final powerupsSectionKey = GlobalKey();
-  final profileSectionKey = GlobalKey();
   Timer? clockTicker;
   DateTime? lastClockExpiryRefreshDeadline;
   _ScreenPage selectedPage = _ScreenPage.command;
+  _HomeTab selectedHomeTab = _HomeTab.home;
   String? activeMatchId;
   String? dismissedCelebrationMatchId;
 
@@ -90,19 +89,6 @@ class _MatchScreenState extends State<MatchScreen> {
     unawaited(widget.controller.refresh());
   }
 
-  void _scrollToHomeSection(GlobalKey key) {
-    final context = key.currentContext;
-    if (context == null) {
-      return;
-    }
-    Scrollable.ensureVisible(
-      context,
-      duration: const Duration(milliseconds: 320),
-      curve: Curves.easeOutCubic,
-      alignment: 0.08,
-    );
-  }
-
   @override
   void dispose() {
     widget.controller.removeListener(_handleControllerChanged);
@@ -136,85 +122,82 @@ class _MatchScreenState extends State<MatchScreen> {
 
         return Scaffold(
           backgroundColor: AppColors.background,
-          body: Stack(
-            children: [
-              const _BackgroundGrid(),
-              SafeArea(
-                child: Column(
-                  children: [
-                    if (page == _ScreenPage.command)
-                      _TopBar(
-                        controller: controller,
-                        selectedPage: page,
-                        onCommand: () =>
-                            setState(() => selectedPage = _ScreenPage.command),
-                        onPlay: match == null
-                            ? null
-                            : () =>
-                                setState(() => selectedPage = _ScreenPage.play),
+          body: Listener(
+            behavior: HitTestBehavior.translucent,
+            onPointerDown: (_) => unawaited(SoundService.instance.unlock()),
+            child: Stack(
+              children: [
+                const _BackgroundGrid(),
+                SafeArea(
+                  child: Column(
+                    children: [
+                      if (page == _ScreenPage.command) const SizedBox.shrink(),
+                      Expanded(
+                        child: page == _ScreenPage.command
+                            ? _CommandPage(
+                                controller: controller,
+                                playerNameController: playerNameController,
+                                inviteController: inviteController,
+                                scrollController: commandScrollController,
+                                selectedTab: selectedHomeTab,
+                                onTabSelected: (tab) =>
+                                    setState(() => selectedHomeTab = tab),
+                                onResume: match == null
+                                    ? null
+                                    : () => setState(
+                                          () => selectedPage = _ScreenPage.play,
+                                        ),
+                              )
+                            : _GameplayPage(controller: controller),
                       ),
-                    Expanded(
-                      child: page == _ScreenPage.command
-                          ? _CommandPage(
-                              controller: controller,
-                              playerNameController: playerNameController,
-                              inviteController: inviteController,
-                              scrollController: commandScrollController,
-                              homeKey: homeSectionKey,
-                              playKey: playSectionKey,
-                              historyKey: historySectionKey,
-                              powerupsKey: powerupsSectionKey,
-                              profileKey: profileSectionKey,
-                              onResume: match == null
-                                  ? null
-                                  : () => setState(
-                                        () => selectedPage = _ScreenPage.play,
-                                      ),
-                            )
-                          : _GameplayPage(controller: controller),
-                    ),
-                  ],
-                ),
-              ),
-              if (showPowerBar) _PowerToolbar(controller: controller),
-              if (page == _ScreenPage.command)
-                _HomeBottomNav(
-                  onHome: () => _scrollToHomeSection(homeSectionKey),
-                  onPlay: () => _scrollToHomeSection(playSectionKey),
-                  onHistory: () => _scrollToHomeSection(historySectionKey),
-                  onPowerups: () => _scrollToHomeSection(powerupsSectionKey),
-                  onProfile: () => _scrollToHomeSection(profileSectionKey),
-                ),
-              if (controller.match?.isBrainRound == true)
-                BrainRoundOverlay(controller: controller),
-              if (showBrainRoundResult)
-                _BrainRoundResultNotice(
-                  key: ValueKey(controller.brainRoundResultNotice!.id),
-                  notice: controller.brainRoundResultNotice!,
-                  playerId: controller.playerId,
-                  onDismiss: controller.dismissBrainRoundResult,
-                ),
-              if (showPowerupEffect)
-                _PowerupEffectOverlay(
-                  key: ValueKey(controller.powerupEffect!.id),
-                  effect: controller.powerupEffect!,
-                  onDismiss: controller.dismissPowerupEffect,
-                ),
-              if (showCelebration)
-                _EndGameResult(
-                  match: match,
-                  playerId: controller.playerId,
-                  loading: controller.loading,
-                  onRematch: controller.requestRematch,
-                  onReview: () => setState(
-                    () => dismissedCelebrationMatchId = match.matchId,
+                    ],
                   ),
-                  onCommand: () => setState(() {
-                    dismissedCelebrationMatchId = match.matchId;
-                    selectedPage = _ScreenPage.command;
-                  }),
                 ),
-            ],
+                if (showPowerBar) _PowerToolbar(controller: controller),
+                if (page == _ScreenPage.command)
+                  _HomeBottomNav(
+                    selectedTab: selectedHomeTab,
+                    onHome: () =>
+                        setState(() => selectedHomeTab = _HomeTab.home),
+                    onBot: () => setState(() => selectedHomeTab = _HomeTab.bot),
+                    onHistory: () =>
+                        setState(() => selectedHomeTab = _HomeTab.history),
+                    onPowerups: () =>
+                        setState(() => selectedHomeTab = _HomeTab.powerups),
+                    onProfile: () =>
+                        setState(() => selectedHomeTab = _HomeTab.profile),
+                  ),
+                if (controller.match?.isBrainRound == true)
+                  BrainRoundOverlay(controller: controller),
+                if (showBrainRoundResult)
+                  _BrainRoundResultNotice(
+                    key: ValueKey(controller.brainRoundResultNotice!.id),
+                    notice: controller.brainRoundResultNotice!,
+                    playerId: controller.playerId,
+                    onDismiss: controller.dismissBrainRoundResult,
+                  ),
+                if (showPowerupEffect)
+                  _PowerupEffectOverlay(
+                    key: ValueKey(controller.powerupEffect!.id),
+                    effect: controller.powerupEffect!,
+                    onDismiss: controller.dismissPowerupEffect,
+                  ),
+                if (showCelebration)
+                  _EndGameResult(
+                    match: match,
+                    playerId: controller.playerId,
+                    loading: controller.loading,
+                    onRematch: controller.requestRematch,
+                    onReview: () => setState(
+                      () => dismissedCelebrationMatchId = match.matchId,
+                    ),
+                    onCommand: () => setState(() {
+                      dismissedCelebrationMatchId = match.matchId;
+                      selectedPage = _ScreenPage.command;
+                    }),
+                  ),
+              ],
+            ),
           ),
         );
       },
@@ -222,6 +205,7 @@ class _MatchScreenState extends State<MatchScreen> {
   }
 }
 
+// ignore: unused_element
 class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.controller,
@@ -398,11 +382,8 @@ class _CommandPage extends StatelessWidget {
     required this.playerNameController,
     required this.inviteController,
     required this.scrollController,
-    required this.homeKey,
-    required this.playKey,
-    required this.historyKey,
-    required this.powerupsKey,
-    required this.profileKey,
+    required this.selectedTab,
+    required this.onTabSelected,
     required this.onResume,
   });
 
@@ -410,21 +391,17 @@ class _CommandPage extends StatelessWidget {
   final TextEditingController playerNameController;
   final TextEditingController inviteController;
   final ScrollController scrollController;
-  final GlobalKey homeKey;
-  final GlobalKey playKey;
-  final GlobalKey historyKey;
-  final GlobalKey powerupsKey;
-  final GlobalKey profileKey;
+  final _HomeTab selectedTab;
+  final ValueChanged<_HomeTab> onTabSelected;
   final VoidCallback? onResume;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final wide = constraints.maxWidth >= 980;
         return ListView(
           controller: scrollController,
-          padding: const EdgeInsets.fromLTRB(18, 22, 18, 108),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 108),
           children: [
             Center(
               child: ConstrainedBox(
@@ -432,64 +409,44 @@ class _CommandPage extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    KeyedSubtree(
-                      key: homeKey,
-                      child: _HomeHero(controller: controller),
+                    _ProductNavBar(
+                      selectedTab: selectedTab,
+                      onSelected: onTabSelected,
                     ),
                     const SizedBox(height: 18),
-                    if (wide)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 6,
-                            child: Column(
-                              children: [
-                                _HomeMainPanel(
-                                  page: this,
-                                  profileKey: profileKey,
-                                  playKey: playKey,
-                                ),
-                                const SizedBox(height: 16),
-                                KeyedSubtree(
-                                  key: historyKey,
-                                  child: _GameHistoryPanel(
-                                    controller: controller,
-                                  ),
-                                ),
-                              ],
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 220),
+                      switchInCurve: Curves.easeOutCubic,
+                      switchOutCurve: Curves.easeOutCubic,
+                      child: switch (selectedTab) {
+                        _HomeTab.home => _HomeTabBody(
+                            key: const ValueKey('home'),
+                            controller: controller,
+                            inviteController: inviteController,
+                            onResume: onResume,
+                            onOpenRules: () => _showRulesSheet(context),
+                            onOpenBot: () => onTabSelected(_HomeTab.bot),
+                          ),
+                        _HomeTab.bot => _BotTabBody(
+                            key: const ValueKey('bot'),
+                            controller: controller,
+                          ),
+                        _HomeTab.history => _GameHistoryPanel(
+                            key: const ValueKey('history'),
+                            controller: controller,
+                          ),
+                        _HomeTab.powerups => const _PowerupGuide(
+                            key: ValueKey('powerups'),
+                          ),
+                        _HomeTab.profile => _Panel(
+                            key: const ValueKey('profile'),
+                            child: _GuestProfileCard(
+                              controller: controller,
+                              playerNameController: playerNameController,
                             ),
                           ),
-                          const SizedBox(width: 18),
-                          Expanded(
-                            flex: 4,
-                            child: _HomeSidePanel(
-                              page: this,
-                              powerupsKey: powerupsKey,
-                            ),
-                          ),
-                        ],
-                      )
-                    else
-                      Column(
-                        children: [
-                          _HomeMainPanel(
-                            page: this,
-                            profileKey: profileKey,
-                            playKey: playKey,
-                          ),
-                          const SizedBox(height: 16),
-                          KeyedSubtree(
-                            key: historyKey,
-                            child: _GameHistoryPanel(controller: controller),
-                          ),
-                          const SizedBox(height: 16),
-                          _HomeSidePanel(
-                            page: this,
-                            powerupsKey: powerupsKey,
-                          ),
-                        ],
-                      ),
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -501,6 +458,7 @@ class _CommandPage extends StatelessWidget {
   }
 }
 
+// ignore: unused_element
 class _HomeMainPanel extends StatelessWidget {
   const _HomeMainPanel({
     required this.page,
@@ -609,6 +567,725 @@ class _HomeMainPanel extends StatelessWidget {
   }
 }
 
+class _ProductNavBar extends StatelessWidget {
+  const _ProductNavBar({
+    required this.selectedTab,
+    required this.onSelected,
+  });
+
+  final _HomeTab selectedTab;
+  final ValueChanged<_HomeTab> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= 760;
+    final items = [
+      (_HomeTab.home, Icons.home_rounded, 'Home'),
+      (_HomeTab.bot, Icons.smart_toy, 'Bot'),
+      (_HomeTab.history, Icons.history, 'History'),
+      (_HomeTab.powerups, Icons.bolt, 'Powerups'),
+      (_HomeTab.profile, Icons.person, 'Profile'),
+    ];
+    if (!wide) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        color: AppColors.surface.withValues(alpha: 0.9),
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          for (final item in items)
+            Expanded(
+              child: _ProductNavItem(
+                icon: item.$2,
+                label: item.$3,
+                selected: selectedTab == item.$1,
+                onPressed: () => onSelected(item.$1),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProductNavItem extends StatelessWidget {
+  const _ProductNavItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(9),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        height: 44,
+        margin: const EdgeInsets.symmetric(horizontal: 3),
+        decoration: BoxDecoration(
+          color: selected ? AppColors.primaryContainer : Colors.transparent,
+          borderRadius: BorderRadius.circular(9),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? AppColors.background : AppColors.secondary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              label,
+              style: TextStyle(
+                color: selected ? AppColors.background : AppColors.text,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HomeTabBody extends StatelessWidget {
+  const _HomeTabBody({
+    super.key,
+    required this.controller,
+    required this.inviteController,
+    required this.onResume,
+    required this.onOpenRules,
+    required this.onOpenBot,
+  });
+
+  final MatchController controller;
+  final TextEditingController inviteController;
+  final VoidCallback? onResume;
+  final VoidCallback onOpenRules;
+  final VoidCallback onOpenBot;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _HomeHero(
+          controller: controller,
+          onOpenRules: onOpenRules,
+          onOpenBot: onOpenBot,
+        ),
+        const SizedBox(height: 18),
+        _HomePlayActions(
+          controller: controller,
+          inviteController: inviteController,
+          onOpenBot: onOpenBot,
+        ),
+        if (match != null) ...[
+          const SizedBox(height: 14),
+          _ActiveMatchBanner(controller: controller, onResume: onResume),
+        ],
+        if (controller.loading) ...[
+          const SizedBox(height: 16),
+          const _LoadingBanner(),
+        ],
+        if (controller.error != null) ...[
+          const SizedBox(height: 12),
+          _ErrorBanner(message: controller.error!),
+        ],
+        const SizedBox(height: 18),
+        _HowItWorksTeaser(onOpenRules: onOpenRules),
+      ],
+    );
+  }
+}
+
+class _HomePlayActions extends StatelessWidget {
+  const _HomePlayActions({
+    required this.controller,
+    required this.inviteController,
+    required this.onOpenBot,
+  });
+
+  final MatchController controller;
+  final TextEditingController inviteController;
+  final VoidCallback onOpenBot;
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = MediaQuery.sizeOf(context).width < 720;
+    final actions = [
+      _PlayPillButton(
+        label: 'Instant Play',
+        icon: Icons.flash_on,
+        primary: true,
+        onPressed: controller.loading ? null : controller.quickplay,
+      ),
+      _PlayPillButton(
+        label: 'Private Match',
+        icon: Icons.group_add,
+        onPressed: controller.loading ? null : controller.createMatch,
+      ),
+      _PlayPillButton(
+        label: 'Play Bot',
+        icon: Icons.smart_toy,
+        onPressed: controller.loading ? null : onOpenBot,
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (compact)
+          Column(
+            children: [
+              for (final action in actions) ...[
+                action,
+                if (action != actions.last) const SizedBox(height: 10),
+              ],
+            ],
+          )
+        else
+          Row(
+            children: [
+              for (final action in actions) ...[
+                Expanded(child: action),
+                if (action != actions.last) const SizedBox(width: 10),
+              ],
+            ],
+          ),
+        const SizedBox(height: 14),
+        _FriendlyJoinMatch(
+            controller: controller, inviteController: inviteController),
+      ],
+    );
+  }
+}
+
+class _PlayPillButton extends StatelessWidget {
+  const _PlayPillButton({
+    required this.label,
+    required this.icon,
+    required this.onPressed,
+    this.primary = false,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback? onPressed;
+  final bool primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 58,
+      child: FilledButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 22),
+        label: Text(label),
+        style: FilledButton.styleFrom(
+          backgroundColor:
+              primary ? AppColors.primaryContainer : AppColors.surfaceBright,
+          foregroundColor: primary ? AppColors.background : AppColors.primary,
+          side: BorderSide(
+            color: primary ? AppColors.primary : AppColors.border,
+          ),
+          textStyle: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w900,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(999),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FriendlyJoinMatch extends StatelessWidget {
+  const _FriendlyJoinMatch({
+    required this.controller,
+    required this.inviteController,
+  });
+
+  final MatchController controller;
+  final TextEditingController inviteController;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceBright.withValues(alpha: 0.74),
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppColors.secondaryContainer.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.link, color: AppColors.secondary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: inviteController,
+              textCapitalization: TextCapitalization.characters,
+              style: const TextStyle(
+                color: AppColors.text,
+                fontWeight: FontWeight.w900,
+                letterSpacing: 2,
+              ),
+              decoration: const InputDecoration(
+                border: InputBorder.none,
+                hintText: 'Enter friend code',
+                hintStyle: TextStyle(
+                  color: AppColors.quiet,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0,
+                ),
+              ),
+            ),
+          ),
+          IconButton.filled(
+            onPressed: controller.loading
+                ? null
+                : () => controller.joinMatch(inviteController.text),
+            icon: const Icon(Icons.arrow_forward),
+            style: IconButton.styleFrom(
+              backgroundColor: AppColors.primaryContainer,
+              foregroundColor: AppColors.background,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActiveMatchBanner extends StatelessWidget {
+  const _ActiveMatchBanner({
+    required this.controller,
+    required this.onResume,
+  });
+
+  final MatchController controller;
+  final VoidCallback? onResume;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    if (match == null) {
+      return const SizedBox.shrink();
+    }
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.primaryContainer,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withValues(alpha: 0.16),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.sports_esports, color: AppColors.background),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  match.isWaiting ? 'Friend match ready' : 'Match in progress',
+                  style: const TextStyle(
+                    color: AppColors.background,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  match.isWaiting
+                      ? 'Share ${match.inviteCode} to let a friend join.'
+                      : controller.isMyTurn
+                          ? 'Your move is waiting.'
+                          : 'Waiting for the next move.',
+                  style: TextStyle(
+                    color: AppColors.background.withValues(alpha: 0.7),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          TextButton(
+            onPressed: onResume,
+            child: const Text('Open'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HowItWorksTeaser extends StatelessWidget {
+  const _HowItWorksTeaser({required this.onOpenRules});
+
+  final VoidCallback onOpenRules;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onOpenRules,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(
+          color: AppColors.surface.withValues(alpha: 0.92),
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 74,
+              height: 58,
+              child: CustomPaint(painter: const _MiniRuleVisualPainter()),
+            ),
+            const SizedBox(width: 14),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'How it works',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'Playfair Display',
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Chess, brain rounds, and powerups in one match.',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.secondary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _showRulesSheet(BuildContext context) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: AppColors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    builder: (context) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'How Chess Braining Works',
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Playfair Display',
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              SizedBox(
+                height: 360,
+                child: PageView(
+                  padEnds: false,
+                  children: const [
+                    _RuleCarouselCard(
+                      icon: Icons.grid_4x4,
+                      title: 'Play real chess',
+                      body:
+                          'The board follows legal chess. Make normal moves, manage your clock, and try to reach checkmate.',
+                      footer: 'Every 10 plies, the match pauses.',
+                    ),
+                    _RuleCarouselCard(
+                      icon: Icons.psychology_alt,
+                      title: 'Win the brain round',
+                      body:
+                          'A random challenge appears: math, dot connect, or memory. Score fast while the board is paused.',
+                      footer: 'The better brain score earns Brain Points.',
+                    ),
+                    _RuleCarouselCard(
+                      icon: Icons.bolt,
+                      title: 'Spend powerups',
+                      body:
+                          'Use Brain Points for clock boosts, pawn revival, or an extra move. Each power has strict chess rules.',
+                      footer: 'Checkmate still decides the match.',
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+}
+
+class _RuleCarouselCard extends StatelessWidget {
+  const _RuleCarouselCard({
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.footer,
+  });
+
+  final IconData icon;
+  final String title;
+  final String body;
+  final String footer;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: AppColors.primaryContainer,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            height: 120,
+            child: CustomPaint(
+              painter: _RuleVisualPainter(icon),
+              child: const SizedBox.expand(),
+            ),
+          ),
+          const Spacer(),
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppColors.background,
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Playfair Display',
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            body,
+            style: TextStyle(
+              color: AppColors.background.withValues(alpha: 0.76),
+              fontSize: 15,
+              height: 1.4,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            footer,
+            style: const TextStyle(
+              color: AppColors.secondaryContainer,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MiniRuleVisualPainter extends CustomPainter {
+  const _MiniRuleVisualPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()..color = AppColors.secondaryContainer;
+    final dark = Paint()..color = AppColors.primaryContainer;
+    for (var i = 0; i < 3; i++) {
+      final rect = RRect.fromRectAndRadius(
+        Rect.fromLTWH(i * size.width / 3, 8 + i * 5, 22, 34),
+        const Radius.circular(6),
+      );
+      canvas.drawRRect(rect, paint);
+    }
+    canvas.drawCircle(Offset(size.width - 18, size.height / 2), 15, dark);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+class _RuleVisualPainter extends CustomPainter {
+  const _RuleVisualPainter(this.icon);
+
+  final IconData icon;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final soft = Paint()
+      ..color = AppColors.secondaryContainer.withValues(alpha: 0.26);
+    final line = Paint()
+      ..color = AppColors.secondaryContainer
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 14, size.width * 0.72, size.height * 0.72),
+        const Radius.circular(18),
+      ),
+      soft,
+    );
+    canvas.drawCircle(Offset(size.width * 0.74, 36), 28, soft);
+    canvas.drawLine(
+      Offset(size.width * 0.1, size.height * 0.72),
+      Offset(size.width * 0.9, size.height * 0.24),
+      line,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RuleVisualPainter oldDelegate) {
+    return oldDelegate.icon != icon;
+  }
+}
+
+class _BotTabBody extends StatelessWidget {
+  const _BotTabBody({
+    super.key,
+    required this.controller,
+  });
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _TabHeader(
+          icon: Icons.smart_toy,
+          title: 'Play NeuroBot',
+          subtitle: 'Pick a difficulty, choose a side, and start instantly.',
+        ),
+        const SizedBox(height: 16),
+        _BotMatchOptions(controller: controller),
+        const SizedBox(height: 16),
+        _ActionButton(
+          label: 'START BOT MATCH',
+          icon: Icons.play_arrow,
+          onPressed: controller.loading ? null : controller.playBot,
+        ),
+      ],
+    );
+  }
+}
+
+class _TabHeader extends StatelessWidget {
+  const _TabHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: AppColors.secondaryContainer.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Icon(icon, color: AppColors.secondary),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  fontFamily: 'Playfair Display',
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 Future<void> _showBotSetupSheet(
   BuildContext context,
   MatchController controller,
@@ -695,6 +1372,7 @@ Future<void> _showBotSetupSheet(
   );
 }
 
+// ignore: unused_element
 class _HomeSidePanel extends StatelessWidget {
   const _HomeSidePanel({
     required this.page,
@@ -972,9 +1650,15 @@ class _ProfileStat extends StatelessWidget {
 }
 
 class _HomeHero extends StatelessWidget {
-  const _HomeHero({required this.controller});
+  const _HomeHero({
+    required this.controller,
+    required this.onOpenRules,
+    required this.onOpenBot,
+  });
 
   final MatchController controller;
+  final VoidCallback onOpenRules;
+  final VoidCallback onOpenBot;
 
   @override
   Widget build(BuildContext context) {
@@ -1012,7 +1696,7 @@ class _HomeHero extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'COMPETITIVE ARENA',
+                  'CHESSBOXING FOR THE BRAIN',
                   style: TextStyle(
                     color: AppColors.secondaryContainer.withValues(alpha: 0.78),
                     fontSize: 11,
@@ -1031,14 +1715,14 @@ class _HomeHero extends StatelessWidget {
                     height: 0.98,
                   ),
                 ),
-                const SizedBox(height: 24),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Image.asset(
-                    'assets/photos/logo.png',
-                    height: 160,
-                    width: 160,
-                    fit: BoxFit.cover,
+                const SizedBox(height: 10),
+                Text(
+                  'Play chess, win quick brain rounds, and spend Brain Points on powerups.',
+                  style: TextStyle(
+                    color: AppColors.background.withValues(alpha: 0.76),
+                    fontSize: 16,
+                    height: 1.35,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -1054,17 +1738,20 @@ class _HomeHero extends StatelessWidget {
                           controller.loading ? null : controller.quickplay,
                     ),
                     _HeroAction(
-                      label: 'CREATE PRIVATE MATCH',
+                      label: 'PRIVATE MATCH',
                       icon: Icons.add,
                       onPressed:
                           controller.loading ? null : controller.createMatch,
                     ),
                     _HeroAction(
-                      label: 'PLAY BOT',
+                      label: 'BOT',
                       icon: Icons.smart_toy,
-                      onPressed: controller.loading
-                          ? null
-                          : () => _showBotSetupSheet(context, controller),
+                      onPressed: controller.loading ? null : onOpenBot,
+                    ),
+                    _HeroAction(
+                      label: 'RULES',
+                      icon: Icons.auto_stories,
+                      onPressed: onOpenRules,
                     ),
                   ],
                 ),
@@ -1732,7 +2419,7 @@ class _RuleStepCard extends StatelessWidget {
 }
 
 class _PowerupGuide extends StatelessWidget {
-  const _PowerupGuide();
+  const _PowerupGuide({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -2706,15 +3393,17 @@ class _PointRow extends StatelessWidget {
 
 class _HomeBottomNav extends StatelessWidget {
   const _HomeBottomNav({
+    required this.selectedTab,
     required this.onHome,
-    required this.onPlay,
+    required this.onBot,
     required this.onHistory,
     required this.onPowerups,
     required this.onProfile,
   });
 
+  final _HomeTab selectedTab;
   final VoidCallback onHome;
-  final VoidCallback onPlay;
+  final VoidCallback onBot;
   final VoidCallback onHistory;
   final VoidCallback onPowerups;
   final VoidCallback onProfile;
@@ -2750,22 +3439,31 @@ class _HomeBottomNav extends StatelessWidget {
               _HomeNavItem(
                 label: 'Home',
                 icon: Icons.home_outlined,
-                active: true,
+                active: selectedTab == _HomeTab.home,
                 onPressed: onHome,
               ),
               _HomeNavItem(
-                label: 'Play',
-                icon: Icons.extension_outlined,
-                onPressed: onPlay,
+                label: 'Bot',
+                icon: Icons.smart_toy_outlined,
+                active: selectedTab == _HomeTab.bot,
+                onPressed: onBot,
               ),
               _HomeNavItem(
                 label: 'History',
                 icon: Icons.history,
+                active: selectedTab == _HomeTab.history,
                 onPressed: onHistory,
+              ),
+              _HomeNavItem(
+                label: 'Powers',
+                icon: Icons.bolt_outlined,
+                active: selectedTab == _HomeTab.powerups,
+                onPressed: onPowerups,
               ),
               _HomeNavItem(
                 label: 'Profile',
                 icon: Icons.person_outline,
+                active: selectedTab == _HomeTab.profile,
                 onPressed: onProfile,
               ),
             ],
@@ -4156,6 +4854,7 @@ class _ConfettiPainter extends CustomPainter {
 
 class _Panel extends StatelessWidget {
   const _Panel({
+    super.key,
     required this.child,
     this.title,
   });
@@ -4207,7 +4906,7 @@ class _Panel extends StatelessWidget {
 }
 
 class _GameHistoryPanel extends StatelessWidget {
-  const _GameHistoryPanel({required this.controller});
+  const _GameHistoryPanel({super.key, required this.controller});
 
   final MatchController controller;
 

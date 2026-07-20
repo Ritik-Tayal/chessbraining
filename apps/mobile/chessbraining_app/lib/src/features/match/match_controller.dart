@@ -933,7 +933,9 @@ class MatchController extends ChangeNotifier {
 
     if (matchJustStarted) {
       SoundService.instance.playMatchStart();
+      unawaited(SoundService.instance.startMusic());
     } else if (matchJustCompleted) {
+      unawaited(SoundService.instance.stopMusic());
       final me = value.playerById(playerId);
       if (me != null) {
         if (value.winnerPlayerId == playerId) {
@@ -946,9 +948,11 @@ class MatchController extends ChangeNotifier {
       }
       unawaited(loadProfile());
     } else if (brainRoundJustStarted) {
+      unawaited(SoundService.instance.stopMusic());
       SoundService.instance.playBrainRoundStart();
     } else if (brainRoundJustEnded) {
       SoundService.instance.playBrainRoundEnd();
+      unawaited(SoundService.instance.startMusic());
     } else if (plyIncreased && value.isChessPhase) {
       SoundService.instance.playMove();
     }
