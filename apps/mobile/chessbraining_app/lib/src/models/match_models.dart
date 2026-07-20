@@ -420,6 +420,117 @@ class BrainRoundModel {
   }
 }
 
+class BrainMatchModel {
+  const BrainMatchModel({
+    required this.matchId,
+    required this.inviteCode,
+    required this.status,
+    required this.mode,
+    required this.puzzleType,
+    required this.white,
+    required this.black,
+    required this.whiteScore,
+    required this.blackScore,
+    required this.totalQuestions,
+    required this.puzzles,
+    required this.nextWhiteQuestionIndex,
+    required this.nextBlackQuestionIndex,
+    required this.winnerPlayerId,
+    required this.rematchRequestedByPlayerId,
+    required this.rematchMatchId,
+    required this.startedAt,
+    required this.expiresAt,
+    required this.completedAt,
+  });
+
+  final String matchId;
+  final String inviteCode;
+  final String status;
+  final String mode;
+  final String puzzleType;
+  final PlayerModel white;
+  final PlayerModel? black;
+  final int whiteScore;
+  final int blackScore;
+  final int totalQuestions;
+  final List<String> puzzles;
+  final int nextWhiteQuestionIndex;
+  final int nextBlackQuestionIndex;
+  final String? winnerPlayerId;
+  final String? rematchRequestedByPlayerId;
+  final String? rematchMatchId;
+  final DateTime? startedAt;
+  final DateTime? expiresAt;
+  final DateTime? completedAt;
+
+  bool get isWaiting => status == 'WAITING_FOR_OPPONENT';
+  bool get isActive => status == 'ACTIVE';
+  bool get isCompleted => status == 'COMPLETED';
+  bool get isMathPuzzle => puzzleType == 'MENTAL_MATH';
+  bool get isDotConnect => puzzleType == 'DOT_CONNECT';
+  bool get isMemory => puzzleType == 'MEMORY';
+  bool get isDraw => isCompleted && winnerPlayerId == null;
+
+  PlayerModel? playerById(String playerId) {
+    if (white.playerId == playerId) {
+      return white;
+    }
+    if (black?.playerId == playerId) {
+      return black;
+    }
+    return null;
+  }
+
+  MemoryBoardModel? get memoryBoard {
+    if (!isMemory || puzzles.isEmpty) {
+      return null;
+    }
+    try {
+      final decoded = jsonDecode(puzzles.first);
+      if (decoded is Map<String, dynamic>) {
+        return MemoryBoardModel.fromJson(decoded);
+      }
+    } on FormatException {
+      return null;
+    }
+    return null;
+  }
+
+  factory BrainMatchModel.fromJson(Map<String, dynamic> json) {
+    return BrainMatchModel(
+      matchId: json['matchId'] as String,
+      inviteCode: json['inviteCode'] as String,
+      status: json['status'] as String,
+      mode: json['mode'] as String? ?? 'RANDOM',
+      puzzleType: json['puzzleType'] as String? ?? 'MENTAL_MATH',
+      white: PlayerModel.fromJson(json['white'] as Map<String, dynamic>),
+      black: json['black'] == null
+          ? null
+          : PlayerModel.fromJson(json['black'] as Map<String, dynamic>),
+      whiteScore: json['whiteScore'] as int? ?? 0,
+      blackScore: json['blackScore'] as int? ?? 0,
+      totalQuestions: json['totalQuestions'] as int? ?? 0,
+      puzzles: (json['puzzles'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      nextWhiteQuestionIndex: json['nextWhiteQuestionIndex'] as int? ?? 0,
+      nextBlackQuestionIndex: json['nextBlackQuestionIndex'] as int? ?? 0,
+      winnerPlayerId: json['winnerPlayerId'] as String?,
+      rematchRequestedByPlayerId: json['rematchRequestedByPlayerId'] as String?,
+      rematchMatchId: json['rematchMatchId'] as String?,
+      startedAt: json['startedAt'] == null
+          ? null
+          : DateTime.parse(json['startedAt'] as String),
+      expiresAt: json['expiresAt'] == null
+          ? null
+          : DateTime.parse(json['expiresAt'] as String),
+      completedAt: json['completedAt'] == null
+          ? null
+          : DateTime.parse(json['completedAt'] as String),
+    );
+  }
+}
+
 class MemoryBoardModel {
   const MemoryBoardModel({
     required this.turnSide,

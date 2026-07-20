@@ -266,6 +266,120 @@ class ChessbrainingApi {
     });
   }
 
+  Future<BrainMatchModel> createBrainMatch({
+    required String playerId,
+    required String playerName,
+    required String mode,
+  }) {
+    return _postBrainMatch('/brain-matches', {
+      'playerId': playerId,
+      'playerName': playerName,
+      'mode': mode,
+    });
+  }
+
+  Future<BrainMatchModel> joinBrainMatch({
+    required String inviteCode,
+    required String playerId,
+    required String playerName,
+  }) {
+    return _postBrainMatch('/brain-matches/join', {
+      'inviteCode': inviteCode,
+      'playerId': playerId,
+      'playerName': playerName,
+    });
+  }
+
+  Future<BrainMatchModel> getBrainMatch(String matchId) async {
+    final response =
+        await _withTimeout(_client.get(_uri('/brain-matches/$matchId')));
+    return _decodeBrainMatch(response);
+  }
+
+  Future<BrainMatchModel> submitBrainMatchAnswers({
+    required String matchId,
+    required String playerId,
+    required Map<int, int> answers,
+  }) async {
+    final orderedAnswers = answers.entries.toList()
+      ..sort((left, right) => left.key.compareTo(right.key));
+    final response = await _withTimeout(
+      _client.post(
+        _uri('/brain-matches/$matchId/math-submissions'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'playerId': playerId,
+          'answers': [
+            for (final answer in orderedAnswers)
+              {
+                'questionIndex': answer.key,
+                'answer': answer.value,
+              },
+          ],
+        }),
+      ),
+    );
+    return _decodeBrainMatch(response);
+  }
+
+  Future<BrainMatchModel> submitBrainMatchPath({
+    required String matchId,
+    required String playerId,
+    required int puzzleIndex,
+    required List<List<int>> path,
+  }) async {
+    final response = await _withTimeout(
+      _client.post(
+        _uri('/brain-matches/$matchId/paths'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'playerId': playerId,
+          'puzzleIndex': puzzleIndex,
+          'path': path,
+        }),
+      ),
+    );
+    return _decodeBrainMatch(response);
+  }
+
+  Future<BrainMatchModel> submitBrainMatchMemoryTurn({
+    required String matchId,
+    required String playerId,
+    required int firstIndex,
+    required int secondIndex,
+  }) async {
+    final response = await _withTimeout(
+      _client.post(
+        _uri('/brain-matches/$matchId/memory-turns'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'playerId': playerId,
+          'firstIndex': firstIndex,
+          'secondIndex': secondIndex,
+        }),
+      ),
+    );
+    return _decodeBrainMatch(response);
+  }
+
+  Future<BrainMatchModel> completeBrainMatch({
+    required String matchId,
+  }) async {
+    final response = await _withTimeout(
+      _client.post(_uri('/brain-matches/$matchId/complete')),
+    );
+    return _decodeBrainMatch(response);
+  }
+
+  Future<BrainMatchModel> requestBrainMatchRematch({
+    required String matchId,
+    required String playerId,
+  }) {
+    return _postBrainMatch('/brain-matches/$matchId/rematch', {
+      'playerId': playerId,
+    });
+  }
+
   Future<GuestProfileModel> getGuestProfile(String playerId) async {
     final response = await _withTimeout(
       _client.get(_uri('/players/$playerId/profile')),
@@ -300,6 +414,20 @@ class ChessbrainingApi {
     return _decodeMatch(response);
   }
 
+  Future<BrainMatchModel> _postBrainMatch(
+    String path,
+    Map<String, Object?> body,
+  ) async {
+    final response = await _withTimeout(
+      _client.post(
+        _uri(path),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+    );
+    return _decodeBrainMatch(response);
+  }
+
   Future<T> _withTimeout<T>(Future<T> request) {
     return request.timeout(
       _requestTimeout,
@@ -315,6 +443,11 @@ class ChessbrainingApi {
   MatchModel _decodeMatch(http.Response response) {
     final body = _decodeResponse(response);
     return MatchModel.fromJson(body as Map<String, dynamic>);
+  }
+
+  BrainMatchModel _decodeBrainMatch(http.Response response) {
+    final body = _decodeResponse(response);
+    return BrainMatchModel.fromJson(body as Map<String, dynamic>);
   }
 
   Object? _decodeResponse(http.Response response) {

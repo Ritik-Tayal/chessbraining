@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:chess_vectors_flutter/chess_vectors_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -8,12 +9,13 @@ import '../../models/match_models.dart';
 import '../../services/sound_service.dart';
 import 'brain_round_overlay.dart';
 import 'chess_board.dart';
+import 'dot_connect_puzzle.dart';
 import 'fen.dart';
 import 'match_controller.dart';
 
 enum _ScreenPage { command, play }
 
-enum _HomeTab { home, bot, history, powerups, profile }
+enum _HomeTab { home, brain, bot, history, powerups }
 
 class MatchScreen extends StatefulWidget {
   const MatchScreen({
@@ -30,6 +32,7 @@ class MatchScreen extends StatefulWidget {
 class _MatchScreenState extends State<MatchScreen> {
   final playerNameController = TextEditingController();
   final inviteController = TextEditingController();
+  final brainInviteController = TextEditingController();
   final commandScrollController = ScrollController();
   Timer? clockTicker;
   DateTime? lastClockExpiryRefreshDeadline;
@@ -96,6 +99,7 @@ class _MatchScreenState extends State<MatchScreen> {
     commandScrollController.dispose();
     playerNameController.dispose();
     inviteController.dispose();
+    brainInviteController.dispose();
     super.dispose();
   }
 
@@ -138,6 +142,7 @@ class _MatchScreenState extends State<MatchScreen> {
                                 controller: controller,
                                 playerNameController: playerNameController,
                                 inviteController: inviteController,
+                                brainInviteController: brainInviteController,
                                 scrollController: commandScrollController,
                                 selectedTab: selectedHomeTab,
                                 onTabSelected: (tab) =>
@@ -164,8 +169,8 @@ class _MatchScreenState extends State<MatchScreen> {
                         setState(() => selectedHomeTab = _HomeTab.history),
                     onPowerups: () =>
                         setState(() => selectedHomeTab = _HomeTab.powerups),
-                    onProfile: () =>
-                        setState(() => selectedHomeTab = _HomeTab.profile),
+                    onBrain: () =>
+                        setState(() => selectedHomeTab = _HomeTab.brain),
                   ),
                 if (controller.match?.isBrainRound == true)
                   BrainRoundOverlay(controller: controller),
@@ -381,6 +386,7 @@ class _CommandPage extends StatelessWidget {
     required this.controller,
     required this.playerNameController,
     required this.inviteController,
+    required this.brainInviteController,
     required this.scrollController,
     required this.selectedTab,
     required this.onTabSelected,
@@ -390,6 +396,7 @@ class _CommandPage extends StatelessWidget {
   final MatchController controller;
   final TextEditingController playerNameController;
   final TextEditingController inviteController;
+  final TextEditingController brainInviteController;
   final ScrollController scrollController;
   final _HomeTab selectedTab;
   final ValueChanged<_HomeTab> onTabSelected;
@@ -423,9 +430,15 @@ class _CommandPage extends StatelessWidget {
                             key: const ValueKey('home'),
                             controller: controller,
                             inviteController: inviteController,
+                            playerNameController: playerNameController,
                             onResume: onResume,
                             onOpenRules: () => _showRulesSheet(context),
                             onOpenBot: () => onTabSelected(_HomeTab.bot),
+                          ),
+                        _HomeTab.brain => _BrainArenaTabBody(
+                            key: const ValueKey('brain'),
+                            controller: controller,
+                            inviteController: brainInviteController,
                           ),
                         _HomeTab.bot => _BotTabBody(
                             key: const ValueKey('bot'),
@@ -437,13 +450,6 @@ class _CommandPage extends StatelessWidget {
                           ),
                         _HomeTab.powerups => const _PowerupGuide(
                             key: ValueKey('powerups'),
-                          ),
-                        _HomeTab.profile => _Panel(
-                            key: const ValueKey('profile'),
-                            child: _GuestProfileCard(
-                              controller: controller,
-                              playerNameController: playerNameController,
-                            ),
                           ),
                       },
                     ),
@@ -581,10 +587,10 @@ class _ProductNavBar extends StatelessWidget {
     final wide = MediaQuery.sizeOf(context).width >= 760;
     final items = [
       (_HomeTab.home, Icons.home_rounded, 'Home'),
+      (_HomeTab.brain, Icons.psychology_alt, 'Brain'),
       (_HomeTab.bot, Icons.smart_toy, 'Bot'),
       (_HomeTab.history, Icons.history, 'History'),
       (_HomeTab.powerups, Icons.bolt, 'Powerups'),
-      (_HomeTab.profile, Icons.person, 'Profile'),
     ];
     if (!wide) {
       return const SizedBox.shrink();
@@ -662,11 +668,66 @@ class _ProductNavItem extends StatelessWidget {
   }
 }
 
+class _ProfileIconButton extends StatelessWidget {
+  const _ProfileIconButton({
+    required this.controller,
+    required this.playerNameController,
+  });
+
+  final MatchController controller;
+  final TextEditingController playerNameController;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filledTonal(
+      tooltip: 'Profile',
+      onPressed: () => _showProfileSheet(
+        context,
+        controller,
+        playerNameController,
+      ),
+      icon: const Icon(Icons.person),
+      style: IconButton.styleFrom(
+        backgroundColor: AppColors.surfaceBright,
+        foregroundColor: AppColors.primary,
+        side: BorderSide(color: AppColors.border),
+      ),
+    );
+  }
+}
+
+Future<void> _showProfileSheet(
+  BuildContext context,
+  MatchController controller,
+  TextEditingController playerNameController,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: AppColors.surface,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    builder: (context) {
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+          child: _GuestProfileCard(
+            controller: controller,
+            playerNameController: playerNameController,
+          ),
+        ),
+      );
+    },
+  );
+}
+
 class _HomeTabBody extends StatelessWidget {
   const _HomeTabBody({
     super.key,
     required this.controller,
     required this.inviteController,
+    required this.playerNameController,
     required this.onResume,
     required this.onOpenRules,
     required this.onOpenBot,
@@ -674,6 +735,7 @@ class _HomeTabBody extends StatelessWidget {
 
   final MatchController controller;
   final TextEditingController inviteController;
+  final TextEditingController playerNameController;
   final VoidCallback? onResume;
   final VoidCallback onOpenRules;
   final VoidCallback onOpenBot;
@@ -684,6 +746,14 @@ class _HomeTabBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        Align(
+          alignment: Alignment.centerRight,
+          child: _ProfileIconButton(
+            controller: controller,
+            playerNameController: playerNameController,
+          ),
+        ),
+        const SizedBox(height: 10),
         _HomeHero(
           controller: controller,
           onOpenRules: onOpenRules,
@@ -1198,6 +1268,784 @@ class _RuleVisualPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _RuleVisualPainter oldDelegate) {
     return oldDelegate.icon != icon;
+  }
+}
+
+class _BrainArenaTabBody extends StatelessWidget {
+  const _BrainArenaTabBody({
+    super.key,
+    required this.controller,
+    required this.inviteController,
+  });
+
+  final MatchController controller;
+  final TextEditingController inviteController;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.brainMatch;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Panel(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 220),
+            child: match == null
+                ? _BrainArenaLobby(
+                    controller: controller,
+                    inviteController: inviteController,
+                  )
+                : _BrainArenaGame(
+                    key: ValueKey(match.matchId),
+                    controller: controller,
+                    match: match,
+                  ),
+          ),
+        ),
+        if (controller.loading) ...[
+          const SizedBox(height: 14),
+          const _LoadingBanner(),
+        ],
+        if (controller.error != null) ...[
+          const SizedBox(height: 12),
+          _ErrorBanner(message: controller.error!),
+        ],
+      ],
+    );
+  }
+}
+
+class _BrainArenaLobby extends StatelessWidget {
+  const _BrainArenaLobby({
+    required this.controller,
+    required this.inviteController,
+  });
+
+  final MatchController controller;
+  final TextEditingController inviteController;
+
+  @override
+  Widget build(BuildContext context) {
+    final modes = const [
+      ('RANDOM', 'Random', Icons.shuffle),
+      ('MENTAL_MATH', 'Math', Icons.calculate),
+      ('DOT_CONNECT', 'Dot', Icons.route),
+      ('MEMORY', 'Memory', Icons.style),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 72,
+              height: 72,
+              decoration: BoxDecoration(
+                color: AppColors.secondaryContainer,
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Icon(
+                Icons.psychology_alt,
+                color: AppColors.primary,
+                size: 36,
+              ),
+            ),
+            const SizedBox(width: 16),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Brain Arena',
+                    style: TextStyle(
+                      color: AppColors.text,
+                      fontSize: 30,
+                      fontWeight: FontWeight.w900,
+                      fontFamily: 'Playfair Display',
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Play a standalone brain round with a friend.',
+                    style: TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 22),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final mode in modes)
+              ChoiceChip(
+                selected: controller.brainMatchMode == mode.$1,
+                onSelected: (_) => controller.setBrainMatchMode(mode.$1),
+                avatar: Icon(mode.$3, size: 18),
+                label: Text(mode.$2),
+                selectedColor: AppColors.primaryContainer,
+                backgroundColor: AppColors.surfaceBright,
+                side: BorderSide(
+                  color: controller.brainMatchMode == mode.$1
+                      ? AppColors.primary
+                      : AppColors.border,
+                ),
+                labelStyle: TextStyle(
+                  color: controller.brainMatchMode == mode.$1
+                      ? AppColors.background
+                      : AppColors.text,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: 20),
+        _PlayPillButton(
+          label: 'Create Brain Match',
+          icon: Icons.add_circle_outline,
+          primary: true,
+          onPressed: controller.loading ? null : controller.createBrainMatch,
+        ),
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppColors.surfaceBright,
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.link, color: AppColors.secondary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: inviteController,
+                  textCapitalization: TextCapitalization.characters,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 2,
+                  ),
+                  decoration: const InputDecoration(
+                    border: InputBorder.none,
+                    hintText: 'Enter brain code',
+                    hintStyle: TextStyle(
+                      color: AppColors.quiet,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
+                  ),
+                ),
+              ),
+              IconButton.filled(
+                onPressed: controller.loading
+                    ? null
+                    : () => controller.joinBrainMatch(inviteController.text),
+                icon: const Icon(Icons.arrow_forward),
+                style: IconButton.styleFrom(
+                  backgroundColor: AppColors.primaryContainer,
+                  foregroundColor: AppColors.background,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BrainArenaGame extends StatefulWidget {
+  const _BrainArenaGame({
+    super.key,
+    required this.controller,
+    required this.match,
+  });
+
+  final MatchController controller;
+  final BrainMatchModel match;
+
+  @override
+  State<_BrainArenaGame> createState() => _BrainArenaGameState();
+}
+
+class _BrainArenaGameState extends State<_BrainArenaGame> {
+  Timer? ticker;
+
+  @override
+  void initState() {
+    super.initState();
+    ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final current = widget.controller.brainMatch;
+      if (current?.isActive == true && _secondsLeft(current!) <= 0) {
+        unawaited(widget.controller.completeBrainArena());
+      }
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final match = widget.controller.brainMatch ?? widget.match;
+    final me = match.playerById(widget.controller.playerId);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _BrainArenaHeader(
+          controller: widget.controller,
+          match: match,
+          secondsLeft: _secondsLeft(match),
+        ),
+        const SizedBox(height: 18),
+        if (match.isWaiting)
+          _BrainArenaWaiting(match: match, controller: widget.controller)
+        else if (match.isCompleted)
+          _BrainArenaResult(match: match, controller: widget.controller)
+        else if (match.isMathPuzzle)
+          _BrainArenaMathGame(
+            key: ValueKey(match.matchId),
+            match: match,
+            playerSide: me?.side,
+            onSubmit: widget.controller.submitBrainArenaAnswers,
+          )
+        else if (match.isDotConnect)
+          SizedBox(
+            height: 430,
+            child: DotConnectPuzzleWidget(
+              puzzles: match.puzzles,
+              enabled: true,
+              onPuzzleSolved: (puzzleIndex, _, path) {
+                unawaited(widget.controller.submitBrainArenaPath(
+                  puzzleIndex: puzzleIndex,
+                  path: path,
+                ));
+              },
+            ),
+          )
+        else if (match.isMemory)
+          _BrainArenaMemoryGame(
+            match: match,
+            playerSide: me?.side,
+            loading: widget.controller.loading,
+            onTurn: (first, second) =>
+                widget.controller.submitBrainArenaMemoryTurn(
+              firstIndex: first,
+              secondIndex: second,
+            ),
+          ),
+      ],
+    );
+  }
+
+  int _secondsLeft(BrainMatchModel match) {
+    final deadline = match.expiresAt;
+    if (!match.isActive || deadline == null) return 0;
+    return math.max(0, deadline.difference(DateTime.now().toUtc()).inSeconds);
+  }
+}
+
+class _BrainArenaHeader extends StatelessWidget {
+  const _BrainArenaHeader({
+    required this.controller,
+    required this.match,
+    required this.secondsLeft,
+  });
+
+  final MatchController controller;
+  final BrainMatchModel match;
+  final int secondsLeft;
+
+  @override
+  Widget build(BuildContext context) {
+    final title = switch (match.puzzleType) {
+      'DOT_CONNECT' => 'Dot Connect',
+      'MEMORY' => 'Memory Match',
+      'MENTAL_MATH' => 'Mental Math',
+      _ => 'Brain Match',
+    };
+    return Row(
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: AppColors.text,
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  fontFamily: 'Playfair Display',
+                ),
+              ),
+              const SizedBox(height: 4),
+              SelectableText(
+                match.isWaiting
+                    ? 'Code ${match.inviteCode}'
+                    : '${match.white.playerName} ${match.whiteScore} - ${match.blackScore} ${match.black?.playerName ?? 'Waiting'}',
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (match.isActive)
+          _TimerPill(secondsLeft: secondsLeft)
+        else
+          IconButton(
+            tooltip: 'Close arena',
+            onPressed: controller.leaveBrainArena,
+            icon: const Icon(Icons.close),
+          ),
+      ],
+    );
+  }
+}
+
+class _TimerPill extends StatelessWidget {
+  const _TimerPill({required this.secondsLeft});
+
+  final int secondsLeft;
+
+  @override
+  Widget build(BuildContext context) {
+    final minutes = (secondsLeft ~/ 60).toString();
+    final seconds = (secondsLeft % 60).toString().padLeft(2, '0');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: secondsLeft <= 10 ? const Color(0xffb3261e) : AppColors.primary,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$minutes:$seconds',
+        style:
+            const TextStyle(color: Colors.white, fontWeight: FontWeight.w900),
+      ),
+    );
+  }
+}
+
+class _BrainArenaWaiting extends StatelessWidget {
+  const _BrainArenaWaiting({
+    required this.match,
+    required this.controller,
+  });
+
+  final BrainMatchModel match;
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppColors.secondaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.ios_share, color: AppColors.primary, size: 42),
+          const SizedBox(height: 12),
+          SelectableText(
+            match.inviteCode,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 34,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 4,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Share this code with a friend to start the brain match.',
+            textAlign: TextAlign.center,
+            style:
+                TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: controller.refreshBrainMatch,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: controller.leaveBrainArena,
+                  icon: const Icon(Icons.close),
+                  label: const Text('Leave'),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BrainArenaResult extends StatelessWidget {
+  const _BrainArenaResult({
+    required this.match,
+    required this.controller,
+  });
+
+  final BrainMatchModel match;
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final winner = match.winnerPlayerId == null
+        ? null
+        : match.playerById(match.winnerPlayerId!);
+    final requested = match.rematchRequestedByPlayerId;
+    final meRequested = requested == controller.playerId;
+    final canAccept = requested != null && !meRequested;
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceBright,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            match.isDraw ? Icons.handshake : Icons.emoji_events,
+            color: AppColors.secondary,
+            size: 50,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            match.isDraw ? 'Draw' : '${winner?.playerName ?? 'Winner'} wins',
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: AppColors.text,
+              fontSize: 28,
+              fontWeight: FontWeight.w900,
+              fontFamily: 'Playfair Display',
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            '${match.white.playerName}: ${match.whiteScore}   ${match.black?.playerName ?? 'Black'}: ${match.blackScore}',
+            style: const TextStyle(
+              color: AppColors.muted,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 18),
+          FilledButton.icon(
+            onPressed:
+                controller.loading ? null : controller.requestBrainArenaRematch,
+            icon: Icon(canAccept ? Icons.done : Icons.replay),
+            label: Text(
+              canAccept
+                  ? 'Accept rematch'
+                  : meRequested
+                      ? 'Waiting for rematch'
+                      : 'Rematch',
+            ),
+          ),
+          TextButton(
+            onPressed: controller.leaveBrainArena,
+            child: const Text('Back to lobby'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BrainArenaMathGame extends StatefulWidget {
+  const _BrainArenaMathGame({
+    super.key,
+    required this.match,
+    required this.playerSide,
+    required this.onSubmit,
+  });
+
+  final BrainMatchModel match;
+  final String? playerSide;
+  final Future<void> Function(Map<int, int> answers) onSubmit;
+
+  @override
+  State<_BrainArenaMathGame> createState() => _BrainArenaMathGameState();
+}
+
+class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
+  final Map<int, TextEditingController> controllers = {};
+
+  @override
+  void dispose() {
+    for (final controller in controllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final submitted = widget.playerSide == 'WHITE'
+        ? widget.match.nextWhiteQuestionIndex >= widget.match.totalQuestions
+        : widget.match.nextBlackQuestionIndex >= widget.match.totalQuestions;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+            maxCrossAxisExtent: 230,
+            mainAxisExtent: 116,
+            crossAxisSpacing: 10,
+            mainAxisSpacing: 10,
+          ),
+          itemCount: widget.match.puzzles.length,
+          itemBuilder: (context, index) {
+            final input = controllers.putIfAbsent(
+              index,
+              () => TextEditingController(),
+            );
+            return Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceHigh,
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    widget.match.puzzles[index],
+                    style: const TextStyle(
+                      color: AppColors.text,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const Spacer(),
+                  TextField(
+                    controller: input,
+                    enabled: !submitted,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      hintText: 'Answer',
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        FilledButton.icon(
+          onPressed: submitted
+              ? null
+              : () {
+                  final answers = <int, int>{};
+                  for (final entry in controllers.entries) {
+                    final value = int.tryParse(entry.value.text.trim());
+                    if (value != null) answers[entry.key] = value;
+                  }
+                  unawaited(widget.onSubmit(answers));
+                },
+          icon: const Icon(Icons.check),
+          label: Text(submitted ? 'Submitted' : 'Submit score'),
+        ),
+      ],
+    );
+  }
+}
+
+class _BrainArenaMemoryGame extends StatefulWidget {
+  const _BrainArenaMemoryGame({
+    required this.match,
+    required this.playerSide,
+    required this.loading,
+    required this.onTurn,
+  });
+
+  final BrainMatchModel match;
+  final String? playerSide;
+  final bool loading;
+  final Future<void> Function(int first, int second) onTurn;
+
+  @override
+  State<_BrainArenaMemoryGame> createState() => _BrainArenaMemoryGameState();
+}
+
+class _BrainArenaMemoryGameState extends State<_BrainArenaMemoryGame> {
+  final List<int> selected = [];
+
+  @override
+  void didUpdateWidget(covariant _BrainArenaMemoryGame oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final previousBoard =
+        oldWidget.match.puzzles.isEmpty ? null : oldWidget.match.puzzles.first;
+    final nextBoard =
+        widget.match.puzzles.isEmpty ? null : widget.match.puzzles.first;
+    if (previousBoard != nextBoard) {
+      selected.clear();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final board = widget.match.memoryBoard;
+    if (board == null) {
+      return const SizedBox(
+        height: 260,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    final myTurn = board.turnSide == widget.playerSide;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color:
+                myTurn ? AppColors.primaryContainer : AppColors.surfaceBright,
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Text(
+            myTurn ? 'Your memory turn' : 'Opponent is choosing cards',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: myTurn ? AppColors.background : AppColors.muted,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4,
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 0.82,
+          ),
+          itemCount: board.cards.length,
+          itemBuilder: (context, index) {
+            final card = board.cards[index];
+            return _ArenaMemoryCard(
+              card: card,
+              selected: selected.contains(card.index),
+              enabled: myTurn && !widget.loading && !card.matched,
+              onTap: () => _select(card.index),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  void _select(int index) {
+    if (selected.contains(index)) {
+      setState(() => selected.remove(index));
+      return;
+    }
+    if (selected.length >= 2) return;
+    setState(() => selected.add(index));
+    if (selected.length == 2) {
+      unawaited(widget.onTurn(selected[0], selected[1]));
+    }
+  }
+}
+
+class _ArenaMemoryCard extends StatelessWidget {
+  const _ArenaMemoryCard({
+    required this.card,
+    required this.selected,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  final MemoryCardModel card;
+  final bool selected;
+  final bool enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final faceUp = card.revealed || selected || card.matched;
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        decoration: BoxDecoration(
+          color: faceUp ? AppColors.surfaceLow : AppColors.primary,
+          border: Border.all(
+            color: selected ? AppColors.secondary : AppColors.border,
+            width: selected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Center(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 180),
+            child: faceUp
+                ? _ArenaMemoryPiece(
+                    key: ValueKey(card.piece), piece: card.piece)
+                : const Icon(
+                    Icons.question_mark,
+                    key: ValueKey('back'),
+                    color: Colors.white,
+                    size: 34,
+                  ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArenaMemoryPiece extends StatelessWidget {
+  const _ArenaMemoryPiece({super.key, required this.piece});
+
+  final String? piece;
+
+  @override
+  Widget build(BuildContext context) {
+    const fill = Color(0xfffffbf4);
+    const stroke = Color(0xff170f0a);
+    const size = 42.0;
+    return switch (piece) {
+      'PAWN' => WhitePawn(size: size, fillColor: fill, strokeColor: stroke),
+      'KNIGHT' => WhiteKnight(size: size, fillColor: fill, strokeColor: stroke),
+      'BISHOP' => WhiteBishop(size: size, fillColor: fill, strokeColor: stroke),
+      'ROOK' => WhiteRook(size: size, fillColor: fill, strokeColor: stroke),
+      'QUEEN' => WhiteQueen(size: size, fillColor: fill, strokeColor: stroke),
+      'KING' => WhiteKing(size: size, fillColor: fill, strokeColor: stroke),
+      _ => const Icon(Icons.help_outline, color: stroke, size: 32),
+    };
   }
 }
 
@@ -3395,18 +4243,18 @@ class _HomeBottomNav extends StatelessWidget {
   const _HomeBottomNav({
     required this.selectedTab,
     required this.onHome,
+    required this.onBrain,
     required this.onBot,
     required this.onHistory,
     required this.onPowerups,
-    required this.onProfile,
   });
 
   final _HomeTab selectedTab;
   final VoidCallback onHome;
+  final VoidCallback onBrain;
   final VoidCallback onBot;
   final VoidCallback onHistory;
   final VoidCallback onPowerups;
-  final VoidCallback onProfile;
 
   @override
   Widget build(BuildContext context) {
@@ -3443,16 +4291,16 @@ class _HomeBottomNav extends StatelessWidget {
                 onPressed: onHome,
               ),
               _HomeNavItem(
+                label: 'Brain',
+                icon: Icons.psychology_alt_outlined,
+                active: selectedTab == _HomeTab.brain,
+                onPressed: onBrain,
+              ),
+              _HomeNavItem(
                 label: 'Bot',
                 icon: Icons.smart_toy_outlined,
                 active: selectedTab == _HomeTab.bot,
                 onPressed: onBot,
-              ),
-              _HomeNavItem(
-                label: 'History',
-                icon: Icons.history,
-                active: selectedTab == _HomeTab.history,
-                onPressed: onHistory,
               ),
               _HomeNavItem(
                 label: 'Powers',
@@ -3461,10 +4309,10 @@ class _HomeBottomNav extends StatelessWidget {
                 onPressed: onPowerups,
               ),
               _HomeNavItem(
-                label: 'Profile',
-                icon: Icons.person_outline,
-                active: selectedTab == _HomeTab.profile,
-                onPressed: onProfile,
+                label: 'History',
+                icon: Icons.history,
+                active: selectedTab == _HomeTab.history,
+                onPressed: onHistory,
               ),
             ],
           ),
@@ -4854,7 +5702,6 @@ class _ConfettiPainter extends CustomPainter {
 
 class _Panel extends StatelessWidget {
   const _Panel({
-    super.key,
     required this.child,
     this.title,
   });
