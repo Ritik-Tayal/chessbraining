@@ -127,6 +127,14 @@ class ChessbrainingApi {
     return BrainRoundModel.fromJson(body as Map<String, dynamic>);
   }
 
+  Future<BrainRoundModel> getLatestBrainRoundResult(String matchId) async {
+    final response = await _withTimeout(
+      _client.get(_uri('/matches/$matchId/brain-rounds/latest-result')),
+    );
+    final body = _decodeResponse(response);
+    return BrainRoundModel.fromJson(body as Map<String, dynamic>);
+  }
+
   Future<AnswerResultModel> submitBrainRoundAnswer({
     required String matchId,
     required String playerId,
