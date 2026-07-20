@@ -30,6 +30,7 @@ class _MatchScreenState extends State<MatchScreen> {
   final commandScrollController = ScrollController();
   final homeSectionKey = GlobalKey();
   final playSectionKey = GlobalKey();
+  final historySectionKey = GlobalKey();
   final powerupsSectionKey = GlobalKey();
   final profileSectionKey = GlobalKey();
   Timer? clockTicker;
@@ -47,6 +48,7 @@ class _MatchScreenState extends State<MatchScreen> {
       selectedPage = _ScreenPage.play;
     }
     widget.controller.addListener(_handleControllerChanged);
+    unawaited(widget.controller.loadProfile());
     clockTicker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
         _refreshExpiredClock();
@@ -57,6 +59,12 @@ class _MatchScreenState extends State<MatchScreen> {
 
   void _handleControllerChanged() {
     final matchId = widget.controller.match?.matchId;
+    if (playerNameController.text != widget.controller.playerName) {
+      playerNameController.text = widget.controller.playerName;
+      playerNameController.selection = TextSelection.collapsed(
+        offset: playerNameController.text.length,
+      );
+    }
     if (matchId != null && matchId != activeMatchId) {
       activeMatchId = matchId;
       dismissedCelebrationMatchId = null;
@@ -154,6 +162,7 @@ class _MatchScreenState extends State<MatchScreen> {
                               scrollController: commandScrollController,
                               homeKey: homeSectionKey,
                               playKey: playSectionKey,
+                              historyKey: historySectionKey,
                               powerupsKey: powerupsSectionKey,
                               profileKey: profileSectionKey,
                               onResume: match == null
@@ -172,6 +181,7 @@ class _MatchScreenState extends State<MatchScreen> {
                 _HomeBottomNav(
                   onHome: () => _scrollToHomeSection(homeSectionKey),
                   onPlay: () => _scrollToHomeSection(playSectionKey),
+                  onHistory: () => _scrollToHomeSection(historySectionKey),
                   onPowerups: () => _scrollToHomeSection(powerupsSectionKey),
                   onProfile: () => _scrollToHomeSection(profileSectionKey),
                 ),
@@ -390,6 +400,7 @@ class _CommandPage extends StatelessWidget {
     required this.scrollController,
     required this.homeKey,
     required this.playKey,
+    required this.historyKey,
     required this.powerupsKey,
     required this.profileKey,
     required this.onResume,
@@ -401,6 +412,7 @@ class _CommandPage extends StatelessWidget {
   final ScrollController scrollController;
   final GlobalKey homeKey;
   final GlobalKey playKey;
+  final GlobalKey historyKey;
   final GlobalKey powerupsKey;
   final GlobalKey profileKey;
   final VoidCallback? onResume;
@@ -431,10 +443,21 @@ class _CommandPage extends StatelessWidget {
                         children: [
                           Expanded(
                             flex: 6,
-                            child: _HomeMainPanel(
-                              page: this,
-                              profileKey: profileKey,
-                              playKey: playKey,
+                            child: Column(
+                              children: [
+                                _HomeMainPanel(
+                                  page: this,
+                                  profileKey: profileKey,
+                                  playKey: playKey,
+                                ),
+                                const SizedBox(height: 16),
+                                KeyedSubtree(
+                                  key: historyKey,
+                                  child: _GameHistoryPanel(
+                                    controller: controller,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                           const SizedBox(width: 18),
@@ -454,6 +477,11 @@ class _CommandPage extends StatelessWidget {
                             page: this,
                             profileKey: profileKey,
                             playKey: playKey,
+                          ),
+                          const SizedBox(height: 16),
+                          KeyedSubtree(
+                            key: historyKey,
+                            child: _GameHistoryPanel(controller: controller),
                           ),
                           const SizedBox(height: 16),
                           _HomeSidePanel(
@@ -531,11 +559,12 @@ class _HomeMainPanel extends StatelessWidget {
                       _PlayModeCard(
                         title: 'Play Bot',
                         description:
-                            'Practice against NeuroBot with brain-round scoring.',
+                            'Choose a difficulty and practice instantly.',
                         icon: Icons.smart_toy,
                         color: AppColors.warning,
-                        onPressed:
-                            controller.loading ? null : controller.playBot,
+                        onPressed: controller.loading
+                            ? null
+                            : () => _showBotSetupSheet(context, controller),
                       ),
                     ];
                     if (stacked) {
@@ -559,8 +588,6 @@ class _HomeMainPanel extends StatelessWidget {
                   },
                 ),
                 const SizedBox(height: 14),
-                _BotMatchOptions(controller: controller),
-                const SizedBox(height: 14),
                 _JoinMatchRow(
                   controller: controller,
                   inviteController: page.inviteController,
@@ -580,6 +607,92 @@ class _HomeMainPanel extends StatelessWidget {
       ],
     );
   }
+}
+
+Future<void> _showBotSetupSheet(
+  BuildContext context,
+  MatchController controller,
+) {
+  return showModalBottomSheet<void>(
+    context: context,
+    backgroundColor: AppColors.surface,
+    isScrollControlled: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+    ),
+    builder: (context) {
+      return AnimatedBuilder(
+        animation: controller,
+        builder: (context, _) {
+          return SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 46,
+                        height: 46,
+                        decoration: BoxDecoration(
+                          color: AppColors.warning.withValues(alpha: 0.16),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.smart_toy,
+                          color: AppColors.warning,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Play NeuroBot',
+                              style: TextStyle(
+                                color: AppColors.text,
+                                fontWeight: FontWeight.w900,
+                                fontSize: 20,
+                                fontFamily: 'Playfair Display',
+                              ),
+                            ),
+                            SizedBox(height: 3),
+                            Text(
+                              'Pick a level before the match starts.',
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _BotMatchOptions(controller: controller),
+                  const SizedBox(height: 16),
+                  _ActionButton(
+                    label: 'START BOT MATCH',
+                    icon: Icons.play_arrow,
+                    onPressed: controller.loading
+                        ? null
+                        : () {
+                            Navigator.of(context).pop();
+                            unawaited(controller.playBot());
+                          },
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
 }
 
 class _HomeSidePanel extends StatelessWidget {
@@ -605,14 +718,13 @@ class _HomeSidePanel extends StatelessWidget {
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _SessionRow(label: 'STATUS', value: match.status),
-                    _SessionRow(label: 'PHASE', value: match.phase),
+                    _MatchStatusCard(controller: controller),
+                    const SizedBox(height: 12),
                     _SessionRow(
                       label: 'INVITE',
                       value: match.inviteCode,
                       selectable: true,
                     ),
-                    _SessionRow(label: 'MOVE', value: match.sideToMove),
                     const SizedBox(height: 16),
                     _ActionButton(
                       label: 'RESUME GAME',
@@ -644,6 +756,7 @@ class _GuestProfileCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final player = controller.me;
+    final profile = controller.profile;
     final brainPoints = player?.brainPoints ?? 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -686,9 +799,9 @@ class _GuestProfileCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  const Text(
-                    'GUEST PLAYER • NEW BRAINER',
-                    style: TextStyle(
+                  Text(
+                    'GUEST PROFILE • ${profile?.rating ?? 1000} RATING',
+                    style: const TextStyle(
                       color: AppColors.secondary,
                       fontSize: 11,
                       fontWeight: FontWeight.w900,
@@ -703,9 +816,19 @@ class _GuestProfileCard extends StatelessWidget {
         const SizedBox(height: 16),
         Row(
           children: [
-            const Expanded(child: _ProfileStat(label: 'WINS', value: '0')),
+            Expanded(
+              child: _ProfileStat(
+                label: 'WINS',
+                value: '${profile?.wins ?? 0}',
+              ),
+            ),
             const SizedBox(width: 10),
-            const Expanded(child: _ProfileStat(label: 'LOSSES', value: '0')),
+            Expanded(
+              child: _ProfileStat(
+                label: 'LOSSES',
+                value: '${profile?.losses ?? 0}',
+              ),
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: _ProfileStat(label: 'BRAIN POINTS', value: '$brainPoints'),
@@ -720,6 +843,83 @@ class _GuestProfileCard extends StatelessWidget {
           onChanged: controller.updatePlayerName,
         ),
       ],
+    );
+  }
+}
+
+class _MatchStatusCard extends StatelessWidget {
+  const _MatchStatusCard({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final match = controller.match;
+    if (match == null) {
+      return const SizedBox.shrink();
+    }
+    final opponent = controller.me?.side == 'WHITE' ? match.black : match.white;
+    final title = switch (match.phase) {
+      'WAITING_FOR_OPPONENT' => 'Waiting for opponent',
+      'BRAIN_ROUND' => 'Brain round live',
+      'COMPLETED' => 'Match finished',
+      _ => controller.isMyTurn ? 'Your move' : 'Opponent to move',
+    };
+    final subtitle = match.isWaiting
+        ? 'Share the invite code with a friend.'
+        : opponent == null
+            ? 'Your board is ready.'
+            : 'Playing ${opponent.playerName} as ${controller.me?.side.toLowerCase() ?? 'white'}.';
+    final icon = switch (match.phase) {
+      'WAITING_FOR_OPPONENT' => Icons.ios_share,
+      'BRAIN_ROUND' => Icons.psychology_alt,
+      'COMPLETED' => Icons.flag,
+      _ => controller.isMyTurn ? Icons.touch_app : Icons.hourglass_top,
+    };
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh.withValues(alpha: 0.72),
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(icon, color: AppColors.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -862,7 +1062,9 @@ class _HomeHero extends StatelessWidget {
                     _HeroAction(
                       label: 'PLAY BOT',
                       icon: Icons.smart_toy,
-                      onPressed: controller.loading ? null : controller.playBot,
+                      onPressed: controller.loading
+                          ? null
+                          : () => _showBotSetupSheet(context, controller),
                     ),
                   ],
                 ),
@@ -2506,12 +2708,14 @@ class _HomeBottomNav extends StatelessWidget {
   const _HomeBottomNav({
     required this.onHome,
     required this.onPlay,
+    required this.onHistory,
     required this.onPowerups,
     required this.onProfile,
   });
 
   final VoidCallback onHome;
   final VoidCallback onPlay;
+  final VoidCallback onHistory;
   final VoidCallback onPowerups;
   final VoidCallback onProfile;
 
@@ -2555,9 +2759,9 @@ class _HomeBottomNav extends StatelessWidget {
                 onPressed: onPlay,
               ),
               _HomeNavItem(
-                label: 'Power-ups',
-                icon: Icons.bolt_outlined,
-                onPressed: onPowerups,
+                label: 'History',
+                icon: Icons.history,
+                onPressed: onHistory,
               ),
               _HomeNavItem(
                 label: 'Profile',
@@ -3999,6 +4203,193 @@ class _Panel extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class _GameHistoryPanel extends StatelessWidget {
+  const _GameHistoryPanel({required this.controller});
+
+  final MatchController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final profile = controller.profile;
+    final matches = profile?.recentMatches ?? const <MatchHistoryModel>[];
+    return _Panel(
+      title: 'GAME HISTORY',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _ProfileStat(
+                  label: 'RATING',
+                  value: '${profile?.rating ?? 1000}',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ProfileStat(
+                  label: 'GAMES',
+                  value: '${profile?.gamesPlayed ?? 0}',
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ProfileStat(
+                  label: 'ACTIVE',
+                  value: '${profile?.activeMatches ?? 0}',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (controller.profileLoading && profile == null)
+            const _LoadingBanner()
+          else if (matches.isEmpty)
+            const _EmptyHistoryState()
+          else
+            Column(
+              children: [
+                for (final item in matches.take(6)) ...[
+                  _HistoryTile(item: item),
+                  if (item != matches.take(6).last) const SizedBox(height: 10),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyHistoryState extends StatelessWidget {
+  const _EmptyHistoryState();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceBright.withValues(alpha: 0.7),
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.history, color: AppColors.secondary),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Your completed matches and rating changes will appear here.',
+              style: TextStyle(
+                color: AppColors.muted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HistoryTile extends StatelessWidget {
+  const _HistoryTile({required this.item});
+
+  final MatchHistoryModel item;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (item.result) {
+      'WIN' => AppColors.primary,
+      'LOSS' => AppColors.error,
+      'DRAW' => AppColors.warning,
+      _ => AppColors.secondary,
+    };
+    final ratingPrefix = item.ratingChange > 0 ? '+' : '';
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceHigh.withValues(alpha: 0.72),
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.14),
+              borderRadius: BorderRadius.circular(9),
+            ),
+            child: Icon(
+              item.opponentBot ? Icons.smart_toy : Icons.person,
+              color: color,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'vs ${item.opponentName}',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.text,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_historyDate(item.playedAt)} • ${item.plyCount} moves • ${item.brainRoundCount} brain rounds',
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.muted,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                item.result.replaceAll('_', ' '),
+                style: TextStyle(
+                  color: color,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '$ratingPrefix${item.ratingChange} (${item.ratingAfter})',
+                style: const TextStyle(
+                  color: AppColors.quiet,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _historyDate(DateTime? value) {
+    if (value == null) {
+      return 'Recent';
+    }
+    final local = value.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/${local.month.toString().padLeft(2, '0')}/${local.year}';
   }
 }
 

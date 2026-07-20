@@ -237,6 +237,29 @@ class ChessbrainingApi {
     });
   }
 
+  Future<GuestProfileModel> getGuestProfile(String playerId) async {
+    final response = await _withTimeout(
+      _client.get(_uri('/players/$playerId/profile')),
+    );
+    final body = _decodeResponse(response);
+    return GuestProfileModel.fromJson(body as Map<String, dynamic>);
+  }
+
+  Future<GuestProfileModel> updateGuestProfile({
+    required String playerId,
+    required String playerName,
+  }) async {
+    final response = await _withTimeout(
+      _client.put(
+        _uri('/players/$playerId/profile'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'playerName': playerName}),
+      ),
+    );
+    final body = _decodeResponse(response);
+    return GuestProfileModel.fromJson(body as Map<String, dynamic>);
+  }
+
   Future<MatchModel> _postMatch(String path, Map<String, Object?> body) async {
     final response = await _withTimeout(
       _client.post(
