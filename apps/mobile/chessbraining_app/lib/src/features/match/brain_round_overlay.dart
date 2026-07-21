@@ -1043,7 +1043,7 @@ class _MemoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final faceUp = card.revealed || selected;
+    final faceUp = card.matched || selected || (serverRevealVisible && card.revealed);
     return AnimatedScale(
       scale: selected ? 0.96 : 1,
       duration: const Duration(milliseconds: 120),
@@ -1291,3 +1291,5 @@ class _StatPill extends StatelessWidget {
     );
   }
 }
+
+

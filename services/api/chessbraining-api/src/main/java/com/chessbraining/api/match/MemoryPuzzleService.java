@@ -24,7 +24,7 @@ public class MemoryPuzzleService {
 			cards.add(piece);
 		}
 		Collections.shuffle(cards, RANDOM);
-		return new MemoryState(cards, 0, "WHITE", List.of(), false);
+		return new MemoryState(cards, 0, "WHITE", List.of(), false, null);
 	}
 
 	public TurnResult playTurn(MemoryState state, String side, int firstIndex, int secondIndex) {
@@ -32,23 +32,38 @@ public class MemoryPuzzleService {
 			throw new ApiException(HttpStatus.CONFLICT, "NOT_YOUR_MEMORY_TURN",
 					"It is not this player's memory turn.");
 		}
-		validateIndex(firstIndex);
-		validateIndex(secondIndex);
-		if (firstIndex == secondIndex) {
+		if (state.pendingFirstIndex() == null && secondIndex < 0) {
+			validatePlayableCard(state, firstIndex);
+			MemoryState nextState = new MemoryState(
+					state.cards(),
+					state.matchedMask(),
+					state.turnSide(),
+					List.of(firstIndex),
+					false,
+					firstIndex);
+			return new TurnResult(nextState, false, false);
+		}
+
+		int resolvedFirstIndex = state.pendingFirstIndex() == null ? firstIndex : state.pendingFirstIndex();
+		int resolvedSecondIndex = secondIndex;
+		if (resolvedSecondIndex == resolvedFirstIndex && state.pendingFirstIndex() != null) {
+			resolvedSecondIndex = firstIndex;
+		}
+		validateIndex(resolvedFirstIndex);
+		validateIndex(resolvedSecondIndex);
+		if (resolvedFirstIndex == resolvedSecondIndex) {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "DUPLICATE_MEMORY_CARD",
 					"Choose two different cards.");
 		}
-		if (isMatched(state, firstIndex) || isMatched(state, secondIndex)) {
-			throw new ApiException(HttpStatus.CONFLICT, "MEMORY_CARD_ALREADY_MATCHED",
-					"One of these cards has already been matched.");
-		}
+		validatePlayableCard(state, resolvedFirstIndex);
+		validatePlayableCard(state, resolvedSecondIndex);
 
-		boolean matched = state.cards().get(firstIndex).equals(state.cards().get(secondIndex));
+		boolean matched = state.cards().get(resolvedFirstIndex).equals(state.cards().get(resolvedSecondIndex));
 		int matchedMask = state.matchedMask();
 		String nextTurnSide = state.turnSide();
 		if (matched) {
-			matchedMask |= (1 << firstIndex);
-			matchedMask |= (1 << secondIndex);
+			matchedMask |= (1 << resolvedFirstIndex);
+			matchedMask |= (1 << resolvedSecondIndex);
 		} else {
 			nextTurnSide = "WHITE".equals(side) ? "BLACK" : "WHITE";
 		}
@@ -57,8 +72,9 @@ public class MemoryPuzzleService {
 				state.cards(),
 				matchedMask,
 				nextTurnSide,
-				List.of(firstIndex, secondIndex),
-				matched);
+				List.of(resolvedFirstIndex, resolvedSecondIndex),
+				matched,
+				null);
 		return new TurnResult(nextState, matched, allMatched(nextState));
 	}
 
@@ -67,19 +83,27 @@ public class MemoryPuzzleService {
 		builder.append("{\"turnSide\":\"").append(state.turnSide()).append("\",");
 		builder.append("\"lastMatched\":").append(state.lastMatched()).append(',');
 		builder.append("\"lastFlipped\":").append(indexArray(state.lastFlipped())).append(',');
+		builder.append("\"pendingFirstIndex\":");
+		if (state.pendingFirstIndex() == null) {
+			builder.append("null");
+		} else {
+			builder.append(state.pendingFirstIndex());
+		}
+		builder.append(',');
 		builder.append("\"cards\":[");
 		for (int i = 0; i < CARD_COUNT; i++) {
 			if (i > 0) {
 				builder.append(',');
 			}
 			boolean matched = isMatched(state, i);
-			boolean revealed = matched || state.lastFlipped().contains(i);
+			boolean revealed = matched ||
+					(state.pendingFirstIndex() != null && state.pendingFirstIndex() == i);
 			builder.append("{\"index\":").append(i)
 					.append(",\"matched\":").append(matched)
 					.append(",\"revealed\":").append(revealed)
 					.append(",\"piece\":");
 			if (revealed) {
-				builder.append('"').append(state.cards().get(i)).append('"');
+				builder.append('\"').append(state.cards().get(i)).append('\"');
 			} else {
 				builder.append("null");
 			}
@@ -104,6 +128,14 @@ public class MemoryPuzzleService {
 		}
 	}
 
+	private void validatePlayableCard(MemoryState state, int index) {
+		validateIndex(index);
+		if (isMatched(state, index)) {
+			throw new ApiException(HttpStatus.CONFLICT, "MEMORY_CARD_ALREADY_MATCHED",
+					"One of these cards has already been matched.");
+		}
+	}
+
 	private boolean isMatched(MemoryState state, int index) {
 		return (state.matchedMask() & (1 << index)) != 0;
 	}
@@ -124,7 +156,8 @@ public class MemoryPuzzleService {
 			int matchedMask,
 			String turnSide,
 			List<Integer> lastFlipped,
-			boolean lastMatched) {
+			boolean lastMatched,
+			Integer pendingFirstIndex) {
 	}
 
 	public record TurnResult(

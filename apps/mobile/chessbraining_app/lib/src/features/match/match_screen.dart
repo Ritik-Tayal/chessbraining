@@ -1782,104 +1782,349 @@ class _BrainArenaMathGame extends StatefulWidget {
     super.key,
     required this.match,
     required this.playerSide,
+    required this.secondsLeft,
     required this.onSubmit,
+    required this.onComplete,
   });
 
   final BrainMatchModel match;
   final String? playerSide;
+  final int secondsLeft;
   final Future<void> Function(Map<int, int> answers) onSubmit;
+  final Future<void> Function() onComplete;
 
   @override
   State<_BrainArenaMathGame> createState() => _BrainArenaMathGameState();
 }
 
 class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
-  final Map<int, TextEditingController> controllers = {};
+  final Map<int, int> answersByQuestion = {};
+  String answer = '';
+  int questionIndex = 0;
+  int score = 0;
+  bool finished = false;
+  bool scoreSubmitted = false;
+  bool submitting = false;
+
+  bool get _serverSubmitted {
+    return widget.playerSide == 'WHITE'
+        ? widget.match.nextWhiteQuestionIndex >= widget.match.totalQuestions
+        : widget.match.nextBlackQuestionIndex >= widget.match.totalQuestions;
+  }
+
+  bool get _inputEnabled {
+    return !finished && !submitting && !scoreSubmitted && !_serverSubmitted && widget.secondsLeft > 0;
+  }
 
   @override
-  void dispose() {
-    for (final controller in controllers.values) {
-      controller.dispose();
+  void didUpdateWidget(covariant _BrainArenaMathGame oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_serverSubmitted && !scoreSubmitted) {
+      scoreSubmitted = true;
+      finished = true;
+      score = widget.playerSide == 'WHITE' ? widget.match.whiteScore : widget.match.blackScore;
+      questionIndex = widget.match.totalQuestions;
+      answer = '';
     }
-    super.dispose();
+    if (widget.secondsLeft <= 0 && !scoreSubmitted && !submitting) {
+      unawaited(_submitAnswers(completeAfterSubmit: true));
+    } else if (widget.secondsLeft <= 0 && scoreSubmitted && widget.match.isActive) {
+      unawaited(widget.onComplete());
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final submitted = widget.playerSide == 'WHITE'
-        ? widget.match.nextWhiteQuestionIndex >= widget.match.totalQuestions
-        : widget.match.nextBlackQuestionIndex >= widget.match.totalQuestions;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-            maxCrossAxisExtent: 230,
-            mainAxisExtent: 116,
-            crossAxisSpacing: 10,
-            mainAxisSpacing: 10,
-          ),
-          itemCount: widget.match.puzzles.length,
-          itemBuilder: (context, index) {
-            final input = controllers.putIfAbsent(
-              index,
-              () => TextEditingController(),
-            );
-            return Container(
-              padding: const EdgeInsets.all(14),
+    final puzzles = widget.match.puzzles;
+    final safeIndex = puzzles.isEmpty ? 0 : math.min(questionIndex, puzzles.length - 1);
+    final currentPuzzle = puzzles.isEmpty ? 'Loading...' : puzzles[safeIndex];
+    final answeredCount = answersByQuestion.length;
+    final title = scoreSubmitted
+        ? 'WAIT FOR OPPONENT'
+        : finished
+            ? 'ANSWERS LOCKED'
+            : 'QUESTION ${math.min(questionIndex + 1, widget.match.totalQuestions)} / ${widget.match.totalQuestions}';
+    final mainText = submitting
+        ? 'SUBMITTING SCORE'
+        : scoreSubmitted
+            ? 'SCORE $score'
+            : finished
+                ? 'ANSWERS LOCKED'
+                : currentPuzzle;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              padding: EdgeInsets.all(compact ? 18 : 26),
               decoration: BoxDecoration(
-                color: AppColors.surfaceHigh,
-                border: Border.all(color: AppColors.border),
-                borderRadius: BorderRadius.circular(16),
+                color: AppColors.surfaceLow,
+                border: Border.all(color: AppColors.secondary.withValues(alpha: 0.5), width: 1.4),
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primary.withValues(alpha: 0.1),
+                    blurRadius: 22,
+                    offset: const Offset(0, 12),
+                  ),
+                ],
               ),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    widget.match.puzzles[index],
+                    title,
+                    textAlign: TextAlign.center,
                     style: const TextStyle(
-                      color: AppColors.text,
-                      fontSize: 22,
+                      color: AppColors.secondary,
                       fontWeight: FontWeight.w900,
+                      letterSpacing: 2.2,
                     ),
                   ),
-                  const Spacer(),
-                  TextField(
-                    controller: input,
-                    enabled: !submitted,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      hintText: 'Answer',
+                  SizedBox(height: compact ? 12 : 18),
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      mainText,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: compact ? 36 : 46,
+                        fontWeight: FontWeight.w900,
+                        fontFamily: 'Playfair Display',
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: compact ? 12 : 18),
+                  Container(
+                    height: compact ? 48 : 58,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceBright,
+                      border: Border.all(color: AppColors.border),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Text(
+                      answer.isEmpty ? '|' : answer,
+                      style: TextStyle(
+                        color: AppColors.text,
+                        fontSize: compact ? 28 : 34,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 4,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    scoreSubmitted ? 'Submitted automatically' : '$answeredCount answered locally',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
                 ],
               ),
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-        FilledButton.icon(
-          onPressed: submitted
-              ? null
-              : () {
-                  final answers = <int, int>{};
-                  for (final entry in controllers.entries) {
-                    final value = int.tryParse(entry.value.text.trim());
-                    if (value != null) answers[entry.key] = value;
-                  }
-                  unawaited(widget.onSubmit(answers));
-                },
-          icon: const Icon(Icons.check),
-          label: Text(submitted ? 'Submitted' : 'Submit score'),
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: compact ? 250 : 300,
+              child: _BrainArenaNumberPad(
+                enabled: _inputEnabled,
+                onAppend: _append,
+                onBackspace: _backspace,
+                onSubmit: _inputEnabled && answer.isNotEmpty ? _submitCurrentAnswer : null,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _append(String value) {
+    if (answer.length >= 5) {
+      return;
+    }
+    setState(() => answer += value);
+  }
+
+  void _backspace() {
+    if (answer.isEmpty) {
+      return;
+    }
+    setState(() => answer = answer.substring(0, answer.length - 1));
+  }
+
+  void _submitCurrentAnswer() {
+    final parsed = int.tryParse(answer);
+    if (parsed == null) {
+      return;
+    }
+    final nextIndex = questionIndex + 1;
+    setState(() {
+      answersByQuestion[questionIndex] = parsed;
+      answer = '';
+      questionIndex = math.min(nextIndex, widget.match.totalQuestions);
+      finished = nextIndex >= widget.match.totalQuestions;
+    });
+    SoundService.instance.playNotify();
+    if (nextIndex >= widget.match.totalQuestions) {
+      unawaited(_submitAnswers());
+    }
+  }
+
+  Future<void> _submitAnswers({bool completeAfterSubmit = false}) async {
+    if (scoreSubmitted || submitting) {
+      return;
+    }
+    setState(() {
+      submitting = true;
+      finished = true;
+    });
+    await widget.onSubmit(Map<int, int>.from(answersByQuestion));
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      scoreSubmitted = true;
+      submitting = false;
+      questionIndex = widget.match.totalQuestions;
+      score = widget.playerSide == 'WHITE' ? widget.match.whiteScore : widget.match.blackScore;
+    });
+    if (completeAfterSubmit) {
+      await widget.onComplete();
+    }
+  }
+}
+
+class _BrainArenaNumberPad extends StatelessWidget {
+  const _BrainArenaNumberPad({
+    required this.enabled,
+    required this.onAppend,
+    required this.onBackspace,
+    required this.onSubmit,
+  });
+
+  final bool enabled;
+  final ValueChanged<String> onAppend;
+  final VoidCallback onBackspace;
+  final VoidCallback? onSubmit;
+
+  @override
+  Widget build(BuildContext context) {
+    const rows = [
+      ['1', '2', '3'],
+      ['4', '5', '6'],
+      ['7', '8', '9'],
+    ];
+    return Column(
+      children: [
+        for (final row in rows) ...[
+          Expanded(
+            child: Row(
+              children: [
+                for (final value in row) ...[
+                  Expanded(
+                    child: _BrainArenaKeyButton(
+                      label: value,
+                      onPressed: enabled ? () => onAppend(value) : null,
+                    ),
+                  ),
+                  if (value != row.last) const SizedBox(width: 8),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(
+                child: _BrainArenaKeyButton(
+                  icon: Icons.backspace_outlined,
+                  danger: true,
+                  onPressed: enabled ? onBackspace : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _BrainArenaKeyButton(
+                  label: '0',
+                  onPressed: enabled ? () => onAppend('0') : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _BrainArenaKeyButton(
+                  icon: Icons.check_circle_outline,
+                  filled: true,
+                  onPressed: onSubmit,
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
   }
 }
 
+class _BrainArenaKeyButton extends StatelessWidget {
+  const _BrainArenaKeyButton({
+    this.label,
+    this.icon,
+    this.onPressed,
+    this.filled = false,
+    this.danger = false,
+  });
+
+  final String? label;
+  final IconData? icon;
+  final VoidCallback? onPressed;
+  final bool filled;
+  final bool danger;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = onPressed != null;
+    final background = filled && enabled
+        ? AppColors.primaryContainer
+        : AppColors.surfaceBright;
+    final foreground = !enabled
+        ? AppColors.quiet
+        : filled
+            ? AppColors.background
+            : danger
+                ? const Color(0xffba1a1a)
+                : AppColors.text;
+    return InkWell(
+      onTap: onPressed,
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 120),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: background,
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: icon == null
+            ? Text(
+                label ?? '',
+                style: TextStyle(
+                  color: foreground,
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                ),
+              )
+            : Icon(icon, color: foreground, size: 24),
+      ),
+    );
+  }
+}
 class _BrainArenaMemoryGame extends StatefulWidget {
   const _BrainArenaMemoryGame({
     required this.match,
@@ -1994,7 +2239,7 @@ class _ArenaMemoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final faceUp = card.revealed || selected || card.matched;
+    final faceUp = card.matched || selected || (serverRevealVisible && card.revealed);
     return InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(16),
@@ -6345,3 +6590,7 @@ class AppColors {
 }
 
 int maxInt(int a, int b) => a > b ? a : b;
+
+
+
+
