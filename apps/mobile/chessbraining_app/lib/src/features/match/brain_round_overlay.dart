@@ -928,6 +928,7 @@ class _MemoryBoard extends StatelessWidget {
               return _MemoryCard(
                 card: card,
                 selected: isSelected,
+                serverRevealVisible: myTurn,
                 enabled: enabled && !card.matched,
                 onTap: () => onCardTap(card.index),
               );
@@ -1032,12 +1033,14 @@ class _MemoryCard extends StatelessWidget {
   const _MemoryCard({
     required this.card,
     required this.selected,
+    required this.serverRevealVisible,
     required this.enabled,
     required this.onTap,
   });
 
   final MemoryCardModel card;
   final bool selected;
+  final bool serverRevealVisible;
   final bool enabled;
   final VoidCallback onTap;
 
@@ -1291,5 +1294,3 @@ class _StatPill extends StatelessWidget {
     );
   }
 }
-
-

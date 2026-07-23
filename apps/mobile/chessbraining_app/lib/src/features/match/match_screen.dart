@@ -1519,7 +1519,9 @@ class _BrainArenaGameState extends State<_BrainArenaGame> {
             key: ValueKey(match.matchId),
             match: match,
             playerSide: me?.side,
+            secondsLeft: _secondsLeft(match),
             onSubmit: widget.controller.submitBrainArenaAnswers,
+            onComplete: widget.controller.completeBrainArena,
           )
         else if (match.isDotConnect)
           SizedBox(
@@ -2202,6 +2204,7 @@ class _BrainArenaMemoryGameState extends State<_BrainArenaMemoryGame> {
             return _ArenaMemoryCard(
               card: card,
               selected: selected.contains(card.index),
+              serverRevealVisible: myTurn,
               enabled: myTurn && !widget.loading && !card.matched,
               onTap: () => _select(card.index),
             );
@@ -2212,15 +2215,21 @@ class _BrainArenaMemoryGameState extends State<_BrainArenaMemoryGame> {
   }
 
   void _select(int index) {
-    if (selected.contains(index)) {
-      setState(() => selected.remove(index));
+    final board = widget.match.memoryBoard;
+    final pendingFirstIndex = board?.pendingFirstIndex;
+    if (pendingFirstIndex == index) {
       return;
     }
-    if (selected.length >= 2) return;
-    setState(() => selected.add(index));
-    if (selected.length == 2) {
-      unawaited(widget.onTurn(selected[0], selected[1]));
+    if (pendingFirstIndex != null) {
+      unawaited(widget.onTurn(pendingFirstIndex, index));
+      return;
     }
+    setState(() {
+      selected
+        ..clear()
+        ..add(index);
+    });
+    unawaited(widget.onTurn(index, -1));
   }
 }
 
@@ -2228,12 +2237,14 @@ class _ArenaMemoryCard extends StatelessWidget {
   const _ArenaMemoryCard({
     required this.card,
     required this.selected,
+    required this.serverRevealVisible,
     required this.enabled,
     required this.onTap,
   });
 
   final MemoryCardModel card;
   final bool selected;
+  final bool serverRevealVisible;
   final bool enabled;
   final VoidCallback onTap;
 
@@ -6590,7 +6601,3 @@ class AppColors {
 }
 
 int maxInt(int a, int b) => a > b ? a : b;
-
-
-
-

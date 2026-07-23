@@ -536,12 +536,14 @@ class MemoryBoardModel {
     required this.turnSide,
     required this.lastMatched,
     required this.lastFlipped,
+    required this.pendingFirstIndex,
     required this.cards,
   });
 
   final String turnSide;
   final bool lastMatched;
   final List<int> lastFlipped;
+  final int? pendingFirstIndex;
   final List<MemoryCardModel> cards;
 
   factory MemoryBoardModel.fromJson(Map<String, dynamic> json) {
@@ -551,6 +553,9 @@ class MemoryBoardModel {
       lastFlipped: (json['lastFlipped'] as List<dynamic>? ?? const [])
           .map((item) => (item as num).toInt())
           .toList(),
+      pendingFirstIndex: json['pendingFirstIndex'] == null
+          ? null
+          : (json['pendingFirstIndex'] as num).toInt(),
       cards: (json['cards'] as List<dynamic>? ?? const [])
           .map((item) => MemoryCardModel.fromJson(item as Map<String, dynamic>))
           .toList(),
@@ -659,4 +664,3 @@ class BrainRoundSubmissionModel {
     );
   }
 }
-
