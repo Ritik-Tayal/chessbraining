@@ -21,6 +21,8 @@ class _ChessBoardState extends State<ChessBoard>
   late final AnimationController _moveController;
   BoardMoveAnimation? _activeMove;
   int? _seenMoveAnimationId;
+  String? _draggedFromSquare;
+  String? _draggedPiece;
 
   @override
   void initState() {
@@ -95,7 +97,7 @@ class _ChessBoardState extends State<ChessBoard>
       child: AspectRatio(
         aspectRatio: 1,
         child: LayoutBuilder(
-          builder: (context, constraints) {
+           builder: (context, constraints) {
             final squareSize = constraints.biggest.shortestSide / 8;
             final children = <Widget>[];
             for (var index = 0; index < 64; index++) {
@@ -115,14 +117,40 @@ class _ChessBoardState extends State<ChessBoard>
                   top: rankIndex * squareSize,
                   width: squareSize,
                   height: squareSize,
-                  child: _BoardSquare(
-                    square: square,
-                    isLight: isLight,
-                    isSelected: isSelected,
-                    isTarget: isTarget,
-                    isPowerupTarget: isPowerupTarget,
-                    isLastMove: isLastMove,
-                    onTap: () => widget.controller.selectSquare(square),
+                  child: DragTarget<String>(
+                    onWillAcceptWithDetails: (details) {
+                      final from = _draggedFromSquare;
+                      return from != null &&
+                          from != square &&
+                          widget.controller.canMove &&
+                          widget.controller.legalMoves
+                              .any((m) => m.from == from && m.to == square);
+                    },
+                    onAcceptWithDetails: (details) {
+                      final from = _draggedFromSquare;
+                      if (from == null) {
+                        return;
+                      }
+                      widget.controller.selectSquare(from);
+                      widget.controller.selectSquare(square);
+                    },
+                    builder: (context, candidateData, rejectedData) {
+                      final isDragTarget = candidateData.isNotEmpty &&
+                          _draggedFromSquare != null &&
+                          widget.controller.legalMoves
+                              .any((m) =>
+                                  m.from == _draggedFromSquare &&
+                                  m.to == square);
+                      return _BoardSquare(
+                        square: square,
+                        isLight: isLight,
+                        isSelected: isSelected,
+                        isTarget: isTarget || isDragTarget,
+                        isPowerupTarget: isPowerupTarget,
+                        isLastMove: isLastMove,
+                        onTap: () => widget.controller.selectSquare(square),
+                      );
+                    },
                   ),
                 ),
               );
@@ -134,11 +162,22 @@ class _ChessBoardState extends State<ChessBoard>
               if (activeMove != null && entry.key == activeMove.to) {
                 continue;
               }
+              if (_draggedFromSquare == entry.key) {
+                continue;
+              }
               final offset = _squareOffset(
                 entry.key,
                 files,
                 ranks,
                 squareSize,
+              );
+              final pieceWidget = IgnorePointer(
+                child: Center(
+                  child: _PieceVector(
+                    piece: entry.value,
+                    size: squareSize * 0.82,
+                  ),
+                ),
               );
               children.add(
                 Positioned(
@@ -146,13 +185,11 @@ class _ChessBoardState extends State<ChessBoard>
                   top: offset.dy,
                   width: squareSize,
                   height: squareSize,
-                  child: IgnorePointer(
-                    child: Center(
-                      child: _PieceVector(
-                        piece: entry.value,
-                        size: squareSize * 0.82,
-                      ),
-                    ),
+                  child: _draggablePiece(
+                    square: entry.key,
+                    piece: entry.value,
+                    size: squareSize * 0.82,
+                    child: pieceWidget,
                   ),
                 ),
               );
@@ -220,6 +257,45 @@ class _ChessBoardState extends State<ChessBoard>
     final fileIndex = files.indexOf(square[0]);
     final rankIndex = ranks.indexOf(int.parse(square.substring(1)));
     return Offset(fileIndex * squareSize, rankIndex * squareSize);
+  }
+
+  Widget _draggablePiece({
+    required String square,
+    required String piece,
+    required double size,
+    required Widget child,
+  }) {
+    final canDrag = widget.controller.canMove &&
+        isWhitePiece(piece) ==
+            (widget.controller.me?.side == 'WHITE');
+    if (!canDrag) {
+      return child;
+    }
+    return LongPressDraggable<String>(
+      data: square,
+      dragAnchorStrategy: (_, __, ___) => Offset(size / 2, size / 2),
+      onDragStarted: () {
+        setState(() {
+          _draggedFromSquare = square;
+          _draggedPiece = piece;
+        });
+      },
+      onDragEnd: (_) {
+        setState(() {
+          _draggedFromSquare = null;
+          _draggedPiece = null;
+        });
+      },
+      feedback: Transform.scale(
+        scale: 1.12,
+        child: _PieceVector(
+          piece: piece,
+          size: size,
+        ),
+      ),
+      childWhenDragging: const SizedBox.shrink(),
+      child: child,
+    );
   }
 }
 
