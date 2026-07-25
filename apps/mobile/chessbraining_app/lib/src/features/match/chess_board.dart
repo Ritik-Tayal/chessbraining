@@ -271,7 +271,7 @@ class _ChessBoardState extends State<ChessBoard>
     if (!canDrag) {
       return child;
     }
-    return LongPressDraggable<String>(
+    return Draggable<String>(
       data: square,
       dragAnchorStrategy: (_, __, ___) => Offset(size / 2, size / 2),
       onDragStarted: () {
