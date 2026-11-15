@@ -56,4 +56,9 @@ public class BrainMatchController {
 	public BrainMatchResponse rematch(@PathVariable String matchId, @RequestBody RematchRequest request) {
 		return service.rematch(matchId, request);
 	}
+
+	@PostMapping("/{matchId}/cancel")
+	public void cancelWaitingMatch(@PathVariable String matchId, @RequestBody RematchRequest request) {
+		service.cancelWaitingMatch(matchId, request.playerId());
+	}
 }

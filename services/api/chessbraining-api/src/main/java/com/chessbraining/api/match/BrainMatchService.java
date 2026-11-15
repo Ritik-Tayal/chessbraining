@@ -4,6 +4,8 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -96,7 +98,7 @@ public class BrainMatchService {
 		BrainMatchEntity match = loadActive(matchId);
 		requirePuzzleType(match, BrainRoundPuzzleType.MENTAL_MATH);
 		String side = requirePlayer(match, request == null ? null : request.playerId());
-		if (isExpired(match)) {
+		if (isSubmissionWindowClosed(match)) {
 			return complete(match);
 		}
 		if (answered(side, match)) {
@@ -107,16 +109,20 @@ public class BrainMatchService {
 		}
 		List<Integer> answers = parseAnswers(match.getPuzzleAnswers());
 		int correct = 0;
+		Set<Integer> indexes = new HashSet<>();
 		for (SubmitAnswerBatchRequest.SubmittedAnswer answer : request.answers()) {
 			if (answer == null) continue;
 			if (answer.questionIndex() < 0 || answer.questionIndex() >= answers.size()) continue;
+			if (!indexes.add(answer.questionIndex())) {
+				throw new ApiException(HttpStatus.BAD_REQUEST, "DUPLICATE_QUESTION_INDEX", "Submit each question only once.");
+			}
 			if (mathPuzzleService.validateAnswer(answers, answer.questionIndex(), answer.answer())) {
 				correct++;
 			}
 		}
 		setScore(match, side, correct);
 		setAnsweredMask(match, side, allMask(match));
-		if (bothAnswered(match) || isExpired(match)) {
+		if (bothAnswered(match) || isSubmissionWindowClosed(match)) {
 			return complete(match);
 		}
 		return toResponse(repository.save(match));
@@ -181,7 +187,13 @@ public class BrainMatchService {
 
 	@Transactional
 	public BrainMatchResponse complete(String matchId) {
-		return complete(loadActive(matchId));
+		BrainMatchEntity match = repository.findByIdForUpdate(matchId)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BRAIN_MATCH_NOT_FOUND", "Brain match not found."));
+		if (COMPLETED.equals(match.getStatus())) return toResponse(match);
+		if (!ACTIVE.equals(match.getStatus()) || (!bothAnswered(match) && !isSubmissionWindowClosed(match))) {
+			throw new ApiException(HttpStatus.CONFLICT, "BRAIN_MATCH_STILL_ACTIVE", "The brain match is still active.");
+		}
+		return complete(match);
 	}
 
 	@Transactional
@@ -247,7 +259,7 @@ public class BrainMatchService {
 		rematch.setInviteCode(generateInviteCode());
 		rematch.setStatus(ACTIVE);
 		rematch.setMode(source.getMode());
-		rematch.setPuzzleType(resolvePuzzleType(source.getMode()).name());
+		rematch.setPuzzleType(source.getPuzzleType());
 		rematch.setWhitePlayerId(source.getBlackPlayerId());
 		rematch.setWhitePlayerName(source.getBlackPlayerName());
 		rematch.setBlackPlayerId(source.getWhitePlayerId());
@@ -287,6 +299,22 @@ public class BrainMatchService {
 
 	private boolean isExpired(BrainMatchEntity match) {
 		return match.getExpiresAt() != null && !Instant.now().isBefore(match.getExpiresAt());
+	}
+
+	@Transactional
+	public void cancelWaitingMatch(String matchId, String playerId) {
+		BrainMatchEntity match = repository.findByIdForUpdate(matchId)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BRAIN_MATCH_NOT_FOUND", "Brain match not found."));
+		requirePlayer(match, playerId);
+		if (!WAITING.equals(match.getStatus())) {
+			throw new ApiException(HttpStatus.CONFLICT, "BRAIN_MATCH_ALREADY_STARTED", "Your opponent has joined. The match is already active.");
+		}
+		repository.delete(match);
+	}
+
+	private boolean isSubmissionWindowClosed(BrainMatchEntity match) {
+		int grace = BrainRoundPuzzleType.MENTAL_MATH.name().equals(match.getPuzzleType()) ? 3 : 0;
+		return match.getExpiresAt() != null && !Instant.now().isBefore(match.getExpiresAt().plusSeconds(grace));
 	}
 
 	private int allMask(BrainMatchEntity match) {
@@ -380,7 +408,7 @@ public class BrainMatchService {
 				match.getWhiteScore(),
 				match.getBlackScore(),
 				match.getTotalQuestions(),
-				parseExpressions(match.getPuzzleExpressions()),
+				publicExpressions(match),
 				nextUnanswered(match.getWhiteAnsweredMask(), match.getTotalQuestions()),
 				nextUnanswered(match.getBlackAnsweredMask(), match.getTotalQuestions()),
 				match.getWinnerPlayerId(),
@@ -396,6 +424,12 @@ public class BrainMatchService {
 			if ((mask & (1 << i)) == 0) return i;
 		}
 		return total;
+	}
+
+	private List<String> publicExpressions(BrainMatchEntity match) {
+		List<String> puzzles = parseExpressions(match.getPuzzleExpressions());
+		return BrainRoundPuzzleType.DOT_CONNECT.name().equals(match.getPuzzleType())
+				? puzzles.stream().map(dotConnectPuzzleService::publicPuzzle).toList() : puzzles;
 	}
 
 	private String generateInviteCode() {

@@ -51,7 +51,7 @@ public class BrainRoundService {
 		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
 		requireActiveBrainRoundMatch(match);
-		if (isExpired(round)) {
+		if (isSettlementReady(round)) {
 			return completeActiveRound(round, match);
 		}
 		List<String> puzzles = parseExpressions(round.getPuzzleExpressions());
@@ -146,7 +146,7 @@ public class BrainRoundService {
 
 		if (currentAnsweredMask != 0) {
 			boolean roundCompleted = false;
-			if (isExpired(round)) {
+			if (isSettlementReady(round)) {
 				completeActiveRound(round, match);
 				roundCompleted = true;
 			}
@@ -197,7 +197,7 @@ public class BrainRoundService {
 			round.setBlackCorrectCount(correctCount);
 		}
 
-		boolean shouldCompleteRound = bothPlayersAnsweredAll(round) || isExpired(round);
+		boolean shouldCompleteRound = bothPlayersAnsweredAll(round) || isSettlementReady(round);
 		if (shouldCompleteRound) {
 			completeActiveRound(round, match);
 		} else {
@@ -216,7 +216,7 @@ public class BrainRoundService {
 		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
 		requireActiveBrainRoundMatch(match);
-		if (!isExpired(round) && !isRoundFullySolved(round)) {
+		if (!isSettlementReady(round) && !isRoundFullySolved(round)) {
 			throw new ApiException(HttpStatus.CONFLICT, "BRAIN_ROUND_STILL_ACTIVE",
 					"Brain round can only complete after the deadline or after both players answer all questions.");
 		}
@@ -330,6 +330,11 @@ public class BrainRoundService {
 		}
 		brainRoundRepository.save(round);
 		return toResponse(round, parseExpressions(round.getPuzzleExpressions()));
+	}
+
+	private boolean isSettlementReady(BrainRoundEntity round) {
+		int grace = BrainRoundPuzzleType.MENTAL_MATH.name().equals(round.getPuzzleType()) ? 3 : 0;
+		return bothPlayersAnsweredAll(round) || !Instant.now().isBefore(round.getExpiresAt().plusSeconds(grace));
 	}
 
 	private BrainRoundResponse completeActiveRound(BrainRoundEntity round, MatchEntity match) {
@@ -468,6 +473,9 @@ public class BrainRoundService {
 	}
 
 	private BrainRoundResponse toResponse(BrainRoundEntity round, List<String> puzzles) {
+		if (BrainRoundPuzzleType.DOT_CONNECT.name().equals(round.getPuzzleType())) {
+			puzzles = puzzles.stream().map(dotConnectPuzzleService::publicPuzzle).toList();
+		}
 		return new BrainRoundResponse(
 				round.getId(),
 				round.getRoundNumber(),

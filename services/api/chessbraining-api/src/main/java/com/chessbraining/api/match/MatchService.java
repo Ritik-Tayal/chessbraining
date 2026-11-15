@@ -303,6 +303,19 @@ public class MatchService {
 		return toResponse(saved, moveRepository.findByMatchIdOrderByPlyNumberAsc(saved.getId()));
 	}
 
+	public void cancelWaitingMatch(String matchId, String playerId) {
+		synchronized (quickplayLock) {
+			transactionTemplate.executeWithoutResult(status -> {
+				MatchEntity match = loadMatchForUpdate(matchId);
+				requirePlayerInMatch(match, playerId);
+				if (match.getStatus() != MatchStatus.WAITING_FOR_OPPONENT) {
+					throw new ApiException(HttpStatus.CONFLICT, "MATCH_ALREADY_STARTED", "Your opponent has joined. The match is already active.");
+				}
+				matchRepository.delete(match);
+			});
+		}
+	}
+
 	@Transactional
 	public MatchResponse requestRematch(String matchId, String playerId) {
 		MatchEntity match = loadMatchForUpdate(matchId);

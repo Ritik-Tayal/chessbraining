@@ -90,6 +90,11 @@ public class MatchController {
 		return response;
 	}
 
+	@PostMapping("/{matchId}/cancel")
+	public void cancelWaitingMatch(@PathVariable String matchId, @RequestBody RematchRequest request) {
+		matchService.cancelWaitingMatch(matchId, request.playerId());
+	}
+
 	@PostMapping("/{matchId}/rematch")
 	public MatchResponse rematch(
 			@PathVariable String matchId,

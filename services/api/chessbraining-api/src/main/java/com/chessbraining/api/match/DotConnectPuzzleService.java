@@ -27,6 +27,17 @@ public class DotConnectPuzzleService {
 	public record Dot(int row, int col) {}
 
 	public record PuzzleData(int rows, int cols, List<Dot> dots, List<Dot> solutionPath) {}
+	public record PublicPuzzle(int rows, int cols, List<Dot> dots) {}
+
+	public String publicPuzzle(String json) {
+		try {
+			var mapper = new tools.jackson.databind.ObjectMapper();
+			PuzzleData puzzle = mapper.readValue(json, PuzzleData.class);
+			return mapper.writeValueAsString(new PublicPuzzle(puzzle.rows(), puzzle.cols(), puzzle.dots()));
+		} catch (tools.jackson.core.JacksonException e) {
+			throw new ApiException(HttpStatus.INTERNAL_SERVER_ERROR, "PUZZLE_SERIALIZE_ERROR", "Failed to prepare dot-connect puzzle.");
+		}
+	}
 
 	public record PuzzleSet(List<String> puzzles, List<Integer> answers) {}
 
