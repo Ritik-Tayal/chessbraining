@@ -6,6 +6,10 @@ The core pitch:
 
 > Chessboxing, but the fight rounds are brain mini-games and the rewards become chess powers.
 
+## Web App
+
+The responsive browser client lives in [`apps/web`](apps/web/README.md). It uses the same Spring Boot API and game rules as the Flutter app, with desktop and mobile layouts, guest profiles, online and bot chess, standalone brain games, and power-ups. See its README for local startup, automated checks, and Render static-site deployment.
+
 ## Product Vision
 
 ChessBraining should feel like a competitive chess match with short bursts of cognitive pressure. The winner is still decided by checkmate, resignation, timeout, or draw rules, but brain rounds create tactical opportunities outside normal chess.

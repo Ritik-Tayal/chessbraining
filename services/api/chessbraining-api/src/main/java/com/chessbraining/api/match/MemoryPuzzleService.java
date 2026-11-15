@@ -24,7 +24,7 @@ public class MemoryPuzzleService {
 			cards.add(piece);
 		}
 		Collections.shuffle(cards, RANDOM);
-		return new MemoryState(cards, 0, "WHITE", List.of(), false, null);
+		return new MemoryState(cards, 0, "WHITE", List.of(), false, null, null);
 	}
 
 	public TurnResult playTurn(MemoryState state, String side, int firstIndex, int secondIndex) {
@@ -40,7 +40,8 @@ public class MemoryPuzzleService {
 					state.turnSide(),
 					List.of(firstIndex),
 					false,
-					firstIndex);
+					firstIndex,
+					state.lastFlipAt());
 			return new TurnResult(nextState, false, false);
 		}
 
@@ -74,7 +75,8 @@ public class MemoryPuzzleService {
 				nextTurnSide,
 				List.of(resolvedFirstIndex, resolvedSecondIndex),
 				matched,
-				null);
+				null,
+				System.currentTimeMillis());
 		return new TurnResult(nextState, matched, allMatched(nextState));
 	}
 
@@ -83,6 +85,7 @@ public class MemoryPuzzleService {
 		builder.append("{\"turnSide\":\"").append(state.turnSide()).append("\",");
 		builder.append("\"lastMatched\":").append(state.lastMatched()).append(',');
 		builder.append("\"lastFlipped\":").append(indexArray(state.lastFlipped())).append(',');
+		builder.append("\"lastFlipAt\":").append(state.lastFlipAt()).append(',');
 		builder.append("\"pendingFirstIndex\":");
 		if (state.pendingFirstIndex() == null) {
 			builder.append("null");
@@ -102,7 +105,7 @@ public class MemoryPuzzleService {
 					.append(",\"matched\":").append(matched)
 					.append(",\"revealed\":").append(revealed)
 					.append(",\"piece\":");
-			if (revealed) {
+			if (revealed || state.lastFlipped().contains(i)) {
 				builder.append('\"').append(state.cards().get(i)).append('\"');
 			} else {
 				builder.append("null");
@@ -157,7 +160,8 @@ public class MemoryPuzzleService {
 			String turnSide,
 			List<Integer> lastFlipped,
 			boolean lastMatched,
-			Integer pendingFirstIndex) {
+			Integer pendingFirstIndex,
+			Long lastFlipAt) {
 	}
 
 	public record TurnResult(

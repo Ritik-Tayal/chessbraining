@@ -41,4 +41,4 @@ out/
 *.db
 *.sqlite
 tmp/
-
+.playwright-mcp/

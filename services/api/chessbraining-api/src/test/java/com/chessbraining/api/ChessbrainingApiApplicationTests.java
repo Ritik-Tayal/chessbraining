@@ -60,6 +60,20 @@ class ChessbrainingApiApplicationTests {
 	}
 
 	@Test
+	void cancellingQuickplayRemovesWaitingOpponentAndChecksOwnership() throws Exception {
+		matchRepository.deleteAll();
+		JsonNode waiting = quickplay("cancel-white", "White");
+		String id = waiting.get("matchId").asText();
+		mockMvc.perform(post("/api/v1/matches/{id}/cancel", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"playerId\":\"outsider\"}")).andExpect(status().isForbidden());
+		mockMvc.perform(post("/api/v1/matches/{id}/cancel", id).contentType(MediaType.APPLICATION_JSON)
+				.content("{\"playerId\":\"cancel-white\"}")).andExpect(status().isOk());
+		JsonNode next = quickplay("cancel-black", "Black");
+		org.junit.jupiter.api.Assertions.assertNotEquals(id, next.get("matchId").asText());
+		org.junit.jupiter.api.Assertions.assertEquals("WAITING_FOR_OPPONENT", next.get("status").asText());
+	}
+
+	@Test
 	void healthEndpointIsPublicAndReturnsUp() throws Exception {
 		mockMvc.perform(get("/api/v1/health"))
 				.andExpect(status().isOk())
@@ -1377,7 +1391,7 @@ class ChessbrainingApiApplicationTests {
 		if (round == null) {
 			return;
 		}
-		round.setExpiresAt(Instant.now().minusSeconds(1));
+		round.setExpiresAt(Instant.now().minusSeconds(5));
 		brainRoundRepository.save(round);
 	}
 }
