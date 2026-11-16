@@ -1481,11 +1481,11 @@ main {
 }
 .memory-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 8px;
 }
 .memory-card {
-  aspect-ratio: 0.83;
+  aspect-ratio: 1;
   background: #3d4a3a;
   border: 1px solid #607453;
   display: flex;
@@ -1498,6 +1498,8 @@ main {
     background 0.2s,
     transform 0.2s;
 }
+.memory-turn-clock { display: flex; align-items: center; gap: 12px; margin: 12px 0; font-size: 13px; }
+.memory-turn-clock progress { flex: 1; min-width: 0; height: 6px; accent-color: #a5c18c; }
 .memory-card:disabled {
   opacity: 1;
 }

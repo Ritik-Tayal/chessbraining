@@ -344,6 +344,7 @@ class BrainRoundResultModel {
 
 class BrainRoundModel {
   const BrainRoundModel({
+    this.solutions = const [],
     required this.roundId,
     required this.roundNumber,
     required this.status,
@@ -361,6 +362,7 @@ class BrainRoundModel {
   });
 
   final String roundId;
+  final List<int> solutions;
   final int roundNumber;
   final String status;
   final String puzzleType;
@@ -398,6 +400,7 @@ class BrainRoundModel {
 
   factory BrainRoundModel.fromJson(Map<String, dynamic> json) {
     return BrainRoundModel(
+      solutions: (json['solutions'] as List<dynamic>? ?? const []).map((v) => (v as num).toInt()).toList(),
       roundId: json['roundId'] as String,
       roundNumber: json['roundNumber'] as int,
       status: json['status'] as String,
@@ -422,6 +425,7 @@ class BrainRoundModel {
 
 class BrainMatchModel {
   const BrainMatchModel({
+    this.solutions = const [],
     required this.matchId,
     required this.inviteCode,
     required this.status,
@@ -444,6 +448,7 @@ class BrainMatchModel {
   });
 
   final String matchId;
+  final List<int> solutions;
   final String inviteCode;
   final String status;
   final String mode;
@@ -498,6 +503,7 @@ class BrainMatchModel {
 
   factory BrainMatchModel.fromJson(Map<String, dynamic> json) {
     return BrainMatchModel(
+      solutions: (json['solutions'] as List<dynamic>? ?? const []).map((v) => (v as num).toInt()).toList(),
       matchId: json['matchId'] as String,
       inviteCode: json['inviteCode'] as String,
       status: json['status'] as String,
@@ -533,6 +539,8 @@ class BrainMatchModel {
 
 class MemoryBoardModel {
   const MemoryBoardModel({
+    this.turnExpiresAt,
+    this.lastFlipAt,
     required this.turnSide,
     required this.lastMatched,
     required this.lastFlipped,
@@ -541,6 +549,10 @@ class MemoryBoardModel {
   });
 
   final String turnSide;
+  final int? turnExpiresAt;
+  final int? lastFlipAt;
+  bool get showingPair => pendingFirstIndex == null && lastFlipAt != null && DateTime.now().millisecondsSinceEpoch - lastFlipAt! < 1100;
+  int get turnSeconds => (((turnExpiresAt ?? DateTime.now().millisecondsSinceEpoch + 5000) - DateTime.now().millisecondsSinceEpoch + 999) ~/ 1000).clamp(0, 5);
   final bool lastMatched;
   final List<int> lastFlipped;
   final int? pendingFirstIndex;
@@ -548,6 +560,8 @@ class MemoryBoardModel {
 
   factory MemoryBoardModel.fromJson(Map<String, dynamic> json) {
     return MemoryBoardModel(
+      turnExpiresAt: (json['turnExpiresAt'] as num?)?.toInt(),
+      lastFlipAt: (json['lastFlipAt'] as num?)?.toInt(),
       turnSide: json['turnSide'] as String? ?? 'WHITE',
       lastMatched: json['lastMatched'] as bool? ?? false,
       lastFlipped: (json['lastFlipped'] as List<dynamic>? ?? const [])

@@ -9,6 +9,35 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MemoryAndPuzzleTests {
     final MemoryPuzzleService memory = new MemoryPuzzleService();
+    @Test void expandedBoardHasTwelveDistinctColoredPairs() {
+        var state = memory.newGame();
+        assertEquals(24, state.cards().size());
+        assertEquals(12, memory.pairCount());
+        var frequencies = state.cards().stream().collect(java.util.stream.Collectors.groupingBy(v -> v, java.util.stream.Collectors.counting()));
+        assertEquals(12, frequencies.size());
+        assertTrue(frequencies.values().stream().allMatch(n -> n == 2));
+        assertTrue(frequencies.containsKey("WHITE_KING"));
+        assertTrue(frequencies.containsKey("BLACK_KING"));
+        assertFalse(memory.publicBoardJson(state).contains("WHITE_KING"));
+    }
+    @Test void timeoutPassesTurnWithoutScoringOrLeakingPendingCard() {
+        var state = memory.newGame();
+        var first = memory.playTurn(state, "WHITE", 0, -1).state();
+        assertEquals(state.turnExpiresAt(), first.turnExpiresAt());
+        var timed = memory.advanceExpiredTurns(first, first.turnExpiresAt());
+        assertEquals("BLACK", timed.turnSide());
+        assertNull(timed.pendingFirstIndex());
+        assertTrue(timed.lastFlipped().isEmpty());
+        assertEquals(0, timed.matchedMask());
+        assertEquals(first.turnExpiresAt() + 5000, timed.turnExpiresAt());
+        assertEquals("WHITE", memory.advanceExpiredTurns(first, first.turnExpiresAt() + 5000).turnSide());
+    }
+    @Test void oppositeColorsOfSamePieceDoNotMatch() {
+        var state = memory.newGame();
+        var result = memory.playTurn(state, "WHITE", state.cards().indexOf("WHITE_KING"), state.cards().indexOf("BLACK_KING"));
+        assertFalse(result.matched());
+        assertEquals("BLACK", result.state().turnSide());
+    }
     private MemoryPuzzleService.MemoryState board() {
         return new MemoryPuzzleService.MemoryState(List.of("PAWN","PAWN","KING","KING","QUEEN","QUEEN","ROOK","ROOK","BISHOP","BISHOP","KNIGHT","KNIGHT"),0,"WHITE",List.of(),false,null,null);
     }

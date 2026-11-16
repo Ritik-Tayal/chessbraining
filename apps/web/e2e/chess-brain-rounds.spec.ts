@@ -118,9 +118,9 @@ test("chess mental math survives refresh, scores both players and resumes chess"
       await p
         .getByRole("textbox", { name: "Your answer", exact: true })
         .fill(String(answer));
-      await p
-        .getByRole("button", { name: "Next question", exact: true })
-        .click();
+      await expect(p.locator(".question span")).toContainText(
+        `QUESTION ${i + 2}`,
+      );
     }
   await expect(page.locator(".question span")).toContainText("QUESTION 4");
   await page.reload();
@@ -137,19 +137,21 @@ test("chess dot connect records both scores and resumes chess", async ({
 }) => {
   test.setTimeout(180000);
   const game = await chessRound(page, browser, "DOT_CONNECT");
-  await Promise.all([page, game.opponent].map(async (p) => {
-    for (let r = 0; r < 5; r++)
-      for (let k = 0; k < 5; k++) {
-        const c = r % 2 ? 4 - k : k;
-        await p
-          .getByRole("button", {
-            name: `Dot row ${r + 1} column ${c + 1}`,
-            exact: true,
-          })
-          .dispatchEvent("click");
-      }
-    await p.getByRole("button", { name: "Submit path", exact: true }).click();
-  }));
+  await Promise.all(
+    [page, game.opponent].map(async (p) => {
+      for (let r = 0; r < 5; r++)
+        for (let k = 0; k < 5; k++) {
+          const c = r % 2 ? 4 - k : k;
+          await p
+            .getByRole("button", {
+              name: `Dot row ${r + 1} column ${c + 1}`,
+              exact: true,
+            })
+            .dispatchEvent("click");
+        }
+      await p.getByRole("button", { name: "Submit path", exact: true }).click();
+    }),
+  );
   expect(await assertResume(page, game.opponent)).toEqual([1, 1]);
   await game.post(`/matches/${game.id}/resign`, {
     playerId: game.white.playerId,
@@ -163,7 +165,11 @@ test("chess memory reveals cards, clears all pairs, awards BP and resumes chess"
   test.setTimeout(180000);
   const game = await chessRound(page, browser, "MEMORY");
   const known = new Map<number, string>();
-  let side = "WHITE";
+  let side = (await page.locator(".brain-game>.muted").innerText()).includes(
+    "Your turn",
+  )
+    ? "WHITE"
+    : "BLACK";
   let turns = 0;
   while (!(await page.locator(".result-notice").count()) && turns++ < 36) {
     const p = side === "WHITE" ? page : game.opponent;
@@ -209,7 +215,7 @@ test("chess memory reveals cards, clears all pairs, awards BP and resumes chess"
     side = JSON.parse(round.puzzles[0]).turnSide;
   }
   const scores = await assertResume(page, game.opponent);
-  expect(scores[0] + scores[1]).toBe(6);
+  expect(scores[0] + scores[1]).toBe(12);
   await expect(page.locator(".power-bar-title .cost")).toContainText(
     scores[0] === scores[1] ? "1 BP" : scores[0] > scores[1] ? "2 BP" : "0 BP",
   );

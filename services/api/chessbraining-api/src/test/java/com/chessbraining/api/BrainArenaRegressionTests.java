@@ -39,11 +39,50 @@ class BrainArenaRegressionTests {
         assertEquals("ACTIVE", service.get(id).status());
     }
 
+    @Test void progressUpdatesAreValidatedMonotonicAndDoNotFinalize() {
+        String id = createMath();
+        assertEquals(List.of(2, 4), service.get(id).solutions());
+        var first = new SubmitAnswerBatchRequest.SubmittedAnswer(0, 2);
+        var progress = service.submitMath(id, new SubmitAnswerBatchRequest("arena-white", List.of(first), false));
+        assertEquals(1, progress.whiteScore());
+        assertEquals(0, progress.nextWhiteQuestionIndex());
+        assertEquals("ACTIVE", progress.status());
+        service.submitMath(id, new SubmitAnswerBatchRequest("arena-white", List.of(), false));
+        assertEquals(1, service.get(id).whiteScore());
+        assertThrows(ApiException.class, () -> service.submitMath(id, new SubmitAnswerBatchRequest("outsider", List.of(first), false)));
+        service.submitMath(id, answers("arena-white", 2, 4));
+        var done = service.submitMath(id, answers("arena-black", 2, 0));
+        assertEquals(2, done.whiteScore());
+        assertEquals(1, done.blackScore());
+    }
+
     @Test void waitingBrainMatchCanBeCancelledOnlyByItsHost() {
         var created=service.create(new CreateBrainMatchRequest("host", "Host", BrainMatchMode.MEMORY));
         assertThrows(ApiException.class,()->service.cancelWaitingMatch(created.matchId(),"outsider"));
         service.cancelWaitingMatch(created.matchId(),"host");
         assertFalse(repository.existsById(created.matchId()));
+    }
+
+    @Test void memoryGetPersistsExpiredTurnAndClearsFirstPick() throws Exception {
+        var created = service.create(new CreateBrainMatchRequest("memory-white", "White", BrainMatchMode.MEMORY));
+        var joined = service.join(new JoinBrainMatchRequest(created.inviteCode(), "memory-black", "Black"));
+        assertEquals(12, joined.totalQuestions());
+        assertEquals(120, java.time.Duration.between(joined.startedAt(), joined.expiresAt()).toSeconds());
+        service.submitMemoryTurn(created.matchId(), new SubmitMemoryTurnRequest("memory-white", 0, -1));
+        var mapper = new tools.jackson.databind.ObjectMapper();
+        var entity = repository.findById(created.matchId()).orElseThrow();
+        var state = mapper.readValue(entity.getPuzzleAnswers(), MemoryPuzzleService.MemoryState.class);
+        entity.setPuzzleAnswers(mapper.writeValueAsString(new MemoryPuzzleService.MemoryState(state.cards(),
+                state.matchedMask(), state.turnSide(), state.lastFlipped(), false, state.pendingFirstIndex(), null,
+                System.currentTimeMillis() - 100)));
+        repository.save(entity);
+        var response = service.get(created.matchId());
+        var board = mapper.readTree(response.puzzles().getFirst());
+        assertEquals("BLACK", board.get("turnSide").asText());
+        assertTrue(board.get("pendingFirstIndex").isNull());
+        assertEquals(24, board.get("cards").size());
+        assertEquals(0, response.whiteScore());
+        assertFalse(response.puzzles().getFirst().contains("WHITE_KING"));
     }
 
     @Test void duplicateQuestionsCannotInflateScore() {

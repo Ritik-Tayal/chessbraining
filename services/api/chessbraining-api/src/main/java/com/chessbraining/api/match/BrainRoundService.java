@@ -54,6 +54,11 @@ public class BrainRoundService {
 		if (isSettlementReady(round)) {
 			return completeActiveRound(round, match);
 		}
+		if (BrainRoundPuzzleType.MEMORY.name().equals(round.getPuzzleType())) {
+			var state = memoryPuzzleService.advanceExpiredTurns(parseMemoryState(round.getPuzzleAnswers()), System.currentTimeMillis());
+			round.setPuzzleAnswers(writeMemoryState(state));
+			round.setPuzzleExpressions(writePublicMemoryBoard(state));
+		}
 		List<String> puzzles = parseExpressions(round.getPuzzleExpressions());
 		return toResponse(round, puzzles);
 	}
@@ -144,7 +149,7 @@ public class BrainRoundService {
 		int allAnsweredMask = allAnsweredMask(round);
 		int currentAnsweredMask = isWhite ? round.getWhiteAnsweredMask() : round.getBlackAnsweredMask();
 
-		if (currentAnsweredMask != 0) {
+		if (currentAnsweredMask == allAnsweredMask || isSettlementReady(round) || (isExpired(round) && !request.isFinal())) {
 			boolean roundCompleted = false;
 			if (isSettlementReady(round)) {
 				completeActiveRound(round, match);
@@ -189,11 +194,12 @@ public class BrainRoundService {
 			}
 		}
 
+		correctCount = Math.max(correctCount, isWhite ? round.getWhiteCorrectCount() : round.getBlackCorrectCount());
 		if (isWhite) {
-			round.setWhiteAnsweredMask(allAnsweredMask);
+			round.setWhiteAnsweredMask(request.isFinal() ? allAnsweredMask : currentAnsweredMask);
 			round.setWhiteCorrectCount(correctCount);
 		} else {
-			round.setBlackAnsweredMask(allAnsweredMask);
+			round.setBlackAnsweredMask(request.isFinal() ? allAnsweredMask : currentAnsweredMask);
 			round.setBlackCorrectCount(correctCount);
 		}
 
@@ -490,7 +496,8 @@ public class BrainRoundService {
 				round.getWinnerPlayerId(),
 				round.getStartedAt(),
 				round.getExpiresAt(),
-				round.getCompletedAt());
+				round.getCompletedAt(),
+				BrainRoundPuzzleType.MENTAL_MATH.name().equals(round.getPuzzleType()) ? parseAnswers(round.getPuzzleAnswers()) : List.of());
 	}
 
 	private int nextUnansweredIndex(int answeredMask, int totalQuestions) {

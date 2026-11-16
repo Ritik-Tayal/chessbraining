@@ -1309,21 +1309,21 @@ function App() {
                         round={playingRound}
                         side={arenaMe?.side || "WHITE"}
                         onError={setError}
-                        onMath={async (answers) => {
-                          adoptArena(
-                            await request<Round>(
-                              `/brain-matches/${arena.matchId}/math-submissions`,
-                              {
-                                playerId: guest?.playerId,
-                                answers: Object.entries(answers).map(
-                                  ([questionIndex, answer]) => ({
-                                    questionIndex: Number(questionIndex),
-                                    answer,
-                                  }),
-                                ),
-                              },
-                            ),
+                        onMath={async (answers, finalSubmission = true) => {
+                          const result = await request<Round>(
+                            `/brain-matches/${arena.matchId}/math-submissions`,
+                            {
+                              playerId: guest?.playerId,
+                              finalSubmission,
+                              answers: Object.entries(answers).map(
+                                ([questionIndex, answer]) => ({
+                                  questionIndex: Number(questionIndex),
+                                  answer,
+                                }),
+                              ),
+                            },
                           );
+                          if (finalSubmission) adoptArena(result);
                         }}
                         onMemory={async (firstIndex, secondIndex) =>
                           adoptArena(
@@ -1461,11 +1461,12 @@ function App() {
                           round={playingRound}
                           side={mySide}
                           onError={setError}
-                          onMath={async (answers) => {
+                          onMath={async (answers, finalSubmission = true) => {
                             await request(
                               `/matches/${match.matchId}/brain-rounds/current/submissions`,
                               {
                                 playerId: guest?.playerId,
+                                finalSubmission,
                                 answers: Object.entries(answers).map(
                                   ([questionIndex, answer]) => ({
                                     questionIndex: Number(questionIndex),
@@ -1474,9 +1475,12 @@ function App() {
                                 ),
                               },
                             );
-                            adopt(
-                              await request<Match>(`/matches/${match.matchId}`),
-                            );
+                            if (finalSubmission)
+                              adopt(
+                                await request<Match>(
+                                  `/matches/${match.matchId}`,
+                                ),
+                              );
                           }}
                           onMemory={async (firstIndex, secondIndex) =>
                             adoptRound(
