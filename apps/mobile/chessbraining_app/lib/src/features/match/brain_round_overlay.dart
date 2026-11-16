@@ -65,7 +65,7 @@ class _BrainRoundInfo {
       title: 'Math Sprint',
       subtitle: 'Answer fast. Every correct answer adds to your score.',
       instruction:
-          'Use the keypad, submit, and keep moving. Your answers are scored together.',
+          'Correct answers advance instantly. Skip to try another question.',
       icon: Icons.calculate_rounded,
       accent: Color(0xffb56b2d),
       deep: Color(0xff351c0d),
@@ -83,6 +83,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   bool finished = false;
   bool scoreSubmitted = false;
   bool submitting = false;
+  bool progressPending = false;
+  int lastProgressCount = 0;
 
   int dotConnectSolvedCount = 0;
   final Map<int, List<List<int>>> dotConnectPaths = {};
@@ -100,6 +102,13 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
         return;
       }
       final round = widget.controller.brainRound;
+      if (round?.isMathPuzzle == true && !finished && !submitting && !progressPending && answersByQuestion.length > lastProgressCount) {
+        progressPending = true;
+        final count = answersByQuestion.length;
+        unawaited(widget.controller.submitBrainRoundAnswers(Map<int,int>.from(answersByQuestion), finalSubmission: false).then((result) {
+          if (result != null) lastProgressCount = count;
+        }).whenComplete(() => progressPending = false));
+      }
       if (round == null) {
         // Round data failed to load; retry periodically so the overlay can
         // self-heal once the server expires/completes the round.
@@ -270,7 +279,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                                 enabled: _inputEnabled,
                                 onAppend: _append,
                                 onBackspace: _backspace,
-                                onSubmit: _inputEnabled && answer.isNotEmpty
+                                onSubmit: _inputEnabled
                                     ? _submit
                                     : null,
                                 accent: info.accent,
@@ -347,6 +356,10 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
       return;
     }
     setState(() => answer += value);
+    final solutions = widget.controller.brainRound?.solutions ?? const <int>[];
+    if (questionIndex < solutions.length && int.tryParse(answer) == solutions[questionIndex]) {
+      unawaited(_submit(correct: true));
+    }
   }
 
   void _backspace() {
@@ -356,16 +369,16 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     setState(() => answer = answer.substring(0, answer.length - 1));
   }
 
-  Future<void> _submit() async {
+  Future<void> _submit({bool correct = false}) async {
     final parsed = int.tryParse(answer);
     final round = widget.controller.brainRound;
-    if (parsed == null || round == null) {
+    if (round == null || !_inputEnabled) {
       return;
     }
 
     final nextIndex = questionIndex + 1;
     setState(() {
-      answersByQuestion[questionIndex] = parsed;
+      if (correct && parsed != null) answersByQuestion[questionIndex] = parsed;
       answer = '';
       questionIndex = min(nextIndex, round.totalQuestions);
       finished = nextIndex >= round.totalQuestions;
@@ -522,12 +535,9 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     if (card.matched || memorySelection.contains(index)) {
       return;
     }
-    setState(() => memorySelection.add(index));
-    if (memorySelection.length == 2) {
-      final first = memorySelection[0];
-      final second = memorySelection[1];
-      unawaited(_submitMemoryTurn(first, second));
-    }
+    if (board.pendingFirstIndex == index || board.turnSeconds == 0 || board.showingPair) return;
+    unawaited(_submitMemoryTurn(board.pendingFirstIndex ?? index,
+        board.pendingFirstIndex == null ? -1 : index));
   }
 
   Future<void> _submitMemoryTurn(int firstIndex, int secondIndex) async {
@@ -834,7 +844,7 @@ class _NumberPad extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: _KeyButton(
-                  icon: Icons.check_circle_outline,
+                  icon: Icons.skip_next,
                   filled: true,
                   accent: accent,
                   onPressed: onSubmit,
@@ -903,7 +913,7 @@ class _MemoryBoard extends StatelessWidget {
         ),
         const SizedBox(height: 10),
         Text(
-          status,
+          '$status - ${board.turnSeconds}s',
           textAlign: TextAlign.center,
           style: const TextStyle(
             color: Color(0xff78583f),
@@ -916,7 +926,7 @@ class _MemoryBoard extends StatelessWidget {
           child: GridView.builder(
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
+              crossAxisCount: 6,
               mainAxisSpacing: 8,
               crossAxisSpacing: 8,
               childAspectRatio: 0.86,
@@ -928,8 +938,8 @@ class _MemoryBoard extends StatelessWidget {
               return _MemoryCard(
                 card: card,
                 selected: isSelected,
-                serverRevealVisible: myTurn,
-                enabled: enabled && !card.matched,
+                serverRevealVisible: true,
+                enabled: enabled && !card.matched && board.turnSeconds > 0 && !board.showingPair,
                 onTap: () => onCardTap(card.index),
               );
             },
@@ -1103,8 +1113,9 @@ class _MemoryPiece extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const fill = Color(0xfffffbf4);
-    const stroke = Color(0xff170f0a);
+    final black = piece?.startsWith('BLACK_') == true;
+    final fill = black ? const Color(0xff170f0a) : const Color(0xfffffbf4);
+    final stroke = black ? const Color(0xfffffbf4) : const Color(0xff170f0a);
     const size = 46.0;
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -1120,7 +1131,7 @@ class _MemoryPiece extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.all(7),
-        child: switch (piece) {
+        child: switch (piece?.replaceFirst(RegExp(r'^(WHITE|BLACK)_'), '')) {
           'PAWN' => WhitePawn(size: size, fillColor: fill, strokeColor: stroke),
           'KNIGHT' =>
             WhiteKnight(size: size, fillColor: fill, strokeColor: stroke),
@@ -1130,7 +1141,7 @@ class _MemoryPiece extends StatelessWidget {
           'QUEEN' =>
             WhiteQueen(size: size, fillColor: fill, strokeColor: stroke),
           'KING' => WhiteKing(size: size, fillColor: fill, strokeColor: stroke),
-          _ => const Icon(Icons.help_outline, color: stroke, size: 34),
+          _ => Icon(Icons.help_outline, color: stroke, size: 34),
         },
       ),
     );

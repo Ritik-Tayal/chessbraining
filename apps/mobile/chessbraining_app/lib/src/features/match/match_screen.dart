@@ -1792,7 +1792,7 @@ class _BrainArenaMathGame extends StatefulWidget {
   final BrainMatchModel match;
   final String? playerSide;
   final int secondsLeft;
-  final Future<void> Function(Map<int, int> answers) onSubmit;
+  final Future<void> Function(Map<int, int> answers, {bool finalSubmission}) onSubmit;
   final Future<void> Function() onComplete;
 
   @override
@@ -1800,6 +1800,27 @@ class _BrainArenaMathGame extends StatefulWidget {
 }
 
 class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
+  Timer? progressTimer;
+  bool progressPending = false;
+  int progressCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!_inputEnabled || progressPending || answersByQuestion.length <= progressCount) return;
+      progressPending = true;
+      final count = answersByQuestion.length;
+      unawaited(widget.onSubmit(Map<int,int>.from(answersByQuestion), finalSubmission: false)
+        .then<void>((_) { progressCount = count; }).catchError((Object _) {}).whenComplete(() => progressPending = false));
+    });
+  }
+
+  @override
+  void dispose() {
+    progressTimer?.cancel();
+    super.dispose();
+  }
   final Map<int, int> answersByQuestion = {};
   String answer = '';
   int questionIndex = 0;
@@ -1807,6 +1828,7 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
   bool finished = false;
   bool scoreSubmitted = false;
   bool submitting = false;
+  DateTime? retryAfter;
 
   bool get _serverSubmitted {
     return widget.playerSide == 'WHITE'
@@ -1828,7 +1850,8 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
       questionIndex = widget.match.totalQuestions;
       answer = '';
     }
-    if (widget.secondsLeft <= 0 && !scoreSubmitted && !submitting) {
+    if ((widget.secondsLeft <= 0 || finished) && !scoreSubmitted && !submitting &&
+        (retryAfter == null || DateTime.now().isAfter(retryAfter!))) {
       unawaited(_submitAnswers(completeAfterSubmit: true));
     } else if (widget.secondsLeft <= 0 && scoreSubmitted && widget.match.isActive) {
       unawaited(widget.onComplete());
@@ -1936,7 +1959,7 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
                 enabled: _inputEnabled,
                 onAppend: _append,
                 onBackspace: _backspace,
-                onSubmit: _inputEnabled && answer.isNotEmpty ? _submitCurrentAnswer : null,
+                onSubmit: _inputEnabled ? _submitCurrentAnswer : null,
               ),
             ),
           ],
@@ -1950,6 +1973,10 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
       return;
     }
     setState(() => answer += value);
+    if (questionIndex < widget.match.solutions.length &&
+        int.tryParse(answer) == widget.match.solutions[questionIndex]) {
+      _submitCurrentAnswer(correct: true);
+    }
   }
 
   void _backspace() {
@@ -1959,14 +1986,14 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
     setState(() => answer = answer.substring(0, answer.length - 1));
   }
 
-  void _submitCurrentAnswer() {
+  void _submitCurrentAnswer({bool correct = false}) {
     final parsed = int.tryParse(answer);
-    if (parsed == null) {
+    if (!_inputEnabled) {
       return;
     }
     final nextIndex = questionIndex + 1;
     setState(() {
-      answersByQuestion[questionIndex] = parsed;
+      if (correct && parsed != null) answersByQuestion[questionIndex] = parsed;
       answer = '';
       questionIndex = math.min(nextIndex, widget.match.totalQuestions);
       finished = nextIndex >= widget.match.totalQuestions;
@@ -1985,7 +2012,17 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
       submitting = true;
       finished = true;
     });
-    await widget.onSubmit(Map<int, int>.from(answersByQuestion));
+    try {
+      await widget.onSubmit(Map<int, int>.from(answersByQuestion));
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          submitting = false;
+          retryAfter = DateTime.now().add(const Duration(seconds: 1));
+        });
+      }
+      return;
+    }
     if (!mounted) {
       return;
     }
@@ -2061,7 +2098,7 @@ class _BrainArenaNumberPad extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: _BrainArenaKeyButton(
-                  icon: Icons.check_circle_outline,
+                  icon: Icons.skip_next,
                   filled: true,
                   onPressed: onSubmit,
                 ),
@@ -2180,7 +2217,7 @@ class _BrainArenaMemoryGameState extends State<_BrainArenaMemoryGame> {
             borderRadius: BorderRadius.circular(14),
           ),
           child: Text(
-            myTurn ? 'Your memory turn' : 'Opponent is choosing cards',
+            '${myTurn ? 'Your memory turn' : 'Opponent is choosing cards'} - ${board.turnSeconds}s',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: myTurn ? AppColors.background : AppColors.muted,
@@ -2193,7 +2230,7 @@ class _BrainArenaMemoryGameState extends State<_BrainArenaMemoryGame> {
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 4,
+            crossAxisCount: 6,
             mainAxisSpacing: 10,
             crossAxisSpacing: 10,
             childAspectRatio: 0.82,
@@ -2204,8 +2241,8 @@ class _BrainArenaMemoryGameState extends State<_BrainArenaMemoryGame> {
             return _ArenaMemoryCard(
               card: card,
               selected: selected.contains(card.index),
-              serverRevealVisible: myTurn,
-              enabled: myTurn && !widget.loading && !card.matched,
+              serverRevealVisible: true,
+              enabled: myTurn && !widget.loading && !card.matched && board.turnSeconds > 0 && !board.showingPair,
               onTap: () => _select(card.index),
             );
           },
@@ -2290,17 +2327,18 @@ class _ArenaMemoryPiece extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const fill = Color(0xfffffbf4);
-    const stroke = Color(0xff170f0a);
+    final black = piece?.startsWith('BLACK_') == true;
+    final fill = black ? const Color(0xff170f0a) : const Color(0xfffffbf4);
+    final stroke = black ? const Color(0xfffffbf4) : const Color(0xff170f0a);
     const size = 42.0;
-    return switch (piece) {
+    return switch (piece?.replaceFirst(RegExp(r'^(WHITE|BLACK)_'), '')) {
       'PAWN' => WhitePawn(size: size, fillColor: fill, strokeColor: stroke),
       'KNIGHT' => WhiteKnight(size: size, fillColor: fill, strokeColor: stroke),
       'BISHOP' => WhiteBishop(size: size, fillColor: fill, strokeColor: stroke),
       'ROOK' => WhiteRook(size: size, fillColor: fill, strokeColor: stroke),
       'QUEEN' => WhiteQueen(size: size, fillColor: fill, strokeColor: stroke),
       'KING' => WhiteKing(size: size, fillColor: fill, strokeColor: stroke),
-      _ => const Icon(Icons.help_outline, color: stroke, size: 32),
+      _ => Icon(Icons.help_outline, color: stroke, size: 32),
     };
   }
 }

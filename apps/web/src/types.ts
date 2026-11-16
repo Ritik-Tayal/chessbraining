@@ -49,6 +49,7 @@ export interface Match {
   latestBrainRoundResult?: RoundResult;
 }
 export interface Round {
+  solutions?: number[];
   roundId?: string;
   matchId?: string;
   roundNumber?: number;
@@ -92,6 +93,7 @@ export interface Profile {
   }[];
 }
 export interface MemoryBoard {
+  turnExpiresAt?: number;
   lastFlipAt?: number;
   turnSide: string;
   pendingFirstIndex: number | null;

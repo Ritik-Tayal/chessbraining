@@ -389,18 +389,18 @@ class MatchController extends ChangeNotifier {
     });
   }
 
-  Future<void> submitBrainArenaAnswers(Map<int, int> answers) {
+  Future<void> submitBrainArenaAnswers(Map<int, int> answers, {bool finalSubmission = true}) async {
     final current = brainMatch;
     if (current == null || !current.isActive) {
       return Future.value();
     }
-    return _run(() async {
-      _setBrainMatch(await _api.submitBrainMatchAnswers(
+    final result = await _api.submitBrainMatchAnswers(
+        finalSubmission: finalSubmission,
         matchId: current.matchId,
         playerId: playerId,
         answers: answers,
-      ));
-    });
+      );
+    if (finalSubmission) _setBrainMatch(result);
   }
 
   Future<void> submitBrainArenaPath({
@@ -703,7 +703,7 @@ class MatchController extends ChangeNotifier {
   }
 
   Future<BrainRoundSubmissionModel?> submitBrainRoundAnswers(
-    Map<int, int> answers,
+    Map<int, int> answers, {bool finalSubmission = true}
   ) async {
     final current = match;
     if (current == null) {
@@ -711,6 +711,7 @@ class MatchController extends ChangeNotifier {
     }
     try {
       final result = await _api.submitBrainRoundAnswers(
+        finalSubmission: finalSubmission,
         matchId: current.matchId,
         playerId: playerId,
         answers: answers,
@@ -719,6 +720,7 @@ class MatchController extends ChangeNotifier {
       if (currentRound != null) {
         final isWhite = me?.side == 'WHITE';
         brainRound = BrainRoundModel(
+          solutions: currentRound.solutions,
           roundId: currentRound.roundId,
           roundNumber: currentRound.roundNumber,
           status: currentRound.status,

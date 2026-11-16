@@ -24,7 +24,10 @@ export function BrainGame({
 }: {
   round: Round;
   side: string;
-  onMath: (answers: Record<number, number>) => Promise<void>;
+  onMath: (
+    answers: Record<number, number>,
+    finalSubmission?: boolean,
+  ) => Promise<void>;
   onMemory: (first: number, second: number) => Promise<void>;
   onPath: (index: number, path: number[][]) => Promise<void>;
   onComplete: () => Promise<void>;
@@ -51,11 +54,40 @@ export function BrainGame({
   const finalizing = useRef(false);
   const completing = useRef(false);
   const retryAfter = useRef(0);
+  const progressFlight = useRef<Promise<void> | null>(null);
+  const progressSignature = useRef("");
+  const mathCallback = useRef(onMath);
+  mathCallback.current = onMath;
   const seconds = Math.max(
     0,
     Math.ceil((Date.parse(round.expiresAt || "") - now) / 1000) || 0,
   );
   const isMath = round.puzzleType === "MENTAL_MATH";
+  // Progress is a cumulative, server-validated snapshot. Input never waits for it.
+  useEffect(() => {
+    if (!isMath) return;
+    const timer = setInterval(() => {
+      const signature = JSON.stringify(answers.current);
+      if (
+        finalizing.current ||
+        submitted ||
+        seconds === 0 ||
+        progressFlight.current ||
+        signature === progressSignature.current
+      )
+        return;
+      progressSignature.current = signature;
+      progressFlight.current = mathCallback
+        .current({ ...answers.current }, false)
+        .catch(() => {
+          progressSignature.current = "";
+        })
+        .finally(() => {
+          progressFlight.current = null;
+        });
+    }, 750);
+    return () => clearInterval(timer);
+  }, [isMath, submitted, seconds === 0]);
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 200);
     return () => clearInterval(timer);
@@ -78,7 +110,11 @@ export function BrainGame({
     }
   }
   useEffect(() => {
-    if (seconds === 0 && round.status === "ACTIVE") void finish();
+    if (
+      (seconds === 0 || (isMath && index >= round.totalQuestions)) &&
+      round.status === "ACTIVE"
+    )
+      void finish();
   }, [now, round.status]);
   useEffect(() => {
     if (
@@ -93,30 +129,25 @@ export function BrainGame({
       completing.current = false;
     });
   }, [now, round.status]);
-  async function next() {
-    if (
-      !/^-?\d+$/.test(answer) ||
-      !Number.isSafeInteger(Number(answer)) ||
-      submitted ||
-      busy ||
-      seconds === 0
-    )
+  function advance(value?: number) {
+    if (submitted || busy || seconds === 0 || index >= round.totalQuestions)
       return;
-    answers.current[index] = Number(answer);
-    playSound("answer");
+    if (value !== undefined) {
+      answers.current[index] = value;
+      playSound("answer");
+    }
     setAnswer("");
-    if (index + 1 >= round.puzzles.length) {
-      setSubmitted(true);
-      setBusy(true);
-      try {
-        await onMath(answers.current);
-      } catch (e) {
-        setSubmitted(false);
-        onError((e as Error).message);
-      } finally {
-        setBusy(false);
-      }
-    } else setIndex(index + 1);
+    setIndex(index + 1);
+    if (index + 1 >= round.puzzles.length) void finish();
+  }
+  function updateAnswer(value: string) {
+    setAnswer(value);
+    if (
+      /^-?\d+$/.test(value) &&
+      Number.isSafeInteger(Number(value)) &&
+      Number(value) === round.solutions?.[index]
+    )
+      advance(Number(value));
   }
   let board: MemoryBoard | null = null;
   let puzzle: {
@@ -131,6 +162,10 @@ export function BrainGame({
     /* A completed puzzle set can be empty while the result arrives. */
   }
   const myTurn = board?.turnSide === side;
+  const turnSeconds = Math.min(
+    5,
+    Math.max(0, Math.ceil(((board?.turnExpiresAt ?? now + 5000) - now) / 1000)),
+  );
   const showingPair =
     !!board?.lastFlipAt &&
     now - board.lastFlipAt < 1100 &&
@@ -197,14 +232,30 @@ export function BrainGame({
       </p>
       <div className="round-scores">
         <span>
-          White <b>{round.whiteCorrectCount ?? round.whiteScore ?? 0}</b>
+          White{" "}
+          <b>
+            {Math.max(
+              round.whiteCorrectCount ?? round.whiteScore ?? 0,
+              isMath && side === "WHITE"
+                ? Object.keys(answers.current).length
+                : 0,
+            )}
+          </b>
         </span>
         <span>
-          Black <b>{round.blackCorrectCount ?? round.blackScore ?? 0}</b>
+          Black{" "}
+          <b>
+            {Math.max(
+              round.blackCorrectCount ?? round.blackScore ?? 0,
+              isMath && side === "BLACK"
+                ? Object.keys(answers.current).length
+                : 0,
+            )}
+          </b>
         </span>
       </div>
       {isMath &&
-        (submitted || seconds === 0 ? (
+        (submitted || seconds === 0 || index >= round.totalQuestions ? (
           <div className="brain-wait" role="status">
             {submitted ? (
               <Check size={42} />
@@ -229,7 +280,7 @@ export function BrainGame({
             <form
               onSubmit={(e) => {
                 e.preventDefault();
-                void next();
+                advance();
               }}
             >
               <input
@@ -239,7 +290,7 @@ export function BrainGame({
                 autoComplete="off"
                 value={answer}
                 onChange={(e) =>
-                  setAnswer(e.target.value.replace(/[^\d-]/g, ""))
+                  updateAnswer(e.target.value.replace(/[^\d-]/g, ""))
                 }
                 placeholder="Your answer"
               />
@@ -262,14 +313,14 @@ export function BrainGame({
                     type="button"
                     key={n}
                     onClick={() =>
-                      setAnswer((v) =>
+                      updateAnswer(
                         n === "⌫"
-                          ? v.slice(0, -1)
+                          ? answer.slice(0, -1)
                           : n === "-"
-                            ? v.startsWith("-")
-                              ? v.slice(1)
-                              : "-" + v
-                            : v + n,
+                            ? answer.startsWith("-")
+                              ? answer.slice(1)
+                              : "-" + answer
+                            : answer + n,
                       )
                     }
                   >
@@ -277,50 +328,63 @@ export function BrainGame({
                   </button>
                 ))}
               </div>
-              <button
-                className="primary full"
-                disabled={busy || seconds === 0 || answer === ""}
-              >
-                Next question <ArrowRight size={18} />
+              <button className="primary full" disabled={busy || seconds === 0}>
+                Skip question <ArrowRight size={18} />
               </button>
             </form>
           </>
         ))}
       {board && (
-        <div className="memory-grid">
-          {board.cards.map((c) => (
-            <button
-              aria-label={`Card ${c.index + 1}${c.matched ? " matched" : ""}`}
-              key={c.index}
-              disabled={
-                !myTurn || busy || showingPair || c.matched || seconds === 0
-              }
-              className={`memory-card ${c.revealed || c.matched || (showingPair && board.lastFlipped.includes(c.index)) ? "revealed" : ""} ${c.matched ? "matched" : ""}`}
-              onClick={() => void memoryPick(c.index)}
-            >
-              {(c.revealed ||
-                c.matched ||
-                (showingPair && board.lastFlipped.includes(c.index))) &&
-              c.piece ? (
-                <Piece
-                  code={
-                    "w" +
-                    ({
-                      PAWN: "P",
-                      KNIGHT: "N",
-                      BISHOP: "B",
-                      ROOK: "R",
-                      QUEEN: "Q",
-                      KING: "K",
-                    }[c.piece] || "P")
-                  }
-                />
-              ) : (
-                <span>{flash === c.index ? "…" : "?"}</span>
-              )}
-            </button>
-          ))}
-        </div>
+        <>
+          <div
+            className="memory-turn-clock"
+            role="timer"
+            aria-label="Turn time remaining"
+          >
+            <span>{myTurn ? "Your turn" : "Opponent's turn"}</span>
+            <strong>{showingPair ? "Revealing" : `${turnSeconds}s`}</strong>
+            <progress max={5} value={turnSeconds} />
+          </div>
+          <div className="memory-grid">
+            {board.cards.map((c) => (
+              <button
+                aria-label={`Card ${c.index + 1}${c.matched ? " matched" : ""}`}
+                key={c.index}
+                disabled={
+                  !myTurn ||
+                  busy ||
+                  showingPair ||
+                  c.matched ||
+                  seconds === 0 ||
+                  turnSeconds === 0
+                }
+                className={`memory-card ${c.revealed || c.matched || (showingPair && board.lastFlipped.includes(c.index)) ? "revealed" : ""} ${c.matched ? "matched" : ""}`}
+                onClick={() => void memoryPick(c.index)}
+              >
+                {(c.revealed ||
+                  c.matched ||
+                  (showingPair && board.lastFlipped.includes(c.index))) &&
+                c.piece ? (
+                  <Piece
+                    code={
+                      (c.piece.startsWith("BLACK_") ? "b" : "w") +
+                      ({
+                        PAWN: "P",
+                        KNIGHT: "N",
+                        BISHOP: "B",
+                        ROOK: "R",
+                        QUEEN: "Q",
+                        KING: "K",
+                      }[c.piece.replace(/^(WHITE|BLACK)_/, "")] || "P")
+                    }
+                  />
+                ) : (
+                  <span>{flash === c.index ? "…" : "?"}</span>
+                )}
+              </button>
+            ))}
+          </div>
+        </>
       )}
       {puzzle && index < round.puzzles.length && (
         <>

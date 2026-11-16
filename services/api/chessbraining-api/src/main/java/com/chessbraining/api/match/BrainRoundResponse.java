@@ -17,5 +17,6 @@ public record BrainRoundResponse(
 		String winnerPlayerId,
 		Instant startedAt,
 		Instant expiresAt,
-		Instant completedAt) {
+		Instant completedAt,
+		List<Integer> solutions) {
 }

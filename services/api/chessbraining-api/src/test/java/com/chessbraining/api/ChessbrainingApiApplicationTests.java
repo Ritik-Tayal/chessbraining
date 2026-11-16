@@ -325,7 +325,7 @@ class ChessbrainingApiApplicationTests {
 						.getContentAsString());
 		if (BrainRoundPuzzleType.MEMORY.name().equals(round.get("puzzleType").asText())) {
 			org.junit.jupiter.api.Assertions.assertEquals(1, round.get("puzzles").size());
-			org.junit.jupiter.api.Assertions.assertEquals(6, round.get("totalQuestions").asInt());
+			org.junit.jupiter.api.Assertions.assertEquals(12, round.get("totalQuestions").asInt());
 		} else {
 			org.junit.jupiter.api.Assertions.assertEquals(
 					round.get("puzzles").size(),
@@ -1332,6 +1332,31 @@ class ChessbrainingApiApplicationTests {
 			}
 		}
 		return List.of();
+	}
+
+	@Test
+	void mathProgressDoesNotLockAnswersAndFinalSubmissionPreservesScores() throws Exception {
+		String id = createJoinedMatch(1).get("matchId").asText();
+		submitMove(id, "white-player", "e2", "e4");
+		submitMove(id, "black-player", "e7", "e5");
+		forceActiveRoundPuzzleType(id, "MENTAL_MATH");
+		String path = "/api/v1/matches/{matchId}/brain-rounds/current/submissions";
+		mockMvc.perform(post(path, id).contentType(MediaType.APPLICATION_JSON).content("""
+				{"playerId":"white-player","finalSubmission":false,"answers":[{"questionIndex":0,"answer":2}]}
+				"""))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.playerCorrectCount").value(1))
+				.andExpect(jsonPath("$.roundCompleted").value(false));
+		JsonNode progress = currentBrainRound(id);
+		org.junit.jupiter.api.Assertions.assertEquals(1, progress.get("whiteCorrectCount").asInt());
+		org.junit.jupiter.api.Assertions.assertEquals(0, progress.get("nextWhiteQuestionIndex").asInt());
+		mockMvc.perform(post(path, id).contentType(MediaType.APPLICATION_JSON).content("""
+				{"playerId":"white-player","answers":[{"questionIndex":0,"answer":2},{"questionIndex":1,"answer":4}]}
+				"""))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.playerCorrectCount").value(2));
+		mockMvc.perform(post(path, id).contentType(MediaType.APPLICATION_JSON).content("""
+				{"playerId":"black-player","answers":[{"questionIndex":0,"answer":2}]}
+				"""))
+				.andExpect(status().isOk()).andExpect(jsonPath("$.roundCompleted").value(true));
 	}
 
 	private void forceActiveRoundPuzzleType(String matchId, String puzzleType) {

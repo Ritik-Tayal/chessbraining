@@ -157,6 +157,7 @@ class ChessbrainingApi {
   }
 
   Future<BrainRoundSubmissionModel> submitBrainRoundAnswers({
+    bool finalSubmission = true,
     required String matchId,
     required String playerId,
     required Map<int, int> answers,
@@ -169,6 +170,7 @@ class ChessbrainingApi {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'playerId': playerId,
+          'finalSubmission': finalSubmission,
           'answers': [
             for (final answer in orderedAnswers)
               {
@@ -297,6 +299,7 @@ class ChessbrainingApi {
   }
 
   Future<BrainMatchModel> submitBrainMatchAnswers({
+    bool finalSubmission = true,
     required String matchId,
     required String playerId,
     required Map<int, int> answers,
@@ -309,6 +312,7 @@ class ChessbrainingApi {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'playerId': playerId,
+          'finalSubmission': finalSubmission,
           'answers': [
             for (final answer in orderedAnswers)
               {

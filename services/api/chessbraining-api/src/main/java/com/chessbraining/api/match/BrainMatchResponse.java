@@ -22,5 +22,6 @@ public record BrainMatchResponse(
 		String rematchMatchId,
 		Instant startedAt,
 		Instant expiresAt,
-		Instant completedAt) {
+		Instant completedAt,
+		List<Integer> solutions) {
 }

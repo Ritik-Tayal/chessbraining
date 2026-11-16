@@ -12,22 +12,28 @@ import org.springframework.stereotype.Service;
 @Service
 public class MemoryPuzzleService {
 
-	private static final int CARD_COUNT = 12;
-	private static final int PAIR_COUNT = 6;
+	private static final int CARD_COUNT = 24;
+	private static final int PAIR_COUNT = 12;
+	private static final long TURN_MILLIS = 5000;
+	private static final long REVEAL_MILLIS = 1100;
 	private static final SecureRandom RANDOM = new SecureRandom();
 	private static final List<String> PIECES = List.of("PAWN", "KNIGHT", "BISHOP", "ROOK", "QUEEN", "KING");
 
 	public MemoryState newGame() {
 		List<String> cards = new ArrayList<>();
-		for (String piece : PIECES) {
-			cards.add(piece);
-			cards.add(piece);
+		for (String color : List.of("WHITE", "BLACK")) {
+			for (String piece : PIECES) {
+				cards.add(color + "_" + piece);
+				cards.add(color + "_" + piece);
+			}
 		}
 		Collections.shuffle(cards, RANDOM);
 		return new MemoryState(cards, 0, "WHITE", List.of(), false, null, null);
 	}
 
 	public TurnResult playTurn(MemoryState state, String side, int firstIndex, int secondIndex) {
+		MemoryState timed = advanceExpiredTurns(state, System.currentTimeMillis());
+		if (timed != state) return new TurnResult(timed, false, false);
 		if (!state.turnSide().equals(side)) {
 			throw new ApiException(HttpStatus.CONFLICT, "NOT_YOUR_MEMORY_TURN",
 					"It is not this player's memory turn.");
@@ -41,7 +47,7 @@ public class MemoryPuzzleService {
 					List.of(firstIndex),
 					false,
 					firstIndex,
-					state.lastFlipAt());
+					state.lastFlipAt(), state.turnExpiresAt());
 			return new TurnResult(nextState, false, false);
 		}
 
@@ -76,7 +82,7 @@ public class MemoryPuzzleService {
 				List.of(resolvedFirstIndex, resolvedSecondIndex),
 				matched,
 				null,
-				System.currentTimeMillis());
+				System.currentTimeMillis(), System.currentTimeMillis() + REVEAL_MILLIS + TURN_MILLIS);
 		return new TurnResult(nextState, matched, allMatched(nextState));
 	}
 
@@ -86,6 +92,8 @@ public class MemoryPuzzleService {
 		builder.append("\"lastMatched\":").append(state.lastMatched()).append(',');
 		builder.append("\"lastFlipped\":").append(indexArray(state.lastFlipped())).append(',');
 		builder.append("\"lastFlipAt\":").append(state.lastFlipAt()).append(',');
+		builder.append("\"turnExpiresAt\":").append(state.turnExpiresAt()).append(',');
+		builder.append("\"columns\":6,\"rows\":4,");
 		builder.append("\"pendingFirstIndex\":");
 		if (state.pendingFirstIndex() == null) {
 			builder.append("null");
@@ -94,13 +102,14 @@ public class MemoryPuzzleService {
 		}
 		builder.append(',');
 		builder.append("\"cards\":[");
-		for (int i = 0; i < CARD_COUNT; i++) {
+		for (int i = 0; i < state.cards().size(); i++) {
 			if (i > 0) {
 				builder.append(',');
 			}
 			boolean matched = isMatched(state, i);
 			boolean revealed = matched ||
-					(state.pendingFirstIndex() != null && state.pendingFirstIndex() == i);
+					(state.pendingFirstIndex() != null && state.pendingFirstIndex() == i) ||
+					(state.lastFlipAt() != null && System.currentTimeMillis() - state.lastFlipAt() < REVEAL_MILLIS && state.lastFlipped().contains(i));
 			builder.append("{\"index\":").append(i)
 					.append(",\"matched\":").append(matched)
 					.append(",\"revealed\":").append(revealed)
@@ -117,7 +126,7 @@ public class MemoryPuzzleService {
 	}
 
 	public boolean allMatched(MemoryState state) {
-		return state.matchedMask() == ((1 << CARD_COUNT) - 1);
+		return state.matchedMask() == ((1 << state.cards().size()) - 1);
 	}
 
 	public int pairCount() {
@@ -133,6 +142,7 @@ public class MemoryPuzzleService {
 
 	private void validatePlayableCard(MemoryState state, int index) {
 		validateIndex(index);
+		if (index >= state.cards().size()) throw new ApiException(HttpStatus.BAD_REQUEST, "INVALID_MEMORY_CARD", "Memory card index is out of range.");
 		if (isMatched(state, index)) {
 			throw new ApiException(HttpStatus.CONFLICT, "MEMORY_CARD_ALREADY_MATCHED",
 					"One of these cards has already been matched.");
@@ -161,7 +171,25 @@ public class MemoryPuzzleService {
 			List<Integer> lastFlipped,
 			boolean lastMatched,
 			Integer pendingFirstIndex,
-			Long lastFlipAt) {
+			Long lastFlipAt,
+			Long turnExpiresAt) {
+		public MemoryState(List<String> cards, int matchedMask, String turnSide, List<Integer> lastFlipped,
+				boolean lastMatched, Integer pendingFirstIndex, Long lastFlipAt) {
+			this(cards, matchedMask, turnSide, lastFlipped, lastMatched, pendingFirstIndex, lastFlipAt,
+					System.currentTimeMillis() + TURN_MILLIS);
+		}
+	}
+
+	public MemoryState advanceExpiredTurns(MemoryState state, long now) {
+		if (allMatched(state)) return state;
+		if (state.turnExpiresAt() == null) return new MemoryState(state.cards(), state.matchedMask(),
+				state.turnSide(), state.lastFlipped(), state.lastMatched(), state.pendingFirstIndex(), state.lastFlipAt(), now + TURN_MILLIS);
+		if (now < state.turnExpiresAt()) return state;
+		// Advance every elapsed turn, even if both clients stopped polling.
+		long elapsed = (now - state.turnExpiresAt()) / TURN_MILLIS + 1;
+		String side = elapsed % 2 == 0 ? state.turnSide() : ("WHITE".equals(state.turnSide()) ? "BLACK" : "WHITE");
+		return new MemoryState(state.cards(), state.matchedMask(), side, List.of(), false, null, null,
+				state.turnExpiresAt() + elapsed * TURN_MILLIS);
 	}
 
 	public record TurnResult(

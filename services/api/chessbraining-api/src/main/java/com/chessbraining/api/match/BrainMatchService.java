@@ -87,10 +87,16 @@ public class BrainMatchService {
 		return toResponse(repository.save(match));
 	}
 
-	@Transactional(readOnly = true)
+	@Transactional
 	public BrainMatchResponse get(String matchId) {
-		return toResponse(repository.findById(matchId)
-				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BRAIN_MATCH_NOT_FOUND", "Brain match not found.")));
+		BrainMatchEntity match = repository.findByIdForUpdate(matchId)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BRAIN_MATCH_NOT_FOUND", "Brain match not found."));
+		if (ACTIVE.equals(match.getStatus()) && BrainRoundPuzzleType.MEMORY.name().equals(match.getPuzzleType())) {
+			var state = memoryPuzzleService.advanceExpiredTurns(parseMemoryState(match.getPuzzleAnswers()), System.currentTimeMillis());
+			match.setPuzzleAnswers(writeMemoryState(state));
+			match.setPuzzleExpressions(writePublicMemoryBoard(state));
+		}
+		return toResponse(match);
 	}
 
 	@Transactional
@@ -104,6 +110,7 @@ public class BrainMatchService {
 		if (answered(side, match)) {
 			return toResponse(match);
 		}
+		if (isExpired(match) && !request.isFinal()) return toResponse(match);
 		if (request == null || request.answers() == null) {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "ANSWERS_REQUIRED", "Answers are required.");
 		}
@@ -120,8 +127,8 @@ public class BrainMatchService {
 				correct++;
 			}
 		}
-		setScore(match, side, correct);
-		setAnsweredMask(match, side, allMask(match));
+		setScore(match, side, Math.max(score(match, side), correct));
+		if (request.isFinal()) setAnsweredMask(match, side, allMask(match));
 		if (bothAnswered(match) || isSubmissionWindowClosed(match)) {
 			return complete(match);
 		}
@@ -416,7 +423,8 @@ public class BrainMatchService {
 				match.getRematchMatchId(),
 				match.getStartedAt(),
 				match.getExpiresAt(),
-				match.getCompletedAt());
+				match.getCompletedAt(),
+				BrainRoundPuzzleType.MENTAL_MATH.name().equals(match.getPuzzleType()) ? parseAnswers(match.getPuzzleAnswers()) : List.of());
 	}
 
 	private int nextUnanswered(int mask, int total) {
