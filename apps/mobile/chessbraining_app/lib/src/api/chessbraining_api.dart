@@ -18,6 +18,16 @@ class ChessbrainingApi {
 
   final String baseUrl;
   final http.Client _client;
+  Future<Map<String, dynamic>> sendPieceSwitch(
+      String path, Map<String, dynamic> body) async {
+    final response = await _client
+        .post(_uri(path),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(body))
+        .timeout(const Duration(seconds: 4));
+    return _decodeResponse(response) as Map<String, dynamic>;
+  }
+
   static const _requestTimeout = Duration(seconds: 75);
 
   ChessbrainingApi copyWithBaseUrl(String value) {

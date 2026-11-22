@@ -19,6 +19,7 @@ import {
   Settings2,
   Shield,
   Sparkles,
+  Shuffle,
   Swords,
   Trophy,
   User,
@@ -109,6 +110,10 @@ function App() {
   matchRef.current = match;
   const arenaRef = useRef(arena);
   arenaRef.current = arena;
+  const roundRef = useRef(round);
+  roundRef.current = round;
+  const gameVisibleRef = useRef(gameVisible);
+  gameVisibleRef.current = gameVisible;
   const resultSeen = useRef("");
   const arenaRevision = useRef(0);
   const roundRevision = useRef(0);
@@ -322,6 +327,12 @@ function App() {
     let polling = false;
     const timer = setInterval(async () => {
       if (polling) return;
+      if (
+        gameVisibleRef.current &&
+        arenaRef.current?.puzzleType === "PIECE_SWITCH" &&
+        arenaRef.current?.status === "ACTIVE"
+      )
+        return;
       polling = true;
       const revision = arenaRevision.current;
       try {
@@ -394,6 +405,11 @@ function App() {
     let running = false;
     const t = setInterval(async () => {
       if (running) return;
+      if (
+        gameVisibleRef.current &&
+        roundRef.current?.puzzleType === "PIECE_SWITCH"
+      )
+        return;
       running = true;
       const revision = roundRevision.current;
       try {
@@ -1013,7 +1029,7 @@ function App() {
               <span className="eyebrow green">A BATTLE OF QUICK THINKING</span>
               <h1>The brain arena.</h1>
               <p className="muted">
-                Three ways to challenge a friend. No chessboard required.
+                Four ways to challenge a friend. No chessboard required.
               </p>
               <div className="mode-list">
                 {[
@@ -1038,8 +1054,14 @@ function App() {
                   {
                     id: "MEMORY",
                     name: "Memory match",
-                    text: "Six pairs. One sharp memory.",
+                    text: "Twelve pairs. One sharp memory.",
                     icon: Brain,
+                  },
+                  {
+                    id: "PIECE_SWITCH",
+                    name: "Piece Switch",
+                    text: "Color. Piece. Count. Keep up with the rule.",
+                    icon: Shuffle,
                   },
                 ].map((m) => (
                   <button
@@ -1306,6 +1328,11 @@ function App() {
                     {playingRound && brainId && (
                       <BrainGame
                         key={brainId}
+                        pieceSwitchConnection={{
+                          basePath: `/brain-matches/${arena.matchId}`,
+                          playerId: guest?.playerId || "",
+                          onState: adoptArena,
+                        }}
                         round={playingRound}
                         side={arenaMe?.side || "WHITE"}
                         onError={setError}
@@ -1368,8 +1395,13 @@ function App() {
                       {arena.black?.playerName || "Waiting for a friend"}
                     </p>
                     <p className="muted">
-                      The highest score wins. In memory match, matching a pair
-                      gives you another turn.
+                      {arena.puzzleType === "PIECE_SWITCH"
+                        ? "Follow the changing rule: color, piece, or count. Correct +1, wrong −1. Most points in 45 seconds wins."
+                        : arena.puzzleType === "MEMORY"
+                          ? "Find twelve matching pairs. A match earns a point and another turn. You have eight seconds per turn."
+                          : arena.puzzleType === "DOT_CONNECT"
+                            ? "Trace each path without lifting. The most completed puzzles wins."
+                            : "Answer each question as quickly as you can. The highest score when time runs out wins."}
                     </p>
                   </aside>
                 </div>
@@ -1458,6 +1490,19 @@ function App() {
                       ) : playingRound && brainId ? (
                         <BrainGame
                           key={brainId}
+                          pieceSwitchConnection={{
+                            basePath: `/matches/${match.matchId}/brain-rounds/current`,
+                            playerId: guest?.playerId || "",
+                            onState: async (next) => {
+                              if (next.status === "COMPLETED")
+                                adopt(
+                                  await request<Match>(
+                                    `/matches/${match.matchId}`,
+                                  ),
+                                );
+                              else adoptRound(next);
+                            },
+                          }}
                           round={playingRound}
                           side={mySide}
                           onError={setError}
@@ -1823,7 +1868,7 @@ function App() {
                   {
                     [
                       "Play classic chess with the usual legal moves. Checkmate wins. Create a match, invite a friend, or play the computer.",
-                      "After every five moves each, the clocks pause for a brain battle: mental math, connect the dots, or memory match.",
+                      "After every five moves each, the clocks pause for a brain battle: mental math, connect the dots, memory match, or Piece Switch. In Piece Switch, match the card’s color, piece, or count as the rule changes. Correct +1, wrong −1; most points in 45 seconds wins.",
                       "Win a brain round for 2 brain points, or earn 1 each for a tie. Spend points on more time, a double move, or a revived pawn.",
                     ][ruleSlide]
                   }

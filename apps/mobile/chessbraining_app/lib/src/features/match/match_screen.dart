@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import '../../models/match_models.dart';
 import '../../services/sound_service.dart';
 import 'brain_round_overlay.dart';
+import 'piece_switch_game.dart';
 import 'chess_board.dart';
 import 'dot_connect_puzzle.dart';
 import 'fen.dart';
@@ -1129,7 +1130,7 @@ Future<void> _showRulesSheet(BuildContext context) {
                       icon: Icons.psychology_alt,
                       title: 'Win the brain round',
                       body:
-                          'A random challenge appears: math, dot connect, or memory. Score fast while the board is paused.',
+                          'A random challenge appears: math, dot connect, memory, or Piece Switch. Score fast while the board is paused.',
                       footer: 'The better brain score earns Brain Points.',
                     ),
                     _RuleCarouselCard(
@@ -1331,6 +1332,7 @@ class _BrainArenaLobby extends StatelessWidget {
       ('MENTAL_MATH', 'Math', Icons.calculate),
       ('DOT_CONNECT', 'Dot', Icons.route),
       ('MEMORY', 'Memory', Icons.style),
+      ('PIECE_SWITCH', 'Piece Switch', Icons.shuffle),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1484,7 +1486,9 @@ class _BrainArenaGameState extends State<_BrainArenaGame> {
     ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final current = widget.controller.brainMatch;
-      if (current?.isActive == true && _secondsLeft(current!) <= 0) {
+      if (current?.isActive == true &&
+          current?.isPieceSwitch != true &&
+          _secondsLeft(current!) <= 0) {
         unawaited(widget.controller.completeBrainArena());
       }
       setState(() {});
@@ -1504,16 +1508,27 @@ class _BrainArenaGameState extends State<_BrainArenaGame> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _BrainArenaHeader(
-          controller: widget.controller,
-          match: match,
-          secondsLeft: _secondsLeft(match),
-        ),
-        const SizedBox(height: 18),
+        if (!match.isPieceSwitch || !match.isActive) ...[
+          _BrainArenaHeader(
+            controller: widget.controller,
+            match: match,
+            secondsLeft: _secondsLeft(match),
+          ),
+          const SizedBox(height: 18),
+        ],
         if (match.isWaiting)
           _BrainArenaWaiting(match: match, controller: widget.controller)
         else if (match.isCompleted)
           _BrainArenaResult(match: match, controller: widget.controller)
+        else if (match.isPieceSwitch && match.pieceSwitch != null)
+          PieceSwitchGame(
+              key: ValueKey(match.matchId),
+              controller: widget.controller,
+              roundId: match.matchId,
+              puzzles: match.puzzles,
+              view: match.pieceSwitch!,
+              side: me?.side ?? 'WHITE',
+              arena: true)
         else if (match.isMathPuzzle)
           _BrainArenaMathGame(
             key: ValueKey(match.matchId),
@@ -1575,6 +1590,7 @@ class _BrainArenaHeader extends StatelessWidget {
     final title = switch (match.puzzleType) {
       'DOT_CONNECT' => 'Dot Connect',
       'MEMORY' => 'Memory Match',
+      'PIECE_SWITCH' => 'Piece Switch',
       'MENTAL_MATH' => 'Mental Math',
       _ => 'Brain Match',
     };
@@ -1792,7 +1808,8 @@ class _BrainArenaMathGame extends StatefulWidget {
   final BrainMatchModel match;
   final String? playerSide;
   final int secondsLeft;
-  final Future<void> Function(Map<int, int> answers, {bool finalSubmission}) onSubmit;
+  final Future<void> Function(Map<int, int> answers, {bool finalSubmission})
+      onSubmit;
   final Future<void> Function() onComplete;
 
   @override
@@ -1808,11 +1825,21 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
   void initState() {
     super.initState();
     progressTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (!_inputEnabled || progressPending || answersByQuestion.length <= progressCount) return;
+      if (!_inputEnabled ||
+          progressPending ||
+          answersByQuestion.length <= progressCount) {
+        return;
+      }
       progressPending = true;
       final count = answersByQuestion.length;
-      unawaited(widget.onSubmit(Map<int,int>.from(answersByQuestion), finalSubmission: false)
-        .then<void>((_) { progressCount = count; }).catchError((Object _) {}).whenComplete(() => progressPending = false));
+      unawaited(widget
+          .onSubmit(Map<int, int>.from(answersByQuestion),
+              finalSubmission: false)
+          .then<void>((_) {
+            progressCount = count;
+          })
+          .catchError((Object _) {})
+          .whenComplete(() => progressPending = false));
     });
   }
 
@@ -1821,6 +1848,7 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
     progressTimer?.cancel();
     super.dispose();
   }
+
   final Map<int, int> answersByQuestion = {};
   String answer = '';
   int questionIndex = 0;
@@ -1837,7 +1865,11 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
   }
 
   bool get _inputEnabled {
-    return !finished && !submitting && !scoreSubmitted && !_serverSubmitted && widget.secondsLeft > 0;
+    return !finished &&
+        !submitting &&
+        !scoreSubmitted &&
+        !_serverSubmitted &&
+        widget.secondsLeft > 0;
   }
 
   @override
@@ -1846,14 +1878,20 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
     if (_serverSubmitted && !scoreSubmitted) {
       scoreSubmitted = true;
       finished = true;
-      score = widget.playerSide == 'WHITE' ? widget.match.whiteScore : widget.match.blackScore;
+      score = widget.playerSide == 'WHITE'
+          ? widget.match.whiteScore
+          : widget.match.blackScore;
       questionIndex = widget.match.totalQuestions;
       answer = '';
     }
-    if ((widget.secondsLeft <= 0 || finished) && !scoreSubmitted && !submitting &&
+    if ((widget.secondsLeft <= 0 || finished) &&
+        !scoreSubmitted &&
+        !submitting &&
         (retryAfter == null || DateTime.now().isAfter(retryAfter!))) {
       unawaited(_submitAnswers(completeAfterSubmit: true));
-    } else if (widget.secondsLeft <= 0 && scoreSubmitted && widget.match.isActive) {
+    } else if (widget.secondsLeft <= 0 &&
+        scoreSubmitted &&
+        widget.match.isActive) {
       unawaited(widget.onComplete());
     }
   }
@@ -1861,7 +1899,8 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
   @override
   Widget build(BuildContext context) {
     final puzzles = widget.match.puzzles;
-    final safeIndex = puzzles.isEmpty ? 0 : math.min(questionIndex, puzzles.length - 1);
+    final safeIndex =
+        puzzles.isEmpty ? 0 : math.min(questionIndex, puzzles.length - 1);
     final currentPuzzle = puzzles.isEmpty ? 'Loading...' : puzzles[safeIndex];
     final answeredCount = answersByQuestion.length;
     final title = scoreSubmitted
@@ -1887,7 +1926,9 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
               padding: EdgeInsets.all(compact ? 18 : 26),
               decoration: BoxDecoration(
                 color: AppColors.surfaceLow,
-                border: Border.all(color: AppColors.secondary.withValues(alpha: 0.5), width: 1.4),
+                border: Border.all(
+                    color: AppColors.secondary.withValues(alpha: 0.5),
+                    width: 1.4),
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: [
                   BoxShadow(
@@ -1943,7 +1984,9 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    scoreSubmitted ? 'Submitted automatically' : '$answeredCount answered locally',
+                    scoreSubmitted
+                        ? 'Submitted automatically'
+                        : '$answeredCount answered locally',
                     style: const TextStyle(
                       color: AppColors.muted,
                       fontWeight: FontWeight.w800,
@@ -2030,7 +2073,9 @@ class _BrainArenaMathGameState extends State<_BrainArenaMathGame> {
       scoreSubmitted = true;
       submitting = false;
       questionIndex = widget.match.totalQuestions;
-      score = widget.playerSide == 'WHITE' ? widget.match.whiteScore : widget.match.blackScore;
+      score = widget.playerSide == 'WHITE'
+          ? widget.match.whiteScore
+          : widget.match.blackScore;
     });
     if (completeAfterSubmit) {
       await widget.onComplete();
@@ -2164,6 +2209,7 @@ class _BrainArenaKeyButton extends StatelessWidget {
     );
   }
 }
+
 class _BrainArenaMemoryGame extends StatefulWidget {
   const _BrainArenaMemoryGame({
     required this.match,
@@ -2242,7 +2288,11 @@ class _BrainArenaMemoryGameState extends State<_BrainArenaMemoryGame> {
               card: card,
               selected: selected.contains(card.index),
               serverRevealVisible: true,
-              enabled: myTurn && !widget.loading && !card.matched && board.turnSeconds > 0 && !board.showingPair,
+              enabled: myTurn &&
+                  !widget.loading &&
+                  !card.matched &&
+                  board.turnSeconds > 0 &&
+                  !board.showingPair,
               onTap: () => _select(card.index),
             );
           },
@@ -2287,7 +2337,8 @@ class _ArenaMemoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final faceUp = card.matched || selected || (serverRevealVisible && card.revealed);
+    final faceUp =
+        card.matched || selected || (serverRevealVisible && card.revealed);
     return InkWell(
       onTap: enabled ? onTap : null,
       borderRadius: BorderRadius.circular(16),

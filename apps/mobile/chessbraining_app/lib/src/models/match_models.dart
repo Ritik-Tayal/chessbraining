@@ -344,6 +344,7 @@ class BrainRoundResultModel {
 
 class BrainRoundModel {
   const BrainRoundModel({
+    this.pieceSwitch,
     this.solutions = const [],
     required this.roundId,
     required this.roundNumber,
@@ -362,6 +363,8 @@ class BrainRoundModel {
   });
 
   final String roundId;
+  final Map<String, dynamic>? pieceSwitch;
+  bool get isPieceSwitch => puzzleType == 'PIECE_SWITCH';
   final List<int> solutions;
   final int roundNumber;
   final String status;
@@ -400,7 +403,10 @@ class BrainRoundModel {
 
   factory BrainRoundModel.fromJson(Map<String, dynamic> json) {
     return BrainRoundModel(
-      solutions: (json['solutions'] as List<dynamic>? ?? const []).map((v) => (v as num).toInt()).toList(),
+      pieceSwitch: json['pieceSwitch'] as Map<String, dynamic>?,
+      solutions: (json['solutions'] as List<dynamic>? ?? const [])
+          .map((v) => (v as num).toInt())
+          .toList(),
       roundId: json['roundId'] as String,
       roundNumber: json['roundNumber'] as int,
       status: json['status'] as String,
@@ -425,6 +431,7 @@ class BrainRoundModel {
 
 class BrainMatchModel {
   const BrainMatchModel({
+    this.pieceSwitch,
     this.solutions = const [],
     required this.matchId,
     required this.inviteCode,
@@ -448,6 +455,8 @@ class BrainMatchModel {
   });
 
   final String matchId;
+  final Map<String, dynamic>? pieceSwitch;
+  bool get isPieceSwitch => puzzleType == 'PIECE_SWITCH';
   final List<int> solutions;
   final String inviteCode;
   final String status;
@@ -503,7 +512,10 @@ class BrainMatchModel {
 
   factory BrainMatchModel.fromJson(Map<String, dynamic> json) {
     return BrainMatchModel(
-      solutions: (json['solutions'] as List<dynamic>? ?? const []).map((v) => (v as num).toInt()).toList(),
+      pieceSwitch: json['pieceSwitch'] as Map<String, dynamic>?,
+      solutions: (json['solutions'] as List<dynamic>? ?? const [])
+          .map((v) => (v as num).toInt())
+          .toList(),
       matchId: json['matchId'] as String,
       inviteCode: json['inviteCode'] as String,
       status: json['status'] as String,
@@ -551,8 +563,16 @@ class MemoryBoardModel {
   final String turnSide;
   final int? turnExpiresAt;
   final int? lastFlipAt;
-  bool get showingPair => pendingFirstIndex == null && lastFlipAt != null && DateTime.now().millisecondsSinceEpoch - lastFlipAt! < 1100;
-  int get turnSeconds => (((turnExpiresAt ?? DateTime.now().millisecondsSinceEpoch + 8000) - DateTime.now().millisecondsSinceEpoch + 999) ~/ 1000).clamp(0, 8);
+  bool get showingPair =>
+      pendingFirstIndex == null &&
+      lastFlipAt != null &&
+      DateTime.now().millisecondsSinceEpoch - lastFlipAt! < 1100;
+  int get turnSeconds =>
+      (((turnExpiresAt ?? DateTime.now().millisecondsSinceEpoch + 8000) -
+                  DateTime.now().millisecondsSinceEpoch +
+                  999) ~/
+              1000)
+          .clamp(0, 8);
   final bool lastMatched;
   final List<int> lastFlipped;
   final int? pendingFirstIndex;

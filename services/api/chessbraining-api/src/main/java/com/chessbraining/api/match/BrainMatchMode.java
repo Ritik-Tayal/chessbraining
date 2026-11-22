@@ -4,5 +4,6 @@ public enum BrainMatchMode {
 	RANDOM,
 	MENTAL_MATH,
 	DOT_CONNECT,
-	MEMORY
+	MEMORY,
+	PIECE_SWITCH
 }

@@ -15,6 +15,87 @@ import static org.junit.jupiter.api.Assertions.*;
 class BrainArenaRegressionTests {
     @Autowired BrainMatchService service;
     @Autowired BrainMatchRepository repository;
+    @Autowired MatchService matches;
+    @Autowired MatchRepository chessMatches;
+    @Autowired BrainRoundRepository roundRepository;
+    @Autowired BrainRoundService rounds;
+
+    @Test void pieceSwitchBotPlaysGraduallyAndCompletionResumesChessWithoutDuplicateRewards() {
+        var mapper = new tools.jackson.databind.ObjectMapper();
+        var created = matches.createMatch(new CreateMatchRequest("switch-human", "Human", 600, 1));
+        var joined = matches.joinMatch(new JoinMatchRequest(created.inviteCode(), "switch-bot", "Bot"));
+        var id = joined.matchId();
+        matches.submitMove(id,new SubmitMoveRequest("switch-human","e2","e4",null));
+        matches.submitMove(id,new SubmitMoveRequest("switch-bot","e7","e5",null));
+        var round = roundRepository.findFirstByMatchIdAndStatusOrderByStartedAtDesc(id,"ACTIVE").orElseThrow();
+        round.setPuzzleType("PIECE_SWITCH");
+        round.setTotalQuestions(PieceSwitchEngine.QUESTION_COUNT);
+        round.setPuzzleExpressions(PieceSwitchEngine.writeQuestions(mapper,PieceSwitchEngine.questions()));
+        round.setPuzzleAnswers(mapper.writeValueAsString(PieceSwitchEngine.initial(System.currentTimeMillis())));
+        roundRepository.save(round);
+        var botReady = rounds.pieceSwitchBot(id,round.getId(),joined.black());
+        assertTrue(botReady.pieceSwitch().blackReady());
+        assertEquals(0,botReady.pieceSwitch().blackAcknowledged());
+        rounds.pieceSwitch(id,new PieceSwitchEngine.Submission("switch-human",round.getId(),List.of(),false),true);
+        round = roundRepository.findById(round.getId()).orElseThrow();
+        var state = PieceSwitchEngine.read(mapper,round.getPuzzleAnswers());
+        round.setPuzzleAnswers(mapper.writeValueAsString(new PieceSwitchEngine.State(state.readyDeadline(),System.currentTimeMillis()-10_000,state.revision(),state.white(),state.black())));
+        roundRepository.save(round);
+        var progressing = rounds.pieceSwitchBot(id,round.getId(),joined.black());
+        assertTrue(progressing.pieceSwitch().blackAcknowledged() > 0);
+        assertTrue(progressing.pieceSwitch().blackAcknowledged() < 10);
+        assertEquals(MatchPhase.BRAIN_ROUND,matches.getMatch(id).phase());
+        round = roundRepository.findById(round.getId()).orElseThrow();
+        state = PieceSwitchEngine.read(mapper,round.getPuzzleAnswers());
+        round.setPuzzleAnswers(mapper.writeValueAsString(new PieceSwitchEngine.State(state.readyDeadline(),System.currentTimeMillis()-45_100,state.revision(),state.white(),state.black())));
+        roundRepository.save(round);
+        rounds.pieceSwitch(id,new PieceSwitchEngine.Submission("switch-human",round.getId(),List.of(),true),false);
+        var finished = rounds.pieceSwitchBot(id,round.getId(),joined.black());
+        assertEquals("COMPLETED",finished.status());
+        var resumed = matches.getMatch(id);
+        assertEquals(MatchPhase.CHESS_PHASE,resumed.phase());
+        assertEquals(2,resumed.white().brainPoints()+resumed.black().brainPoints());
+        rounds.pieceSwitch(id,new PieceSwitchEngine.Submission("switch-human",round.getId(),List.of(),true),false);
+        var repeated = matches.getMatch(id);
+        assertEquals(2,repeated.white().brainPoints()+repeated.black().brainPoints());
+    }
+
+    @Test void pieceSwitchScoresBothPlayersAndRejectsOutsidersAndStaleRounds() {
+        var mapper = new tools.jackson.databind.ObjectMapper();
+        var created = service.create(new CreateBrainMatchRequest("switch-white", "White", BrainMatchMode.PIECE_SWITCH));
+        var joined = service.join(new JoinBrainMatchRequest(created.inviteCode(), "switch-black", "Black"));
+        var id = joined.matchId();
+        assertNotNull(joined.pieceSwitch());
+        assertEquals(243, joined.totalQuestions());
+        var empty = new PieceSwitchEngine.Submission("switch-white", id, List.of(), false);
+        service.pieceSwitch(id, empty, true);
+        service.pieceSwitch(id, new PieceSwitchEngine.Submission("switch-black", id, List.of(), false), true);
+        assertThrows(ApiException.class, () -> service.pieceSwitch(id, new PieceSwitchEngine.Submission("outsider", id, List.of(), false), false));
+        assertThrows(ApiException.class, () -> service.pieceSwitch(id, new PieceSwitchEngine.Submission("switch-white", "old-round", List.of(), false), false));
+        var entity = repository.findById(id).orElseThrow();
+        var state = PieceSwitchEngine.read(mapper, entity.getPuzzleAnswers());
+        entity.setPuzzleAnswers(mapper.writeValueAsString(new PieceSwitchEngine.State(state.readyDeadline(), System.currentTimeMillis() - 1000, state.revision(), state.white(), state.black())));
+        repository.save(entity);
+        var questions = PieceSwitchEngine.readQuestions(mapper, entity.getPuzzleExpressions());
+        var white = List.of(new PieceSwitchEngine.Answer(0,questions.get(0).solution(),100), new PieceSwitchEngine.Answer(1,questions.get(1).solution(),400));
+        var black = List.of(new PieceSwitchEngine.Answer(0,questions.get(0).solution(),100));
+        service.pieceSwitch(id,new PieceSwitchEngine.Submission("switch-white",id,white,false),false);
+        service.pieceSwitch(id,new PieceSwitchEngine.Submission("switch-black",id,black,false),false);
+        assertEquals(2, service.get(id).whiteScore());
+        assertEquals(1, service.get(id).blackScore());
+        service.pieceSwitch(id,new PieceSwitchEngine.Submission("switch-white",id,white,false),false);
+        assertEquals(2, service.get(id).whiteScore());
+        entity = repository.findById(id).orElseThrow();
+        state = PieceSwitchEngine.read(mapper, entity.getPuzzleAnswers());
+        entity.setPuzzleAnswers(mapper.writeValueAsString(new PieceSwitchEngine.State(state.readyDeadline(), System.currentTimeMillis() - 45_100, state.revision(), state.white(), state.black())));
+        repository.save(entity);
+        service.pieceSwitch(id,new PieceSwitchEngine.Submission("switch-white",id,white,true),false);
+        var finished = service.pieceSwitch(id,new PieceSwitchEngine.Submission("switch-black",id,black,true),false);
+        assertEquals("COMPLETED", finished.status());
+        assertEquals("switch-white", finished.winnerPlayerId());
+        assertEquals(1, finished.blackScore());
+        assertEquals("COMPLETED", service.pieceSwitch(id,new PieceSwitchEngine.Submission("switch-black",id,black,true),false).status());
+    }
 
     private String createMath() {
         var created = service.create(new CreateBrainMatchRequest("arena-white", "White", BrainMatchMode.MENTAL_MATH));
@@ -121,8 +202,12 @@ class BrainArenaRegressionTests {
                 current = finishAndRematch(current);
                 assertEquals(mode, current.mode());
                 assertEquals(mode.name(), current.puzzleType());
-                assertEquals(mode == BrainMatchMode.MEMORY ? 120 : 30,
-                        java.time.Duration.between(current.startedAt(), current.expiresAt()).toSeconds());
+                if (mode == BrainMatchMode.PIECE_SWITCH) {
+                    assertEquals(45_000, current.expiresAt().toEpochMilli() - current.pieceSwitch().startsAt());
+                } else {
+                    assertEquals(mode == BrainMatchMode.MEMORY ? 120 : 30,
+                            java.time.Duration.between(current.startedAt(), current.expiresAt()).toSeconds());
+                }
                 assertEquals(0, current.whiteScore());
                 assertEquals(0, current.blackScore());
             }

@@ -48,8 +48,8 @@ public class BrainRoundService {
 
 	@Transactional
 	public BrainRoundResponse getCurrentRound(String matchId) {
-		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
+		BrainRoundEntity round = loadActiveRound(matchId);
 		requireActiveBrainRoundMatch(match);
 		if (isSettlementReady(round)) {
 			return completeActiveRound(round, match);
@@ -219,8 +219,8 @@ public class BrainRoundService {
 
 	@Transactional
 	public BrainRoundResponse completeRound(String matchId) {
-		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
+		BrainRoundEntity round = loadActiveRound(matchId);
 		requireActiveBrainRoundMatch(match);
 		if (!isSettlementReady(round) && !isRoundFullySolved(round)) {
 			throw new ApiException(HttpStatus.CONFLICT, "BRAIN_ROUND_STILL_ACTIVE",
@@ -339,6 +339,7 @@ public class BrainRoundService {
 	}
 
 	private boolean isSettlementReady(BrainRoundEntity round) {
+		if ("PIECE_SWITCH".equals(round.getPuzzleType())) return PieceSwitchEngine.settled(PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers()), System.currentTimeMillis());
 		int grace = BrainRoundPuzzleType.MENTAL_MATH.name().equals(round.getPuzzleType()) ? 3 : 0;
 		return bothPlayersAnsweredAll(round) || !Instant.now().isBefore(round.getExpiresAt().plusSeconds(grace));
 	}
@@ -417,6 +418,7 @@ public class BrainRoundService {
 	}
 
 	private boolean bothPlayersAnsweredAll(BrainRoundEntity round) {
+		if ("PIECE_SWITCH".equals(round.getPuzzleType())) return PieceSwitchEngine.settled(PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers()), System.currentTimeMillis());
 		int allAnsweredMask = allAnsweredMask(round);
 		return (round.getWhiteAnsweredMask() & allAnsweredMask) == allAnsweredMask &&
 				(round.getBlackAnsweredMask() & allAnsweredMask) == allAnsweredMask;
@@ -491,13 +493,60 @@ public class BrainRoundService {
 				round.getTotalQuestions(),
 				round.getWhiteCorrectCount(),
 				round.getBlackCorrectCount(),
-				nextUnansweredIndex(round.getWhiteAnsweredMask(), round.getTotalQuestions()),
-				nextUnansweredIndex(round.getBlackAnsweredMask(), round.getTotalQuestions()),
+				"PIECE_SWITCH".equals(round.getPuzzleType()) ? PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers()).white().answers().size() : nextUnansweredIndex(round.getWhiteAnsweredMask(), round.getTotalQuestions()),
+				"PIECE_SWITCH".equals(round.getPuzzleType()) ? PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers()).black().answers().size() : nextUnansweredIndex(round.getBlackAnsweredMask(), round.getTotalQuestions()),
 				round.getWinnerPlayerId(),
 				round.getStartedAt(),
 				round.getExpiresAt(),
 				round.getCompletedAt(),
-				BrainRoundPuzzleType.MENTAL_MATH.name().equals(round.getPuzzleType()) ? parseAnswers(round.getPuzzleAnswers()) : List.of());
+				BrainRoundPuzzleType.MENTAL_MATH.name().equals(round.getPuzzleType()) ? parseAnswers(round.getPuzzleAnswers()) : List.of(),
+				"PIECE_SWITCH".equals(round.getPuzzleType()) ? PieceSwitchEngine.view(PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers())) : null);
+	}
+
+	@Transactional
+	public BrainRoundResponse pieceSwitch(String matchId, PieceSwitchEngine.Submission request, boolean ready) {
+		MatchEntity match = loadMatchForUpdate(matchId);
+		String side = requirePlayerInMatch(match, request == null ? null : request.playerId());
+		BrainRoundEntity round = request == null || request.roundId() == null ? null : brainRoundRepository.findById(request.roundId()).orElse(null);
+		if (round == null || !matchId.equals(round.getMatchId()) || !"PIECE_SWITCH".equals(round.getPuzzleType()))
+			throw new ApiException(HttpStatus.CONFLICT, "STALE_ROUND", "This answer belongs to another round.");
+		if (BRAIN_ROUND_COMPLETED.equals(round.getStatus())) return toResponse(round, parseExpressions(round.getPuzzleExpressions()));
+		requireActiveBrainRoundMatch(match);
+		var state = PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers());
+		var questions = PieceSwitchEngine.readQuestions(objectMapper, round.getPuzzleExpressions());
+		state = ready ? PieceSwitchEngine.ready(state, side, System.currentTimeMillis())
+				: PieceSwitchEngine.submit(state, side, questions, request, System.currentTimeMillis());
+		round.setPuzzleAnswers(objectMapper.writeValueAsString(state));
+		round.setExpiresAt(Instant.ofEpochMilli(PieceSwitchEngine.end(state)));
+		round.setWhiteCorrectCount(PieceSwitchEngine.score(state, "WHITE", questions));
+		round.setBlackCorrectCount(PieceSwitchEngine.score(state, "BLACK", questions));
+		if (PieceSwitchEngine.settled(state, System.currentTimeMillis())) return completeActiveRound(round, match);
+		brainRoundRepository.save(round);
+		return toResponse(round, parseExpressions(round.getPuzzleExpressions()));
+	}
+
+	@Transactional
+	public BrainRoundResponse pieceSwitchBot(String matchId, String roundId, PlayerResponse bot) {
+		loadMatchForUpdate(matchId);
+		var round = brainRoundRepository.findById(roundId).orElseThrow();
+		var state = PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers());
+		if (!PieceSwitchEngine.player(state, bot.side()).ready())
+			return pieceSwitch(matchId, new PieceSwitchEngine.Submission(bot.playerId(), roundId, List.of(), false), true);
+		long now = System.currentTimeMillis();
+		var questions = PieceSwitchEngine.readQuestions(objectMapper, round.getPuzzleExpressions());
+		var answers = new java.util.ArrayList<>(PieceSwitchEngine.player(state, bot.side()).answers());
+		var difficulty = bot.botDifficulty() == null ? BotDifficulty.NORMAL : bot.botDifficulty();
+		int interval = switch (difficulty) { case EASY -> 3000; case NORMAL -> 2200; case HARD -> 1600; case EXPERT -> 1150; };
+		int accuracy = switch (difficulty) { case EASY -> 65; case NORMAL -> 80; case HARD -> 90; case EXPERT -> 97; };
+		while (answers.size() < questions.size()) {
+			int i = answers.size();
+			long elapsed = (long) (i + 1) * interval + Math.floorMod((roundId + i).hashCode(), 400);
+			if (elapsed >= PieceSwitchEngine.DURATION_MS || elapsed > now - PieceSwitchEngine.start(state)) break;
+			int correct = questions.get(i).solution();
+			int choice = Math.floorMod((roundId + ":accuracy:" + i).hashCode(), 100) < accuracy ? correct : (correct + 1) % 3;
+			answers.add(new PieceSwitchEngine.Answer(i, choice, elapsed));
+		}
+		return pieceSwitch(matchId, new PieceSwitchEngine.Submission(bot.playerId(), roundId, answers, now >= PieceSwitchEngine.end(state)), false);
 	}
 
 	private int nextUnansweredIndex(int answeredMask, int totalQuestions) {

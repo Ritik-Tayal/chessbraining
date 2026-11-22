@@ -23,5 +23,14 @@ public record BrainMatchResponse(
 		Instant startedAt,
 		Instant expiresAt,
 		Instant completedAt,
-		List<Integer> solutions) {
+		List<Integer> solutions,
+		PieceSwitchEngine.View pieceSwitch) {
+	public BrainMatchResponse progress() {
+		return progress(System.currentTimeMillis());
+	}
+	public BrainMatchResponse progress(long receivedAt) {
+		return new BrainMatchResponse(matchId, inviteCode, status, mode, puzzleType, white, black, whiteScore,
+				blackScore, totalQuestions, List.of(), nextWhiteQuestionIndex, nextBlackQuestionIndex,
+				winnerPlayerId, rematchRequestedByPlayerId, rematchMatchId, startedAt, expiresAt, completedAt, List.of(), pieceSwitch == null ? null : pieceSwitch.timed(receivedAt));
+	}
 }
