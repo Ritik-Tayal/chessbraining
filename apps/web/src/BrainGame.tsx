@@ -165,6 +165,12 @@ export function BrainGame({
       )
         return;
       const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('button, a, [role="button"]') &&
+        !game.contains(target)
+      )
+        return;
       // Editable fields keep native selection, replacement and form submission.
       if (
         target instanceof HTMLElement &&

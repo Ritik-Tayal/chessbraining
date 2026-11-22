@@ -382,5 +382,10 @@ test("math supports physical keyboard answers and Enter skips exactly one questi
   await page.keyboard.press("Enter");
   await expect(page.locator(".question span")).toContainText("QUESTION 5 /");
   await expect(page.locator(".round-scores")).toContainText("White 2");
+  await page.getByRole("button", { name: "Your profile", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("textbox", { name: "Display name", exact: true }),
+  ).toBeVisible();
   await context.close();
 });
