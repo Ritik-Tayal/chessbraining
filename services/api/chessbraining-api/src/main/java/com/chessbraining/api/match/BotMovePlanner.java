@@ -34,12 +34,19 @@ public class BotMovePlanner {
         Plan plan = new Plan(find(moves, best.move()), null, null);
         int bestValue = best.scoreCp();
         // Preserve forced mates and avoid expensive variant searches on a nearly exhausted clock.
-        if (bestValue > 90000 || bot.clockMs() < 10000 || difficulty == BotDifficulty.EASY) return plan;
+        if (bestValue > 90000 || bot.clockMs() < 10000) return plan;
 
         boolean nextStartsBrain = match.brainRoundIntervalMoves() > 0 &&
                 (match.plyCount() + 1) % (match.brainRoundIntervalMoves() * 2) == 0;
         boolean activeExtra = bot.extraMoveArmed() || bot.extraMoveActive() ||
                 match.white().extraMoveActive() || (match.black() != null && match.black().extraMoveActive());
+        if (difficulty == BotDifficulty.EASY) {
+            if (!activeExtra && !nextStartsBrain && bot.brainPoints() >= PowerupType.EXTRA_MOVE.cost() &&
+                    !chess.isSideInCheck(match.fen(), bot.side()) &&
+                    allowedMoves(match.fen(), bot.side(), true).contains(plan.move()))
+                return new Plan(plan.move(), PowerupType.EXTRA_MOVE, null);
+            return plan;
+        }
         if (!activeExtra && !nextStartsBrain && bot.brainPoints() >= PowerupType.EXTRA_MOVE.cost() &&
                 !chess.isSideInCheck(match.fen(), bot.side())) {
             var quiet = allowedMoves(match.fen(), bot.side(), true);

@@ -543,12 +543,14 @@ public class BrainRoundService {
 		var difficulty = bot.botDifficulty() == null ? BotDifficulty.NORMAL : bot.botDifficulty();
 		int interval = switch (difficulty) { case EASY -> 3000; case NORMAL -> 2200; case HARD -> 1600; case EXPERT -> 1150; };
 		int accuracy = switch (difficulty) { case EASY -> 65; case NORMAL -> 80; case HARD -> 90; case EXPERT -> 97; };
-		while (answers.size() < questions.size()) {
+		int attempts = (PieceSwitchEngine.DURATION_MS - 400) / interval;
+		int correctTarget = Math.clamp(Math.round(attempts * accuracy / 100.0) + Math.floorMod(roundId.hashCode(), 3) - 1, 1, attempts);
+		while (answers.size() < attempts) {
 			int i = answers.size();
 			long elapsed = (long) (i + 1) * interval + Math.floorMod((roundId + i).hashCode(), 400);
 			if (elapsed >= PieceSwitchEngine.DURATION_MS || elapsed > now - PieceSwitchEngine.start(state)) break;
 			int correct = questions.get(i).solution();
-			int choice = Math.floorMod((roundId + ":accuracy:" + i).hashCode(), 100) < accuracy ? correct : (correct + 1) % 3;
+			int choice = BotBrainPace.correct(i, correctTarget, attempts) ? correct : (correct + 1) % 3;
 			answers.add(new PieceSwitchEngine.Answer(i, choice, elapsed));
 		}
 		return pieceSwitch(matchId, new PieceSwitchEngine.Submission(bot.playerId(), roundId, answers, now >= PieceSwitchEngine.end(state)), false);
