@@ -25,7 +25,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     && useradd --create-home --shell /usr/sbin/nologin appuser
 ENV STOCKFISH_PATH=/opt/stockfish/stockfish-ubuntu-x86-64 \
     STOCKFISH_REQUIRED=true \
-    STOCKFISH_HASH_MB=32
+    STOCKFISH_HASH_MB=16 \
+    MALLOC_ARENA_MAX=2 \
+    JAVA_TOOL_OPTIONS="-Xms48m -Xmx128m -XX:+UseSerialGC -XX:ActiveProcessorCount=2 -XX:ReservedCodeCacheSize=48m -XX:MaxDirectMemorySize=32m -Xss512k -XX:+ExitOnOutOfMemoryError"
 COPY --from=build /workspace/target/*.jar /app/chessbraining-api.jar
 
 USER appuser

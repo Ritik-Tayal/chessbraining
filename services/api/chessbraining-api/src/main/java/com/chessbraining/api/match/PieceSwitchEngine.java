@@ -93,15 +93,20 @@ public final class PieceSwitchEngine {
         }
         for (int i=0; i<p.answers.size(); i++) if (!p.answers.get(i).equals(batch.get(i))) invalid("An accepted answer cannot change.");
         if (p.finished) { if (batch.size() != p.answers.size()) invalid("Your round has finished."); return s; }
+        if (batch.size() == p.answers.size() && !request.finished) return s;
+        // The immutable prefix was already validated; only the appended tail needs timing checks.
         long minimum = 0;
-        for (int i=0; i<batch.size(); i++) {
+        if (!p.answers.isEmpty()) {
+            Answer last = p.answers.getLast();
+            minimum = last.elapsedMs + (last.chosenButton == questions.get(last.questionIndex).solution() ? 150 : 600);
+        }
+        for (int i=p.answers.size(); i<batch.size(); i++) {
             Answer a = batch.get(i);
             if (a == null || a.questionIndex != i || a.chosenButton < 0 || a.chosenButton > 2 || a.elapsedMs < minimum
                     || a.elapsedMs >= DURATION_MS || a.elapsedMs > now - start(s) + 100) invalid("Invalid answer order or timing.");
             minimum = a.elapsedMs + (a.chosenButton == questions.get(i).solution() ? 150 : 600);
         }
         if (request.finished && now < end(s) && batch.size() < questions.size()) invalid("The timer is still running.");
-        if (batch.size() == p.answers.size() && !request.finished) return s;
         return replace(s, side, new PlayerLog(p.ready, request.finished, List.copyOf(batch)));
     }
     public static int score(State s, String side, List<Question> questions) {

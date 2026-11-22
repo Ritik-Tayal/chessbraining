@@ -68,7 +68,10 @@ class BrainArenaRegressionTests {
         assertNotNull(joined.pieceSwitch());
         assertEquals(243, joined.totalQuestions());
         var empty = new PieceSwitchEngine.Submission("switch-white", id, List.of(), false);
-        service.pieceSwitch(id, empty, true);
+        var ready = service.pieceSwitch(id, empty, true);
+        assertTrue(ready.puzzles().isEmpty(), "Progress acknowledgements must not rebuild the question payload");
+        var unchanged = service.pieceSwitch(id, empty, true);
+        assertEquals(ready.pieceSwitch().revision(), unchanged.pieceSwitch().revision());
         service.pieceSwitch(id, new PieceSwitchEngine.Submission("switch-black", id, List.of(), false), true);
         assertThrows(ApiException.class, () -> service.pieceSwitch(id, new PieceSwitchEngine.Submission("outsider", id, List.of(), false), false));
         assertThrows(ApiException.class, () -> service.pieceSwitch(id, new PieceSwitchEngine.Submission("switch-white", "old-round", List.of(), false), false));

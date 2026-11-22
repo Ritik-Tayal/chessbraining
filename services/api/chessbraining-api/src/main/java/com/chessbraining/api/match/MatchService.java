@@ -639,7 +639,7 @@ public class MatchService {
 			return null;
 		}
 		return brainRoundRepository
-				.findFirstByMatchIdAndStatusOrderByRoundNumberDesc(match.getId(), BRAIN_ROUND_COMPLETED)
+				.findTopByMatchIdAndStatusOrderByRoundNumberDesc(match.getId(), BRAIN_ROUND_COMPLETED)
 				.map(round -> new BrainRoundResultResponse(
 						round.getId(),
 						round.getRoundNumber(),

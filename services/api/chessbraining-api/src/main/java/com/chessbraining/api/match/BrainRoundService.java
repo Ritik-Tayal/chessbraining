@@ -66,7 +66,7 @@ public class BrainRoundService {
 	@Transactional(readOnly = true)
 	public BrainRoundResponse getLatestResult(String matchId) {
 		BrainRoundEntity round = brainRoundRepository
-				.findFirstByMatchIdAndStatusOrderByRoundNumberDesc(matchId, BRAIN_ROUND_COMPLETED)
+				.findTopByMatchIdAndStatusOrderByRoundNumberDesc(matchId, BRAIN_ROUND_COMPLETED)
 				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BRAIN_ROUND_RESULT_NOT_FOUND",
 						"No completed brain round found."));
 		List<String> puzzles = parseExpressions(round.getPuzzleExpressions());
@@ -79,8 +79,8 @@ public class BrainRoundService {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "ANSWER_REQUIRED", "Answer request is required.");
 		}
 
-		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
+		BrainRoundEntity round = loadActiveRound(matchId);
 		requireActiveBrainRoundMatch(match);
 		requirePuzzleType(round, BrainRoundPuzzleType.MENTAL_MATH, "NOT_MENTAL_MATH_ROUND",
 				"This brain round is not a mental math puzzle.");
@@ -138,8 +138,8 @@ public class BrainRoundService {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "ANSWER_REQUIRED", "Answer submission is required.");
 		}
 
-		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
+		BrainRoundEntity round = loadActiveRound(matchId);
 		requireActiveBrainRoundMatch(match);
 		requirePuzzleType(round, BrainRoundPuzzleType.MENTAL_MATH, "NOT_MENTAL_MATH_ROUND",
 				"This brain round is not a mental math puzzle.");
@@ -236,8 +236,8 @@ public class BrainRoundService {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "PATH_REQUIRED", "Path request is required.");
 		}
 
-		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
+		BrainRoundEntity round = loadActiveRound(matchId);
 		requireActiveBrainRoundMatch(match);
 		String side = requirePlayerInMatch(match, request.playerId());
 		boolean isWhite = side.equals("WHITE");
@@ -303,8 +303,8 @@ public class BrainRoundService {
 			throw new ApiException(HttpStatus.BAD_REQUEST, "MEMORY_TURN_REQUIRED", "Memory turn request is required.");
 		}
 
-		BrainRoundEntity round = loadActiveRound(matchId);
 		MatchEntity match = loadMatchForUpdate(matchId);
+		BrainRoundEntity round = loadActiveRound(matchId);
 		requireActiveBrainRoundMatch(match);
 		String side = requirePlayerInMatch(match, request.playerId());
 
@@ -481,6 +481,8 @@ public class BrainRoundService {
 	}
 
 	private BrainRoundResponse toResponse(BrainRoundEntity round, List<String> puzzles) {
+		var switchState = "PIECE_SWITCH".equals(round.getPuzzleType())
+				? PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers()) : null;
 		if (BrainRoundPuzzleType.DOT_CONNECT.name().equals(round.getPuzzleType())) {
 			puzzles = puzzles.stream().map(dotConnectPuzzleService::publicPuzzle).toList();
 		}
@@ -493,14 +495,14 @@ public class BrainRoundService {
 				round.getTotalQuestions(),
 				round.getWhiteCorrectCount(),
 				round.getBlackCorrectCount(),
-				"PIECE_SWITCH".equals(round.getPuzzleType()) ? PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers()).white().answers().size() : nextUnansweredIndex(round.getWhiteAnsweredMask(), round.getTotalQuestions()),
-				"PIECE_SWITCH".equals(round.getPuzzleType()) ? PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers()).black().answers().size() : nextUnansweredIndex(round.getBlackAnsweredMask(), round.getTotalQuestions()),
+				switchState != null ? switchState.white().answers().size() : nextUnansweredIndex(round.getWhiteAnsweredMask(), round.getTotalQuestions()),
+				switchState != null ? switchState.black().answers().size() : nextUnansweredIndex(round.getBlackAnsweredMask(), round.getTotalQuestions()),
 				round.getWinnerPlayerId(),
 				round.getStartedAt(),
 				round.getExpiresAt(),
 				round.getCompletedAt(),
 				BrainRoundPuzzleType.MENTAL_MATH.name().equals(round.getPuzzleType()) ? parseAnswers(round.getPuzzleAnswers()) : List.of(),
-				"PIECE_SWITCH".equals(round.getPuzzleType()) ? PieceSwitchEngine.view(PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers())) : null);
+				switchState != null ? PieceSwitchEngine.view(switchState) : null);
 	}
 
 	@Transactional
@@ -510,19 +512,22 @@ public class BrainRoundService {
 		BrainRoundEntity round = request == null || request.roundId() == null ? null : brainRoundRepository.findById(request.roundId()).orElse(null);
 		if (round == null || !matchId.equals(round.getMatchId()) || !"PIECE_SWITCH".equals(round.getPuzzleType()))
 			throw new ApiException(HttpStatus.CONFLICT, "STALE_ROUND", "This answer belongs to another round.");
-		if (BRAIN_ROUND_COMPLETED.equals(round.getStatus())) return toResponse(round, parseExpressions(round.getPuzzleExpressions()));
+		if (BRAIN_ROUND_COMPLETED.equals(round.getStatus())) return toResponse(round, List.of());
 		requireActiveBrainRoundMatch(match);
 		var state = PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers());
+		var previousState = state;
 		var questions = PieceSwitchEngine.readQuestions(objectMapper, round.getPuzzleExpressions());
 		state = ready ? PieceSwitchEngine.ready(state, side, System.currentTimeMillis())
 				: PieceSwitchEngine.submit(state, side, questions, request, System.currentTimeMillis());
+		if (state.equals(previousState) && !PieceSwitchEngine.settled(state, System.currentTimeMillis()))
+			return toResponse(round, List.of());
 		round.setPuzzleAnswers(objectMapper.writeValueAsString(state));
 		round.setExpiresAt(Instant.ofEpochMilli(PieceSwitchEngine.end(state)));
 		round.setWhiteCorrectCount(PieceSwitchEngine.score(state, "WHITE", questions));
 		round.setBlackCorrectCount(PieceSwitchEngine.score(state, "BLACK", questions));
 		if (PieceSwitchEngine.settled(state, System.currentTimeMillis())) return completeActiveRound(round, match);
 		brainRoundRepository.save(round);
-		return toResponse(round, parseExpressions(round.getPuzzleExpressions()));
+		return toResponse(round, List.of());
 	}
 
 	@Transactional
