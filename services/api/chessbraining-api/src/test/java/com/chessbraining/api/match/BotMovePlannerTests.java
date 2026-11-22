@@ -82,4 +82,13 @@ class BotMovePlannerTests {
         var bot = bot(0, 0, false);
         assertThrows(ApiException.class, () -> planner.choose(match(ChessService.STARTING_FEN, bot, 0), bot));
     }
+
+    @Test void easyBotCanSpendPointsOnALegalExtraMoveWithoutVariantSearches() {
+        scorePositions(0, 0);
+        var easy = new PlayerResponse("bot", "Bot", "WHITE", 4, 300000, false, false, 0, true, BotDifficulty.EASY);
+        var plan = planner.choose(match(ChessService.STARTING_FEN, easy, 0), easy);
+        assertEquals(PowerupType.EXTRA_MOVE, plan.powerup());
+        assertTrue(planner.allowedMoves(ChessService.STARTING_FEN, "WHITE", true).contains(plan.move()));
+        assertNull(planner.choose(match(ChessService.STARTING_FEN, easy, 9), easy).powerup());
+    }
 }

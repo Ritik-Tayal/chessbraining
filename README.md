@@ -216,6 +216,10 @@ At startup, the API transactionally upgrades the legacy PostgreSQL `brain_matche
 
 For native local development, download the official [Stockfish 17.1 release](https://github.com/official-stockfish/Stockfish/releases/tag/sf_17.1), extract it outside the repository, and set `STOCKFISH_PATH` to the executable's full path and `STOCKFISH_REQUIRED=true` before starting the API. Without a local engine and with required mode disabled, the old heuristic remains a development-only fallback. Set `STOCKFISH_TEST_PATH` to the executable path to include real-engine tactical tests in `mvnw test`.
 
+Bot brain-round work uses a separate, single-worker scheduler so Stockfish searches cannot hold up timed answers. Math and Dot Connect scores advance gradually using a stable, varied per-round difficulty plan; retries do not reroll scores. Piece Switch also varies answer speed and accuracy by level. Memory uses only observed flips, with difficulty-dependent recall, memory capacity and two separate card picks. Human turn timeouts do not stop the bot worker. Reopening a match recovers interrupted bot scheduling.
+
+These are initial simulated skill profiles, not yet calibrated against human performance data. Bots receive the same winner/tie BP awards and obey the same powerup legality and costs as humans. All levels can spend earned points; stronger levels evaluate extra moves and pawn revival with Stockfish, while Easy uses simpler extra-move decisions. Clock boosts are available when time is low.
+
 Stockfish is GPLv3 software. Its bundled source and `Copying.txt` stay in `/opt/stockfish` in the image; retain them when distributing that image. No executable or neural-network files are committed to this repository.
 
 ## Team Workflow

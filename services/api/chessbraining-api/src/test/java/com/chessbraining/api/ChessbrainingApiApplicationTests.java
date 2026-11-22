@@ -268,16 +268,28 @@ class ChessbrainingApiApplicationTests {
 		JsonNode brainRoundMatch = waitForMatch(matchId, match -> "BRAIN_ROUND".equals(match.get("phase").asText()));
 		org.junit.jupiter.api.Assertions.assertEquals(1, brainRoundMatch.get("brainRoundCount").asInt());
 
-		JsonNode round = currentBrainRound(matchId);
-		submitEveryBrainRoundPuzzle(matchId, "human-player", round);
+		BrainRoundEntity entity = brainRoundRepository.findFirstByMatchIdAndStatusOrderByStartedAtDesc(matchId, "ACTIVE").orElseThrow();
+		var puzzles = new com.chessbraining.api.match.MathPuzzleService().generatePuzzles();
+		entity.setPuzzleType("MENTAL_MATH");
+		entity.setPuzzleExpressions(objectMapper.writeValueAsString(puzzles.expressions()));
+		entity.setPuzzleAnswers(objectMapper.writeValueAsString(puzzles.answers()));
+		entity.setTotalQuestions(30);
+		entity.setWhiteAnsweredMask(0);
+		entity.setBlackAnsweredMask(0);
+		entity.setStartedAt(Instant.now().minusSeconds(30));
+		entity.setExpiresAt(Instant.now().plusMillis(500));
+		brainRoundRepository.save(entity);
+		mockMvc.perform(post("/api/v1/matches/{id}/brain-rounds/current/submissions", matchId)
+				.contentType(MediaType.APPLICATION_JSON).content("{\"playerId\":\"human-player\",\"answers\":[],\"finalSubmission\":true}"))
+				.andExpect(status().isOk());
 
 		JsonNode completed = waitForMatch(matchId, match ->
 				"CHESS_PHASE".equals(match.get("phase").asText()) &&
 						!match.get("latestBrainRoundResult").isNull());
 		JsonNode result = completed.get("latestBrainRoundResult");
 		int botScore = result.get("blackCorrectCount").asInt();
-		org.junit.jupiter.api.Assertions.assertTrue(botScore >= 0);
-		org.junit.jupiter.api.Assertions.assertTrue(botScore <= round.get("totalQuestions").asInt());
+		org.junit.jupiter.api.Assertions.assertTrue(botScore > 0);
+		org.junit.jupiter.api.Assertions.assertTrue(botScore <= 30);
 		org.junit.jupiter.api.Assertions.assertEquals(1, result.get("roundNumber").asInt());
 	}
 

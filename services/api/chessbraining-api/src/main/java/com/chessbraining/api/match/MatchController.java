@@ -58,6 +58,8 @@ public class MatchController {
 	@GetMapping("/{matchId}")
 	public MatchResponse getMatch(@PathVariable String matchId) {
 		MatchResponse response = matchService.getMatch(matchId);
+		// Reconnects also recover bot jobs lost during an instance restart.
+		botService.scheduleContinuation(response);
 		if (response.status() == MatchStatus.COMPLETED) {
 			realtimeService.publishMatchState(response);
 		}

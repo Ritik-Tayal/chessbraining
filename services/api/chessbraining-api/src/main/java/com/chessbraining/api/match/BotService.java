@@ -2,6 +2,7 @@ package com.chessbraining.api.match;
 
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -37,6 +38,8 @@ public class BotService {
 	private final StockfishEngine stockfish;
 	private final BotMovePlanner movePlanner;
 	private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
+	private final ScheduledExecutorService brainScheduler = Executors.newSingleThreadScheduledExecutor();
+	private final BotMemoryPlayer memoryPlayer = new BotMemoryPlayer();
 	private final Set<String> queuedMatches = ConcurrentHashMap.newKeySet();
 
 	public BotService(
@@ -77,11 +80,12 @@ public class BotService {
 			return;
 		}
 		BotDifficulty difficulty = bot.botDifficulty() == null ? BotDifficulty.NORMAL : bot.botDifficulty();
-		int delayMs = randomBetween(difficulty.minThinkMs(), difficulty.maxThinkMs());
+		boolean brain = match.phase() == MatchPhase.BRAIN_ROUND;
+		int delayMs = brain ? 500 : randomBetween(difficulty.minThinkMs(), difficulty.maxThinkMs());
 		if (!queuedMatches.add(match.matchId())) {
 			return;
 		}
-		scheduler.schedule(() -> {
+		(brain ? brainScheduler : scheduler).schedule(() -> {
 			MatchResponse next = null;
 			try {
 				next = continueBotMatch(match.matchId());
@@ -101,12 +105,13 @@ public class BotService {
 	private MatchResponse continueBotMatch(String matchId) {
 		MatchResponse match = matchService.getMatch(matchId);
 		if (match.status() != MatchStatus.ACTIVE) {
+			memoryPlayer.forget(matchId);
 			return null;
 		}
 		if (match.phase() == MatchPhase.BRAIN_ROUND) {
 			if (submitBotBrainRound(match)) {
 				MatchResponse latest = matchService.getMatch(matchId);
-				realtimeService.publishMatchState(latest);
+				if (latest.phase() != MatchPhase.BRAIN_ROUND) realtimeService.publishMatchState(latest);
 				return latest;
 			}
 			return null;
@@ -114,6 +119,7 @@ public class BotService {
 		if (match.phase() != MatchPhase.CHESS_PHASE) {
 			return null;
 		}
+		memoryPlayer.forget(matchId);
 		PlayerResponse bot = botToMove(match);
 		if (bot == null) {
 			return null;
@@ -200,9 +206,10 @@ public class BotService {
 			realtimeService.publishPieceSwitch(response.roundId(), response.progress());
 			return true;
 		}
-		if (round == null ||
-				(!BrainRoundPuzzleType.MEMORY.name().equals(round.getPuzzleType()) && botAlreadyAnswered(round, bot.side()))) {
-			return false;
+		if (round == null) return false;
+		if (!BrainRoundPuzzleType.MEMORY.name().equals(round.getPuzzleType()) && botAlreadyAnswered(round, bot.side())) {
+			brainRoundService.getCurrentRound(match.matchId());
+			return true;
 		}
 		if (BrainRoundPuzzleType.DOT_CONNECT.name().equals(round.getPuzzleType())) {
 			return submitBotDotConnectRound(match, bot, round);
@@ -211,34 +218,41 @@ public class BotService {
 			return submitBotMemoryTurn(match, bot, round);
 		}
 		List<Integer> answers = parseAnswers(round.getPuzzleAnswers());
-		int targetScore = botScore(bot, round.getTotalQuestions(), match.brainRoundCount());
+		Instant now = Instant.now();
+		int targetScore = BotBrainPace.target(round.getId(), difficulty(bot), round.getTotalQuestions());
+		int due = BotBrainPace.due(round, now);
 		List<SubmitAnswerBatchRequest.SubmittedAnswer> submitted = new ArrayList<>();
-		for (int i = 0; i < round.getTotalQuestions(); i++) {
+		int expectedScore = 0;
+		for (int i = 0; i < due; i++) {
 			int answer = answers.get(i);
-			if (i >= targetScore) {
+			if (!BotBrainPace.correct(i, targetScore, round.getTotalQuestions())) {
 				answer += answer == 0 ? 1 : -1;
-			}
+			} else expectedScore++;
 			submitted.add(new SubmitAnswerBatchRequest.SubmittedAnswer(i, answer));
 		}
-		BrainRoundSubmissionResponse response = brainRoundService.submitAnswerBatch(
+		boolean finished = !now.isBefore(round.getExpiresAt());
+		int score = "WHITE".equals(bot.side()) ? round.getWhiteCorrectCount() : round.getBlackCorrectCount();
+		if (!finished && expectedScore <= score) return true;
+		brainRoundService.submitAnswerBatch(
 				match.matchId(),
-				new SubmitAnswerBatchRequest(bot.playerId(), submitted));
-		return response.roundCompleted();
+				new SubmitAnswerBatchRequest(bot.playerId(), submitted, finished));
+		return true;
 	}
 
 	private boolean submitBotDotConnectRound(MatchResponse match, PlayerResponse bot, BrainRoundEntity round) {
 		List<String> puzzles = parseExpressions(round.getPuzzleExpressions());
-		int targetScore = botScore(bot, round.getTotalQuestions(), match.brainRoundCount());
-		int submittedCount = 0;
-		for (int i = 0; i < round.getTotalQuestions() && i < puzzles.size(); i++) {
-			List<List<Integer>> path = i < targetScore
+		int targetScore = BotBrainPace.target(round.getId(), difficulty(bot), round.getTotalQuestions());
+		int mask = "WHITE".equals(bot.side()) ? round.getWhiteAnsweredMask() : round.getBlackAnsweredMask();
+		int due = BotBrainPace.due(round, Instant.now());
+		for (int i = 0; i < due && i < puzzles.size(); i++) {
+			if ((mask & (1 << i)) != 0) continue;
+			List<List<Integer>> path = BotBrainPace.correct(i, targetScore, round.getTotalQuestions())
 					? solutionPath(puzzles.get(i))
 					: List.of(List.of(0, 0), List.of(0, 1));
 			try {
 				brainRoundService.submitPath(
 						match.matchId(),
 						new SubmitPathRequest(bot.playerId(), i, path));
-				submittedCount++;
 			} catch (ApiException ex) {
 				if ("NOT_IN_BRAIN_ROUND".equals(ex.getCode()) ||
 						"BRAIN_ROUND_NOT_FOUND".equals(ex.getCode())) {
@@ -247,22 +261,25 @@ public class BotService {
 				throw ex;
 			}
 		}
-		return submittedCount > 0 && matchService.getMatch(match.matchId()).phase() != MatchPhase.BRAIN_ROUND;
+		if (matchService.getMatch(match.matchId()).phase() == MatchPhase.BRAIN_ROUND)
+			brainRoundService.getCurrentRound(match.matchId());
+		return true;
 	}
 
 	private boolean submitBotMemoryTurn(MatchResponse match, PlayerResponse bot, BrainRoundEntity round) {
+		var current = brainRoundService.getCurrentRound(match.matchId());
+		if ("COMPLETED".equals(current.status())) return true;
+		round = brainRoundRepository.findById(round.getId()).orElseThrow();
 		MemoryPuzzleService.MemoryState state = parseMemoryState(round.getPuzzleAnswers());
-		if (!bot.side().equals(state.turnSide())) {
-			return false;
-		}
-		List<Integer> pair = chooseBotMemoryPair(bot, state, match.brainRoundCount());
-		if (pair.size() < 2) {
-			return false;
-		}
+		long now = System.currentTimeMillis();
+		int card = memoryPlayer.choose(match.matchId(), round.getId(), state, difficulty(bot), bot.side(), now);
+		if (card < 0) return true;
 		try {
 			brainRoundService.submitMemoryTurn(
 					match.matchId(),
-					new SubmitMemoryTurnRequest(bot.playerId(), pair.get(0), pair.get(1)));
+					state.pendingFirstIndex() == null ? new SubmitMemoryTurnRequest(bot.playerId(), card, -1)
+							: new SubmitMemoryTurnRequest(bot.playerId(), state.pendingFirstIndex(), card));
+			memoryPlayer.played(match.matchId(), now);
 			return true;
 		} catch (ApiException ex) {
 			if ("NOT_IN_BRAIN_ROUND".equals(ex.getCode()) ||
@@ -271,47 +288,6 @@ public class BotService {
 			}
 			throw ex;
 		}
-	}
-
-	private List<Integer> chooseBotMemoryPair(PlayerResponse bot, MemoryPuzzleService.MemoryState state, int roundNumber) {
-		boolean shouldMatch = botScore(bot, state.cards().size() / 2, roundNumber) > 0 && RANDOM.nextDouble() < difficulty(bot).brainMean();
-		if (shouldMatch) {
-			for (int i = 0; i < state.cards().size(); i++) {
-				if (memoryMatched(state, i)) {
-					continue;
-				}
-				for (int j = i + 1; j < state.cards().size(); j++) {
-					if (!memoryMatched(state, j) && state.cards().get(i).equals(state.cards().get(j))) {
-						return List.of(i, j);
-					}
-				}
-			}
-		}
-		List<Integer> unmatched = new ArrayList<>();
-		for (int i = 0; i < state.cards().size(); i++) {
-			if (!memoryMatched(state, i)) {
-				unmatched.add(i);
-			}
-		}
-		if (unmatched.size() < 2) {
-			return List.of();
-		}
-		return List.of(unmatched.get(0), unmatched.get(1));
-	}
-
-	private boolean memoryMatched(MemoryPuzzleService.MemoryState state, int index) {
-		return (state.matchedMask() & (1 << index)) != 0;
-	}
-
-	private int botScore(PlayerResponse bot, int totalQuestions, int roundNumber) {
-		BotDifficulty difficulty = difficulty(bot);
-		double wave = (RANDOM.nextDouble() * 2.0) - 1.0;
-		double rate = difficulty.brainMean() + (wave * difficulty.brainSpread());
-		if (roundNumber % 3 == 0) {
-			rate += 0.04;
-		}
-		int score = (int) Math.round(totalQuestions * rate);
-		return Math.max(0, Math.min(totalQuestions, score));
 	}
 
 	private PlayerResponse activeBot(MatchResponse match) {
@@ -466,8 +442,10 @@ public class BotService {
 
 	@PreDestroy
 	void shutdown() {
+		brainScheduler.shutdownNow();
 		scheduler.shutdownNow();
 		try {
+			brainScheduler.awaitTermination(Duration.ofSeconds(2).toMillis(), TimeUnit.MILLISECONDS);
 			scheduler.awaitTermination(Duration.ofSeconds(2).toMillis(), TimeUnit.MILLISECONDS);
 		} catch (InterruptedException e) {
 			Thread.currentThread().interrupt();
