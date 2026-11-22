@@ -266,7 +266,7 @@ public class BrainMatchService {
 		rematch.setInviteCode(generateInviteCode());
 		rematch.setStatus(ACTIVE);
 		rematch.setMode(source.getMode());
-		rematch.setPuzzleType(source.getPuzzleType());
+		rematch.setPuzzleType(resolvePuzzleType(rematch.getMode()).name());
 		rematch.setWhitePlayerId(source.getBlackPlayerId());
 		rematch.setWhitePlayerName(source.getBlackPlayerName());
 		rematch.setBlackPlayerId(source.getWhitePlayerId());

@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class BotService {
+	private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(BotService.class);
 
 	private static final String BRAIN_ROUND_ACTIVE = "ACTIVE";
 	private static final SecureRandom RANDOM = new SecureRandom();
@@ -33,6 +34,8 @@ public class BotService {
 	private final ChessService chessService;
 	private final tools.jackson.databind.ObjectMapper objectMapper;
 	private final MatchRealtimeService realtimeService;
+	private final StockfishEngine stockfish;
+	private final BotMovePlanner movePlanner;
 	private final ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(2);
 	private final Set<String> queuedMatches = ConcurrentHashMap.newKeySet();
 
@@ -43,7 +46,9 @@ public class BotService {
 			BrainRoundRepository brainRoundRepository,
 			ChessService chessService,
 			tools.jackson.databind.ObjectMapper objectMapper,
-			MatchRealtimeService realtimeService) {
+			MatchRealtimeService realtimeService,
+			StockfishEngine stockfish,
+			BotMovePlanner movePlanner) {
 		this.matchService = matchService;
 		this.powerupService = powerupService;
 		this.brainRoundService = brainRoundService;
@@ -51,9 +56,12 @@ public class BotService {
 		this.chessService = chessService;
 		this.objectMapper = objectMapper;
 		this.realtimeService = realtimeService;
+		this.stockfish = stockfish;
+		this.movePlanner = movePlanner;
 	}
 
 	public MatchResponse createBotMatch(CreateBotMatchRequest request) {
+		stockfish.requireAvailable();
 		MatchResponse match = matchService.createBotMatch(request);
 		scheduleContinuation(match);
 		return match;
@@ -77,6 +85,10 @@ public class BotService {
 			MatchResponse next = null;
 			try {
 				next = continueBotMatch(match.matchId());
+			} catch (RuntimeException e) {
+				LOG.warn("Bot continuation failed for {}: {}", match.matchId(), e.getMessage());
+				// Retry from fresh state; never silently downgrade a production expert to the heuristic bot.
+				try { next = matchService.getMatch(match.matchId()); } catch (RuntimeException ignored) { }
 			} finally {
 				queuedMatches.remove(match.matchId());
 				if (next != null) {
@@ -106,7 +118,9 @@ public class BotService {
 		if (bot == null) {
 			return null;
 		}
-		MatchResponse afterPowerup = maybeUsePowerup(match, bot);
+		MatchResponse afterPowerup = null;
+		if (bot.clockMs() < 30_000 && bot.brainPoints() >= PowerupType.CLOCK_BOOST_30.cost())
+			afterPowerup = safePowerup(match, bot, PowerupType.CLOCK_BOOST_30, null);
 		if (afterPowerup != null) {
 			realtimeService.publishMatchState(afterPowerup);
 			if (!afterPowerup.sideToMove().equals(bot.side()) || afterPowerup.phase() != MatchPhase.CHESS_PHASE) {
@@ -119,7 +133,21 @@ public class BotService {
 			}
 		}
 
-		MatchResponse moved = submitBotMove(match, bot);
+		var plan = movePlanner.choose(match, bot);
+		if (plan != null && plan.powerup() != null) {
+			var powered = safePowerup(match, bot, plan.powerup(), plan.targetSquare());
+			if (powered != null) {
+				realtimeService.publishMatchState(powered);
+				if (plan.powerup() == PowerupType.REVIVE_PAWN) return powered;
+				match = powered;
+			} else plan = movePlanner.choose(match, bot);
+		}
+		MatchResponse moved;
+		if (plan != null && plan.move() != null) {
+			var move = plan.move();
+			moved = matchService.submitMove(match.matchId(),
+					new SubmitMoveRequest(bot.playerId(), move.from(), move.to(), move.promotion()));
+		} else moved = submitBotMove(match, bot);
 		if (moved == null) {
 			return null;
 		}
@@ -146,33 +174,6 @@ public class BotService {
 						new SubmitMoveRequest(bot.playerId(), move.from(), move.to(), move.promotion()));
 			} catch (ApiException ignored) {
 				// Extra-move constraints can reject otherwise legal moves; try another candidate.
-			}
-		}
-		return null;
-	}
-
-	private MatchResponse maybeUsePowerup(MatchResponse match, PlayerResponse bot) {
-		BotDifficulty difficulty = difficulty(bot);
-		if (bot.clockMs() < 30_000 && bot.brainPoints() >= PowerupType.CLOCK_BOOST_30.cost()) {
-			return safePowerup(match, bot, PowerupType.CLOCK_BOOST_30, null);
-		}
-		if (!bot.extraMoveArmed() &&
-				!bot.extraMoveActive() &&
-				bot.brainPoints() >= PowerupType.EXTRA_MOVE.cost() &&
-				RANDOM.nextDouble() < difficulty.tacticalBias() * 0.35) {
-			MatchResponse powered = safePowerup(match, bot, PowerupType.EXTRA_MOVE, null);
-			if (powered != null) {
-				return powered;
-			}
-		}
-		if (bot.revivablePawns() > 0 &&
-				bot.brainPoints() >= PowerupType.REVIVE_PAWN.cost() &&
-				RANDOM.nextDouble() < difficulty.tacticalBias() * 0.18) {
-			for (String square : reviveCandidates(bot.side())) {
-				MatchResponse powered = safePowerup(match, bot, PowerupType.REVIVE_PAWN, square);
-				if (powered != null) {
-					return powered;
-				}
 			}
 		}
 		return null;
@@ -449,13 +450,6 @@ public class BotService {
 			candidates.set(i, candidates.get(swap));
 			candidates.set(swap, temp);
 		}
-	}
-
-	private List<String> reviveCandidates(String side) {
-		if ("WHITE".equals(side)) {
-			return List.of("d4", "e4", "c4", "f4", "d3", "e3", "c3", "f3", "a3", "h3", "a4", "h4");
-		}
-		return List.of("d5", "e5", "c5", "f5", "d6", "e6", "c6", "f6", "a6", "h6", "a5", "h5");
 	}
 
 	private int randomBetween(int min, int max) {

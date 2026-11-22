@@ -310,7 +310,7 @@ test("math input advances while progress request is delayed; skip does not score
   await context.close();
 });
 
-test("memory has 24 colored cards and forfeits an unfinished five-second turn", async ({
+test("memory has 24 colored cards and forfeits an unfinished eight-second turn", async ({
   page,
   browser,
 }, testInfo) => {
@@ -345,7 +345,7 @@ test("memory has 24 colored cards and forfeits an unfinished five-second turn", 
   });
   await expect(actor.locator(".memory-turn-clock")).toContainText(
     "Opponent's turn",
-    { timeout: 8000 },
+    { timeout: 11000 },
   );
   await expect(actor.locator(".memory-card.revealed")).toHaveCount(0);
   const current = await (
@@ -358,5 +358,29 @@ test("memory has 24 colored cards and forfeits an unfinished five-second turn", 
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
+  await context.close();
+});
+
+test("math supports physical keyboard answers and Enter skips exactly one question", async ({
+  page,
+  browser,
+}) => {
+  const { context, joined } = await game(page, browser, "MENTAL_MATH");
+  await page.locator(".brain-game h2").click();
+  await page.keyboard.type(String(joined.solutions[0]), { delay: 70 });
+  await expect(page.locator(".question span")).toContainText("QUESTION 2 /");
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".question span")).toContainText("QUESTION 3 /");
+  await page.locator(".number-pad button").filter({ hasText: /^-$/ }).click();
+  await page.keyboard.press("Backspace");
+  await expect(
+    page.getByRole("textbox", { name: "Your answer", exact: true }),
+  ).toHaveValue("");
+  await page.keyboard.type(String(joined.solutions[2]), { delay: 70 });
+  await expect(page.locator(".question span")).toContainText("QUESTION 4 /");
+  await page.getByRole("textbox", { name: "Your answer", exact: true }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator(".question span")).toContainText("QUESTION 5 /");
+  await expect(page.locator(".round-scores")).toContainText("White 2");
   await context.close();
 });

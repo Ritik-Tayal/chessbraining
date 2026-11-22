@@ -202,6 +202,18 @@ flutter run -d chrome
 
 Do not commit real database credentials. Use environment variables or a local untracked `.env` file.
 
+## Chess Bot Engine
+
+Bot chess uses Stockfish 17.1 through a server-side UCI worker. Normal targets engine Elo 1500, Hard 1800, and Expert disables strength limiting (up to 1 second of search per move). These are engine targets, not measured FIDE, Lichess, or Chess.com ratings. Casual uses Stockfish Skill Level 2.
+
+The variant planner compares ordinary moves against legal two-move continuations and pawn revival (which consumes the turn). It reserves 35 centipawns of evaluation per BP spent, considers three extra-move openings and eight revival placements, and prioritizes clock boosts below 30 seconds. This is bounded planning, not a full solver for future opponent power-ups. Brain-round performance remains difficulty-based and independent of chess search.
+
+The backend Docker image bundles the official generic x86-64 engine, source, and GPL notice. Render needs no separate engine service; `STOCKFISH_PATH` and `STOCKFISH_REQUIRED=true` are set in the image. A required engine failure causes retries, never a silent weak-bot substitution. One CPU thread and 32 MiB hash are shared across matches; concurrent bot games on a free instance will contend for CPU. Dedicated engine workers and measured human difficulty calibration are the next scaling steps.
+
+For native local development, download the official [Stockfish 17.1 release](https://github.com/official-stockfish/Stockfish/releases/tag/sf_17.1), extract it outside the repository, and set `STOCKFISH_PATH` to the executable's full path and `STOCKFISH_REQUIRED=true` before starting the API. Without a local engine and with required mode disabled, the old heuristic remains a development-only fallback. Set `STOCKFISH_TEST_PATH` to the executable path to include real-engine tactical tests in `mvnw test`.
+
+Stockfish is GPLv3 software. Its bundled source and `Copying.txt` stay in `/opt/stockfish` in the image; retain them when distributing that image. No executable or neural-network files are committed to this repository.
+
 ## Team Workflow
 
 1. Create issues for features using the docs as the source of truth.

@@ -21,7 +21,10 @@ class MemoryAndPuzzleTests {
         assertFalse(memory.publicBoardJson(state).contains("WHITE_KING"));
     }
     @Test void timeoutPassesTurnWithoutScoringOrLeakingPendingCard() {
+        long before = System.currentTimeMillis();
         var state = memory.newGame();
+        assertTrue(state.turnExpiresAt() >= before + 8000);
+        assertTrue(state.turnExpiresAt() <= System.currentTimeMillis() + 8000);
         var first = memory.playTurn(state, "WHITE", 0, -1).state();
         assertEquals(state.turnExpiresAt(), first.turnExpiresAt());
         var timed = memory.advanceExpiredTurns(first, first.turnExpiresAt());
@@ -29,8 +32,9 @@ class MemoryAndPuzzleTests {
         assertNull(timed.pendingFirstIndex());
         assertTrue(timed.lastFlipped().isEmpty());
         assertEquals(0, timed.matchedMask());
-        assertEquals(first.turnExpiresAt() + 5000, timed.turnExpiresAt());
-        assertEquals("WHITE", memory.advanceExpiredTurns(first, first.turnExpiresAt() + 5000).turnSide());
+        assertEquals(first, memory.advanceExpiredTurns(first, first.turnExpiresAt() - 1));
+        assertEquals(first.turnExpiresAt() + 8000, timed.turnExpiresAt());
+        assertEquals("WHITE", memory.advanceExpiredTurns(first, first.turnExpiresAt() + 8000).turnSide());
     }
     @Test void oppositeColorsOfSamePieceDoNotMatch() {
         var state = memory.newGame();
