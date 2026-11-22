@@ -138,6 +138,14 @@ test("Piece Switch runs locally, syncs scores, survives refresh and rematches on
       timeout: 10000,
     });
     await expect(opponent.locator(".switch-stimulus")).toBeVisible();
+    let idleRequests = 0;
+    const countIdle = (request: import("@playwright/test").Request) => {
+      if (request.url().includes("/piece-switch/events")) idleRequests++;
+    };
+    page.on("request", countIdle);
+    await page.waitForTimeout(6000);
+    page.off("request", countIdle);
+    expect(idleRequests).toBeLessThanOrEqual(3);
     // Deliberately slow score requests: answering must still be instantaneous.
     await page.route("**/piece-switch/events", async (route) => {
       await new Promise((resolve) => setTimeout(resolve, 1200));

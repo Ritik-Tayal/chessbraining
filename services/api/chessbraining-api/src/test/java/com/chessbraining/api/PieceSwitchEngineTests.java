@@ -41,6 +41,18 @@ class PieceSwitchEngineTests {
         assertEquals(-1, PieceSwitchEngine.score(state, "WHITE", questions));
         assertThrows(ApiException.class, () -> PieceSwitchEngine.submit(state, "WHITE", questions, batch(List.of(first.getFirst(),new Answer(1,1,200))), 4000));
     }
+    @Test void acceptedRetriesSurviveClockCorrectionWithoutRelaxingNewAnswerValidation() {
+        var accepted = List.of(new Answer(0, 1, 1000));
+        var state = PieceSwitchEngine.submit(started(), "WHITE", questions, batch(accepted), 4500);
+        assertSame(state, PieceSwitchEngine.submit(state, "WHITE", questions, batch(accepted), 3500));
+        assertThrows(ApiException.class, () -> PieceSwitchEngine.submit(state, "WHITE", questions,
+                batch(List.of(accepted.getFirst(), new Answer(1, 1, 1500))), 5000));
+        var next = PieceSwitchEngine.submit(state, "WHITE", questions,
+                batch(List.of(accepted.getFirst(), new Answer(1, 1, 1700))), 5000);
+        assertEquals(2, next.white().answers().size());
+        assertThrows(ApiException.class, () -> PieceSwitchEngine.submit(next, "WHITE", questions,
+                batch(List.of(new Answer(0, 0, 1000), new Answer(1, 1, 1700))), 5000));
+    }
     @Test void futureOutOfOrderEarlyFinalAndLateEventsAreRejectedOrIgnored() {
         assertThrows(ApiException.class, () -> PieceSwitchEngine.submit(started(), "WHITE", questions, batch(List.of(new Answer(1,0,100))), 4000));
         assertThrows(ApiException.class, () -> PieceSwitchEngine.submit(started(), "WHITE", questions, batch(List.of(new Answer(0,0,2000))), 4000));

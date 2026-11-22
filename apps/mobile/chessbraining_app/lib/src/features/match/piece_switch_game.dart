@@ -48,6 +48,8 @@ class _PieceSwitchGameState extends State<PieceSwitchGame> {
   int _feedback = 0;
   int _opponent = 0;
   int _lastFinal = -1000;
+  int _acknowledgedCount = -1;
+  int _lastSnapshot = 0;
   bool _ready = false;
   bool _busy = false;
   bool _offline = false;
@@ -95,6 +97,12 @@ class _PieceSwitchGameState extends State<PieceSwitchGame> {
     });
     _network = Timer.periodic(const Duration(milliseconds: 400), (_) {
       if (_busy || _completed) return;
+      if (_ready &&
+          _remaining > 0 &&
+          _acknowledgedCount == _answers.length &&
+          _clock.elapsedMilliseconds - _lastSnapshot < 2500) {
+        return;
+      }
       _busy = true;
       unawaited(_send().whenComplete(() => _busy = false));
     });
@@ -146,6 +154,7 @@ class _PieceSwitchGameState extends State<PieceSwitchGame> {
   Future<void> _send({bool finalSubmission = false}) async {
     final readyRequest = !_ready;
     final sent = _clock.elapsedMilliseconds;
+    final sentCount = _answers.length;
     try {
       final response = await widget.controller.sendPieceSwitch(
           arena: widget.arena,
@@ -165,6 +174,8 @@ class _PieceSwitchGameState extends State<PieceSwitchGame> {
         _anchorElapsed = _clock.elapsedMilliseconds;
       }
       _ready = true;
+      _acknowledgedCount = sentCount;
+      _lastSnapshot = _clock.elapsedMilliseconds;
       _offline = false;
       _merge(response);
     } catch (_) {

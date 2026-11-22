@@ -37,9 +37,13 @@ public class PieceSwitchController {
         long receivedAt = System.currentTimeMillis();
         var response = rounds.pieceSwitch(id, request, "ready".equals(action)).progress(receivedAt);
         messaging.convertAndSend("/topic/piece-switch/" + response.roundId(), response);
-        var match = matches.getMatch(id);
-        if (match.phase() != MatchPhase.BRAIN_ROUND) realtime.publishMatchState(match);
-        bots.scheduleContinuation(id);
+        if ("COMPLETED".equals(response.status())) {
+            var match = matches.getMatch(id);
+            if (match.phase() != MatchPhase.BRAIN_ROUND) realtime.publishMatchState(match);
+            bots.scheduleContinuation(id);
+        } else if ("ready".equals(action)) {
+            bots.scheduleContinuation(id);
+        }
         return response;
     }
 }

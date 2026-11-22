@@ -119,12 +119,15 @@ export function PieceSwitchGame({
     let disposed = false;
     let ready = false;
     let busy = false;
+    let acknowledgedCount = -1;
+    let lastSnapshot = 0;
     const controllers = new Set<AbortController>();
     const send = async (action: string, finished = false) => {
       const controller = new AbortController();
       controllers.add(controller);
       const timeout = setTimeout(() => controller.abort(), 4000);
       const before = performance.now();
+      const sentCount = answerRef.current.length;
       try {
         const next = await request<Round>(
           `${connectionRef.current.basePath}/piece-switch/${action}`,
@@ -156,6 +159,8 @@ export function PieceSwitchGame({
         merge.current(next);
         setOffline(false);
         ready = true;
+        acknowledgedCount = sentCount;
+        lastSnapshot = performance.now();
       } catch {
         if (!disposed) setOffline(true);
       } finally {
@@ -170,6 +175,14 @@ export function PieceSwitchGame({
         clock.current.server + performance.now() - clock.current.local >=
         view.startsAt + 45_000;
       if (busy) return;
+      // Keep recovery/timeout snapshots without posting an unchanged log every tick.
+      if (
+        ready &&
+        !expired &&
+        acknowledgedCount === answerRef.current.length &&
+        performance.now() - lastSnapshot < 2500
+      )
+        return;
       busy = true;
       void send(ready ? "events" : "ready", expired).finally(() => {
         busy = false;
