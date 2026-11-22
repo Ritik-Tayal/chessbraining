@@ -160,7 +160,13 @@ test("bot setup starts a real match and computer replies", async ({ page }) => {
     page.getByRole("heading", { name: "Meet your next challenge." }),
   ).toBeVisible();
   await page.getByRole("button", { name: /Strategist/ }).click();
+  const created = page.waitForResponse(
+    (response) =>
+      response.url().endsWith("/matches/bot") &&
+      response.request().method() === "POST",
+  );
   await page.getByRole("button", { name: "Start match", exact: true }).click();
+  expect((await created).status()).toBe(200);
   await move(page, "e2", "e4");
   await expect(page.locator(".move-log-heading")).toContainText("2 played", {
     timeout: 20000,

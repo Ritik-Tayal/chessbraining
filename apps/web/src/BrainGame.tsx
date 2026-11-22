@@ -51,6 +51,7 @@ export function BrainGame({
   const [path, setPath] = useState<number[][]>([]);
   const [flash, setFlash] = useState<number | null>(null);
   const answers = useRef<Record<number, number>>(draft.answers);
+  const gameElement = useRef<HTMLElement>(null);
   const finalizing = useRef(false);
   const completing = useRef(false);
   const retryAfter = useRef(0);
@@ -149,6 +150,52 @@ export function BrainGame({
     )
       advance(Number(value));
   }
+  useEffect(() => {
+    if (!isMath || round.status !== "ACTIVE" || submitted || seconds === 0)
+      return;
+    function handleKey(event: KeyboardEvent) {
+      const game = gameElement.current;
+      if (
+        !game?.getClientRects().length ||
+        event.defaultPrevented ||
+        event.isComposing ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey
+      )
+        return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest('button, a, [role="button"]') &&
+        !game.contains(target)
+      )
+        return;
+      // Editable fields keep native selection, replacement and form submission.
+      if (
+        target instanceof HTMLElement &&
+        target.closest(
+          'input, textarea, select, [contenteditable="true"], [role="dialog"]',
+        )
+      )
+        return;
+      if (/^\d$/.test(event.key)) {
+        event.preventDefault();
+        updateAnswer(answer + event.key);
+      } else if (event.key === "Backspace") {
+        event.preventDefault();
+        updateAnswer(answer.slice(0, -1));
+      } else if (event.key === "-") {
+        event.preventDefault();
+        updateAnswer(answer.startsWith("-") ? answer.slice(1) : "-" + answer);
+      } else if (event.key === "Enter" && !event.repeat) {
+        event.preventDefault();
+        advance();
+      }
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  });
   let board: MemoryBoard | null = null;
   let puzzle: {
     rows: number;
@@ -163,8 +210,8 @@ export function BrainGame({
   }
   const myTurn = board?.turnSide === side;
   const turnSeconds = Math.min(
-    5,
-    Math.max(0, Math.ceil(((board?.turnExpiresAt ?? now + 5000) - now) / 1000)),
+    8,
+    Math.max(0, Math.ceil(((board?.turnExpiresAt ?? now + 8000) - now) / 1000)),
   );
   const showingPair =
     !!board?.lastFlipAt &&
@@ -208,6 +255,7 @@ export function BrainGame({
       : "Connect the dots";
   return (
     <section
+      ref={gameElement}
       className={`brain-game ${board ? "memory-game" : ""}`}
       aria-label={title}
     >
@@ -328,7 +376,11 @@ export function BrainGame({
                   </button>
                 ))}
               </div>
-              <button className="primary full" disabled={busy || seconds === 0}>
+              <button
+                className="primary full"
+                title="Skip question (Enter)"
+                disabled={busy || seconds === 0}
+              >
                 Skip question <ArrowRight size={18} />
               </button>
             </form>
@@ -343,7 +395,7 @@ export function BrainGame({
           >
             <span>{myTurn ? "Your turn" : "Opponent's turn"}</span>
             <strong>{showingPair ? "Revealing" : `${turnSeconds}s`}</strong>
-            <progress max={5} value={turnSeconds} />
+            <progress max={8} value={turnSeconds} />
           </div>
           <div className="memory-grid">
             {board.cards.map((c) => (

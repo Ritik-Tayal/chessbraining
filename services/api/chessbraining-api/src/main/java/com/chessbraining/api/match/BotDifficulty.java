@@ -24,6 +24,14 @@ public enum BotDifficulty {
 		return brainMean;
 	}
 
+	public int targetElo() {
+		return switch (this) { case EASY -> 0; case NORMAL -> 1500; case HARD -> 1800; case EXPERT -> 0; };
+	}
+
+	public int searchMillis() {
+		return switch (this) { case EASY -> 150; case NORMAL -> 350; case HARD -> 600; case EXPERT -> 1000; };
+	}
+
 	public double brainSpread() {
 		return brainSpread;
 	}

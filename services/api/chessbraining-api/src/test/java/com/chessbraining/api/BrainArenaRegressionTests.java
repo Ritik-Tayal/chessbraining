@@ -111,4 +111,54 @@ class BrainArenaRegressionTests {
         assertEquals("arena-black", rematch.white().playerId());
         assertEquals("MENTAL_MATH", rematch.puzzleType());
     }
+
+    @Test void rematchPreservesExplicitModesAcrossSuccessiveMatches() {
+        for (var mode : BrainMatchMode.values()) {
+            if (mode == BrainMatchMode.RANDOM) continue;
+            var created = service.create(new CreateBrainMatchRequest("mode-white", "White", mode));
+            var current = service.join(new JoinBrainMatchRequest(created.inviteCode(), "mode-black", "Black"));
+            for (int i = 0; i < 2; i++) {
+                current = finishAndRematch(current);
+                assertEquals(mode, current.mode());
+                assertEquals(mode.name(), current.puzzleType());
+                assertEquals(mode == BrainMatchMode.MEMORY ? 120 : 30,
+                        java.time.Duration.between(current.startedAt(), current.expiresAt()).toSeconds());
+                assertEquals(0, current.whiteScore());
+                assertEquals(0, current.blackScore());
+            }
+        }
+    }
+
+    @Test void randomRematchKeepsRandomModeAndDrawsFreshGames() {
+        var created = service.create(new CreateBrainMatchRequest("random-white", "White", BrainMatchMode.RANDOM));
+        var current = service.join(new JoinBrainMatchRequest(created.inviteCode(), "random-black", "Black"));
+        var types = new java.util.HashSet<String>();
+        types.add(current.puzzleType());
+        for (int i = 0; i < 30; i++) {
+            current = finishAndRematch(current);
+            assertEquals(BrainMatchMode.RANDOM, current.mode());
+            assertNotNull(BrainRoundPuzzleType.valueOf(current.puzzleType()));
+            types.add(current.puzzleType());
+        }
+        // Thirty identical independent draws have probability below 1 in 200 trillion.
+        assertTrue(types.size() > 1, "Random rematches must not be pinned to the first game");
+    }
+
+    private BrainMatchResponse finishAndRematch(BrainMatchResponse current) {
+        var entity = repository.findById(current.matchId()).orElseThrow();
+        entity.setExpiresAt(Instant.now().minusSeconds(10));
+        repository.save(entity);
+        service.complete(current.matchId());
+        var requested = service.rematch(current.matchId(), new RematchRequest(current.white().playerId()));
+        assertNull(requested.rematchMatchId());
+        var accepted = service.rematch(current.matchId(), new RematchRequest(current.black().playerId()));
+        assertEquals("ACTIVE", accepted.status());
+        assertNotEquals(current.matchId(), accepted.matchId());
+        assertEquals(current.black().playerId(), accepted.white().playerId());
+        assertEquals(current.white().playerId(), accepted.black().playerId());
+        assertEquals(accepted.matchId(), service.get(current.matchId()).rematchMatchId());
+        assertEquals(accepted.matchId(), service.rematch(current.matchId(),
+                new RematchRequest(current.white().playerId())).rematchMatchId());
+        return accepted;
+    }
 }

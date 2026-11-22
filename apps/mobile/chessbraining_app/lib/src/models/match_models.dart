@@ -552,7 +552,7 @@ class MemoryBoardModel {
   final int? turnExpiresAt;
   final int? lastFlipAt;
   bool get showingPair => pendingFirstIndex == null && lastFlipAt != null && DateTime.now().millisecondsSinceEpoch - lastFlipAt! < 1100;
-  int get turnSeconds => (((turnExpiresAt ?? DateTime.now().millisecondsSinceEpoch + 5000) - DateTime.now().millisecondsSinceEpoch + 999) ~/ 1000).clamp(0, 5);
+  int get turnSeconds => (((turnExpiresAt ?? DateTime.now().millisecondsSinceEpoch + 8000) - DateTime.now().millisecondsSinceEpoch + 999) ~/ 1000).clamp(0, 8);
   final bool lastMatched;
   final List<int> lastFlipped;
   final int? pendingFirstIndex;

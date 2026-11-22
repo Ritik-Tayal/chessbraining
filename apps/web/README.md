@@ -58,7 +58,7 @@ Rebuild after changing `VITE_API_BASE_URL`; Vite embeds it at build time. This i
 - STOMP/WebSocket updates synchronize chess; polling provides recovery and synchronizes brain games. Requests are serialized during move submission; older snapshots are discarded.
 - Math answers accumulate locally and submit at the deadline. A three-second server settlement window allows both players' final batches to arrive.
 - Math solutions arrive with the questions for instant local acceptance. Correct input advances automatically; Skip question awards nothing. Cumulative progress snapshots sync in the background without blocking typing; the server validates all scores. This casual-mode protocol exposes solutions to browser inspection and is not cheat-resistant.
-- Memory uses 24 cards (12 color-specific chess-piece pairs), a two-minute round, and five seconds per turn. The server passes expired turns and clears unfinished picks. Pair reveals pause input for 1.1 seconds before the next five-second turn begins.
+- Memory uses 24 cards (12 color-specific chess-piece pairs), a two-minute round, and eight seconds per turn. The server passes expired turns and clears unfinished picks. Pair reveals pause input for 1.1 seconds before the next eight-second turn begins.
 - Sounds use Web Audio and unlock on a user gesture, as required by mobile browsers. The mute setting persists.
 - Chess pieces use the locally bundled Lichess cburnett artwork; see `public/pieces/LICENSE.txt`.
 

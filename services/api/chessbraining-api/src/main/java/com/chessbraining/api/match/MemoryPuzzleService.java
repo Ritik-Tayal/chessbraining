@@ -14,7 +14,7 @@ public class MemoryPuzzleService {
 
 	private static final int CARD_COUNT = 24;
 	private static final int PAIR_COUNT = 12;
-	private static final long TURN_MILLIS = 5000;
+    private static final long TURN_MILLIS = 8000;
 	private static final long REVEAL_MILLIS = 1100;
 	private static final SecureRandom RANDOM = new SecureRandom();
 	private static final List<String> PIECES = List.of("PAWN", "KNIGHT", "BISHOP", "ROOK", "QUEEN", "KING");
