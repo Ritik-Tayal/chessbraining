@@ -195,6 +195,11 @@ public class BotService {
 		BrainRoundEntity round = brainRoundRepository
 				.findFirstByMatchIdAndStatusOrderByStartedAtDesc(match.matchId(), BRAIN_ROUND_ACTIVE)
 				.orElse(null);
+		if (round != null && "PIECE_SWITCH".equals(round.getPuzzleType())) {
+			var response = brainRoundService.pieceSwitchBot(match.matchId(), round.getId(), bot);
+			realtimeService.publishPieceSwitch(response.roundId(), response.progress());
+			return true;
+		}
 		if (round == null ||
 				(!BrainRoundPuzzleType.MEMORY.name().equals(round.getPuzzleType()) && botAlreadyAnswered(round, bot.side()))) {
 			return false;

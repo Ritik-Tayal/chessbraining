@@ -91,6 +91,7 @@ public class BrainMatchService {
 	public BrainMatchResponse get(String matchId) {
 		BrainMatchEntity match = repository.findByIdForUpdate(matchId)
 				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BRAIN_MATCH_NOT_FOUND", "Brain match not found."));
+		if (ACTIVE.equals(match.getStatus()) && "PIECE_SWITCH".equals(match.getPuzzleType()) && isSubmissionWindowClosed(match)) return complete(match);
 		if (ACTIVE.equals(match.getStatus()) && BrainRoundPuzzleType.MEMORY.name().equals(match.getPuzzleType())) {
 			var state = memoryPuzzleService.advanceExpiredTurns(parseMemoryState(match.getPuzzleAnswers()), System.currentTimeMillis());
 			match.setPuzzleAnswers(writeMemoryState(state));
@@ -234,7 +235,13 @@ public class BrainMatchService {
 		match.setStartedAt(Instant.now());
 		BrainRoundPuzzleType type = BrainRoundPuzzleType.valueOf(match.getPuzzleType());
 		match.setExpiresAt(match.getStartedAt().plusSeconds(type == BrainRoundPuzzleType.MEMORY ? MEMORY_SECONDS : DEFAULT_SECONDS));
-		if (type == BrainRoundPuzzleType.DOT_CONNECT) {
+		if (type == BrainRoundPuzzleType.PIECE_SWITCH) {
+			var state = PieceSwitchEngine.initial(System.currentTimeMillis());
+			match.setPuzzleAnswers(objectMapper.writeValueAsString(state));
+			match.setPuzzleExpressions(PieceSwitchEngine.writeQuestions(objectMapper, PieceSwitchEngine.questions()));
+			match.setTotalQuestions(PieceSwitchEngine.QUESTION_COUNT);
+			match.setExpiresAt(Instant.ofEpochMilli(PieceSwitchEngine.end(state)));
+		} else if (type == BrainRoundPuzzleType.DOT_CONNECT) {
 			DotConnectPuzzleService.PuzzleSet set = dotConnectPuzzleService.generatePuzzleSet(DOT_CONNECT_PUZZLE_COUNT);
 			writePuzzles(match, set.puzzles(), set.answers());
 		} else if (type == BrainRoundPuzzleType.MEMORY) {
@@ -320,7 +327,7 @@ public class BrainMatchService {
 	}
 
 	private boolean isSubmissionWindowClosed(BrainMatchEntity match) {
-		int grace = BrainRoundPuzzleType.MENTAL_MATH.name().equals(match.getPuzzleType()) ? 3 : 0;
+		int grace = BrainRoundPuzzleType.MENTAL_MATH.name().equals(match.getPuzzleType()) || "PIECE_SWITCH".equals(match.getPuzzleType()) ? 3 : 0;
 		return match.getExpiresAt() != null && !Instant.now().isBefore(match.getExpiresAt().plusSeconds(grace));
 	}
 
@@ -329,6 +336,7 @@ public class BrainMatchService {
 	}
 
 	private boolean bothAnswered(BrainMatchEntity match) {
+		if ("PIECE_SWITCH".equals(match.getPuzzleType())) return PieceSwitchEngine.settled(PieceSwitchEngine.read(objectMapper, match.getPuzzleAnswers()), System.currentTimeMillis());
 		int all = allMask(match);
 		return (match.getWhiteAnsweredMask() & all) == all && (match.getBlackAnsweredMask() & all) == all;
 	}
@@ -416,15 +424,37 @@ public class BrainMatchService {
 				match.getBlackScore(),
 				match.getTotalQuestions(),
 				publicExpressions(match),
-				nextUnanswered(match.getWhiteAnsweredMask(), match.getTotalQuestions()),
-				nextUnanswered(match.getBlackAnsweredMask(), match.getTotalQuestions()),
+				"PIECE_SWITCH".equals(match.getPuzzleType()) && match.getTotalQuestions() > 0 ? PieceSwitchEngine.read(objectMapper, match.getPuzzleAnswers()).white().answers().size() : nextUnanswered(match.getWhiteAnsweredMask(), match.getTotalQuestions()),
+				"PIECE_SWITCH".equals(match.getPuzzleType()) && match.getTotalQuestions() > 0 ? PieceSwitchEngine.read(objectMapper, match.getPuzzleAnswers()).black().answers().size() : nextUnanswered(match.getBlackAnsweredMask(), match.getTotalQuestions()),
 				match.getWinnerPlayerId(),
 				match.getRematchRequestedByPlayerId(),
 				match.getRematchMatchId(),
 				match.getStartedAt(),
 				match.getExpiresAt(),
 				match.getCompletedAt(),
-				BrainRoundPuzzleType.MENTAL_MATH.name().equals(match.getPuzzleType()) ? parseAnswers(match.getPuzzleAnswers()) : List.of());
+				BrainRoundPuzzleType.MENTAL_MATH.name().equals(match.getPuzzleType()) ? parseAnswers(match.getPuzzleAnswers()) : List.of(),
+				"PIECE_SWITCH".equals(match.getPuzzleType()) && match.getTotalQuestions() > 0 ? PieceSwitchEngine.view(PieceSwitchEngine.read(objectMapper, match.getPuzzleAnswers())) : null);
+	}
+
+	@Transactional
+	public BrainMatchResponse pieceSwitch(String matchId, PieceSwitchEngine.Submission request, boolean ready) {
+		BrainMatchEntity match = repository.findByIdForUpdate(matchId)
+				.orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "BRAIN_MATCH_NOT_FOUND", "Brain match not found."));
+		requirePuzzleType(match, BrainRoundPuzzleType.PIECE_SWITCH);
+		String side = requirePlayer(match, request == null ? null : request.playerId());
+		if (request == null || !matchId.equals(request.roundId())) throw new ApiException(HttpStatus.CONFLICT, "STALE_ROUND", "This answer belongs to another round.");
+		if (COMPLETED.equals(match.getStatus())) return toResponse(match);
+		if (!ACTIVE.equals(match.getStatus())) throw new ApiException(HttpStatus.CONFLICT, "MATCH_NOT_ACTIVE", "Wait for your opponent to join.");
+		var state = PieceSwitchEngine.read(objectMapper, match.getPuzzleAnswers());
+		var questions = PieceSwitchEngine.readQuestions(objectMapper, match.getPuzzleExpressions());
+		state = ready ? PieceSwitchEngine.ready(state, side, System.currentTimeMillis())
+				: PieceSwitchEngine.submit(state, side, questions, request, System.currentTimeMillis());
+		match.setPuzzleAnswers(objectMapper.writeValueAsString(state));
+		match.setExpiresAt(Instant.ofEpochMilli(PieceSwitchEngine.end(state)));
+		match.setWhiteScore(PieceSwitchEngine.score(state, "WHITE", questions));
+		match.setBlackScore(PieceSwitchEngine.score(state, "BLACK", questions));
+		if (PieceSwitchEngine.settled(state, System.currentTimeMillis())) return complete(match);
+		return toResponse(repository.save(match));
 	}
 
 	private int nextUnanswered(int mask, int total) {

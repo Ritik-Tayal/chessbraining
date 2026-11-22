@@ -80,6 +80,46 @@ function calculate(expression: string) {
   const [a, op, b] = expression.split(/\s+/);
   return op === "+" ? +a + +b : op === "-" ? +a - +b : +a * +b;
 }
+
+test("Piece Switch intermission records both scores and resumes chess", async ({
+  page,
+  browser,
+}) => {
+  const { opponent, context, id } = await chessRound(
+    page,
+    browser,
+    "PIECE_SWITCH",
+  );
+  try {
+    const round = await (
+      await page.request.get(`/api/v1/matches/${id}/brain-rounds/current`)
+    ).json();
+    const q = JSON.parse(round.puzzles[0]);
+    const answer =
+      q.rule === "COLOR" ? q.color : q.rule === "PIECE" ? q.piece : q.count - 1;
+    await expect(page.locator(".switch-stimulus")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(opponent.locator(".switch-stimulus")).toBeVisible();
+    await page.locator(".switch-choice").nth(answer).click();
+    await opponent.locator(".switch-choice").nth(answer).click();
+    await expect(page.getByTestId("switch-own-score")).toHaveText("1");
+    await expect(opponent.getByTestId("switch-own-score")).toHaveText("1");
+    await expect(page.locator(".result-notice")).toBeVisible({
+      timeout: 55000,
+    });
+    const match = await (
+      await page.request.get(`/api/v1/matches/${id}`)
+    ).json();
+    expect(match.phase).toBe("CHESS_PHASE");
+    expect(match.latestBrainRoundResult.whiteCorrectCount).toBe(1);
+    expect(match.latestBrainRoundResult.blackCorrectCount).toBe(1);
+    expect(match.white.brainPoints).toBe(1);
+    expect(match.black.brainPoints).toBe(1);
+  } finally {
+    await context.close();
+  }
+});
 async function assertResume(page: Page, opponent: Page) {
   await expect(page.locator(".result-notice")).toBeVisible({ timeout: 40000 });
   await expect(opponent.locator(".result-notice")).toBeVisible({

@@ -12,8 +12,24 @@ import { Piece } from "./Board";
 import type { MemoryBoard, Round } from "./types";
 import { readBrainDraft, saveBrainDraft } from "./brainDraft";
 import { playSound } from "./sound";
+import { PieceSwitchGame, type PieceSwitchConnection } from "./PieceSwitchGame";
 
-export function BrainGame({
+type BrainGameProps = Parameters<typeof ClassicBrainGame>[0] & {
+  pieceSwitchConnection: PieceSwitchConnection;
+};
+export function BrainGame(props: BrainGameProps) {
+  return props.round.puzzleType === "PIECE_SWITCH" ? (
+    <PieceSwitchGame
+      round={props.round}
+      side={props.side}
+      connection={props.pieceSwitchConnection}
+    />
+  ) : (
+    <ClassicBrainGame {...props} />
+  );
+}
+
+function ClassicBrainGame({
   round,
   side,
   onMath,

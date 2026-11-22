@@ -1,4 +1,5 @@
 package com.chessbraining.api;
+import com.chessbraining.api.match.PieceSwitchEngine;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
@@ -397,7 +398,7 @@ class ChessbrainingApiApplicationTests {
 						.andExpect(jsonPath("$.totalQuestions").value(totalQuestions));
 			}
 		} else {
-			submitEveryMemoryPuzzle(matchId);
+			submitEveryBrainRoundPuzzle(matchId, "white-player", round);
 		}
 
 		JsonNode completed;
@@ -543,7 +544,7 @@ class ChessbrainingApiApplicationTests {
 						.andExpect(status().isOk());
 			}
 		} else {
-			submitEveryMemoryPuzzle(matchId);
+			submitEveryBrainRoundPuzzle(matchId, "white-player", round);
 		}
 
 		mockMvc.perform(get("/api/v1/matches/{matchId}", matchId))
@@ -1247,7 +1248,12 @@ class ChessbrainingApiApplicationTests {
 
 	private void submitEveryBrainRoundPuzzle(String matchId, String playerId, JsonNode round) throws Exception {
 		String puzzleType = round.get("puzzleType").asText();
-		if (BrainRoundPuzzleType.DOT_CONNECT.name().equals(puzzleType)) {
+		if ("PIECE_SWITCH".equals(puzzleType)) {
+			if (hasActiveBrainRound(matchId)) {
+				expireActiveBrainRound(matchId);
+				mockMvc.perform(post("/api/v1/matches/{matchId}/brain-rounds/current/complete", matchId)).andExpect(status().isOk());
+			}
+		} else if (BrainRoundPuzzleType.DOT_CONNECT.name().equals(puzzleType)) {
 			submitEveryDotConnectPuzzle(matchId, playerId, round);
 		} else if (BrainRoundPuzzleType.MEMORY.name().equals(puzzleType)) {
 			submitEveryMemoryPuzzle(matchId);
@@ -1417,6 +1423,11 @@ class ChessbrainingApiApplicationTests {
 			return;
 		}
 		round.setExpiresAt(Instant.now().minusSeconds(5));
+		if ("PIECE_SWITCH".equals(round.getPuzzleType())) {
+			var state = PieceSwitchEngine.read(objectMapper, round.getPuzzleAnswers());
+			round.setPuzzleAnswers(objectMapper.writeValueAsString(new PieceSwitchEngine.State(0,
+					System.currentTimeMillis() - 50_000, state.revision(), state.white(), state.black())));
+		}
 		brainRoundRepository.save(round);
 	}
 }

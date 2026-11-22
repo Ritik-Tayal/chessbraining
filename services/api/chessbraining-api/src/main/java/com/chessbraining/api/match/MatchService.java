@@ -531,7 +531,13 @@ public class MatchService {
 		round.setBlackAnsweredMask(0);
 
 		try {
-			if (selectedType == BrainRoundPuzzleType.DOT_CONNECT) {
+			if (selectedType == BrainRoundPuzzleType.PIECE_SWITCH) {
+				var state = PieceSwitchEngine.initial(System.currentTimeMillis());
+				round.setPuzzleAnswers(objectMapper.writeValueAsString(state));
+				round.setPuzzleExpressions(PieceSwitchEngine.writeQuestions(objectMapper, PieceSwitchEngine.questions()));
+				round.setTotalQuestions(PieceSwitchEngine.QUESTION_COUNT);
+				round.setExpiresAt(Instant.ofEpochMilli(PieceSwitchEngine.end(state)));
+			} else if (selectedType == BrainRoundPuzzleType.DOT_CONNECT) {
 				DotConnectPuzzleService.PuzzleSet puzzleSet = dotConnectPuzzleService.generatePuzzleSet(DOT_CONNECT_PUZZLE_COUNT);
 				round.setPuzzleExpressions(objectMapper.writeValueAsString(puzzleSet.puzzles()));
 				round.setPuzzleAnswers(objectMapper.writeValueAsString(puzzleSet.answers()));

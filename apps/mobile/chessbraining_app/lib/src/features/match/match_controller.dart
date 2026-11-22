@@ -95,6 +95,32 @@ class MatchController extends ChangeNotifier {
         playerName = guestSession.playerName;
 
   ChessbrainingApi _api;
+  Future<Map<String, dynamic>> sendPieceSwitch(
+      {required bool arena,
+      required String roundId,
+      required bool ready,
+      required List<Map<String, dynamic>> answers,
+      required bool finished}) async {
+    final id = arena ? brainMatch!.matchId : match!.matchId;
+    final base =
+        arena ? '/brain-matches/$id' : '/matches/$id/brain-rounds/current';
+    final response = await _api
+        .sendPieceSwitch('$base/piece-switch/${ready ? 'ready' : 'events'}', {
+      'roundId': roundId,
+      'playerId': playerId,
+      'answers': answers,
+      'finished': finished,
+    });
+    if (response['status'] == 'COMPLETED') {
+      if (arena && brainMatch?.matchId == id) {
+        _setBrainMatch(BrainMatchModel.fromJson(response));
+      } else if (!arena && match?.matchId == id) {
+        _setMatch(await _api.getMatch(id));
+      }
+    }
+    return response;
+  }
+
   final MatchSocketFactory _socketFactory;
   MatchSocketClient? _socket;
 
@@ -389,17 +415,18 @@ class MatchController extends ChangeNotifier {
     });
   }
 
-  Future<void> submitBrainArenaAnswers(Map<int, int> answers, {bool finalSubmission = true}) async {
+  Future<void> submitBrainArenaAnswers(Map<int, int> answers,
+      {bool finalSubmission = true}) async {
     final current = brainMatch;
     if (current == null || !current.isActive) {
       return Future.value();
     }
     final result = await _api.submitBrainMatchAnswers(
-        finalSubmission: finalSubmission,
-        matchId: current.matchId,
-        playerId: playerId,
-        answers: answers,
-      );
+      finalSubmission: finalSubmission,
+      matchId: current.matchId,
+      playerId: playerId,
+      answers: answers,
+    );
     if (finalSubmission) _setBrainMatch(result);
   }
 
@@ -703,8 +730,8 @@ class MatchController extends ChangeNotifier {
   }
 
   Future<BrainRoundSubmissionModel?> submitBrainRoundAnswers(
-    Map<int, int> answers, {bool finalSubmission = true}
-  ) async {
+      Map<int, int> answers,
+      {bool finalSubmission = true}) async {
     final current = match;
     if (current == null) {
       return null;

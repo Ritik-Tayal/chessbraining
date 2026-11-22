@@ -8,6 +8,7 @@ import '../../models/match_models.dart';
 import '../../services/sound_service.dart';
 import 'dot_connect_puzzle.dart';
 import 'match_controller.dart';
+import 'piece_switch_game.dart';
 
 class BrainRoundOverlay extends StatefulWidget {
   const BrainRoundOverlay({
@@ -102,10 +103,18 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
         return;
       }
       final round = widget.controller.brainRound;
-      if (round?.isMathPuzzle == true && !finished && !submitting && !progressPending && answersByQuestion.length > lastProgressCount) {
+      if (round?.isPieceSwitch == true) return;
+      if (round?.isMathPuzzle == true &&
+          !finished &&
+          !submitting &&
+          !progressPending &&
+          answersByQuestion.length > lastProgressCount) {
         progressPending = true;
         final count = answersByQuestion.length;
-        unawaited(widget.controller.submitBrainRoundAnswers(Map<int,int>.from(answersByQuestion), finalSubmission: false).then((result) {
+        unawaited(widget.controller
+            .submitBrainRoundAnswers(Map<int, int>.from(answersByQuestion),
+                finalSubmission: false)
+            .then((result) {
           if (result != null) lastProgressCount = count;
         }).whenComplete(() => progressPending = false));
       }
@@ -149,6 +158,25 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
   Widget build(BuildContext context) {
     final match = widget.controller.match!;
     final round = widget.controller.brainRound;
+    if (round?.isPieceSwitch == true && round?.pieceSwitch != null) {
+      return Positioned.fill(
+          child: Material(
+              color: const Color(0xff1c2920),
+              child: SafeArea(
+                  child: Center(
+                      child: ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 660),
+                          child: SingleChildScrollView(
+                              child: PieceSwitchGame(
+                            key: ValueKey(round!.roundId),
+                            controller: widget.controller,
+                            roundId: round.roundId,
+                            puzzles: round.puzzles,
+                            view: round.pieceSwitch!,
+                            side: widget.controller.me?.side ?? 'WHITE',
+                            arena: false,
+                          )))))));
+    }
     final puzzles = round?.puzzles ?? const <String>[];
     final serverScore = match.white.playerId == widget.controller.playerId
         ? round?.whiteCorrectCount ?? 0
@@ -279,9 +307,7 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
                                 enabled: _inputEnabled,
                                 onAppend: _append,
                                 onBackspace: _backspace,
-                                onSubmit: _inputEnabled
-                                    ? _submit
-                                    : null,
+                                onSubmit: _inputEnabled ? _submit : null,
                                 accent: info.accent,
                               ),
                             ),
@@ -357,7 +383,8 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     }
     setState(() => answer += value);
     final solutions = widget.controller.brainRound?.solutions ?? const <int>[];
-    if (questionIndex < solutions.length && int.tryParse(answer) == solutions[questionIndex]) {
+    if (questionIndex < solutions.length &&
+        int.tryParse(answer) == solutions[questionIndex]) {
       unawaited(_submit(correct: true));
     }
   }
@@ -535,7 +562,11 @@ class _BrainRoundOverlayState extends State<BrainRoundOverlay> {
     if (card.matched || memorySelection.contains(index)) {
       return;
     }
-    if (board.pendingFirstIndex == index || board.turnSeconds == 0 || board.showingPair) return;
+    if (board.pendingFirstIndex == index ||
+        board.turnSeconds == 0 ||
+        board.showingPair) {
+      return;
+    }
     unawaited(_submitMemoryTurn(board.pendingFirstIndex ?? index,
         board.pendingFirstIndex == null ? -1 : index));
   }
@@ -939,7 +970,10 @@ class _MemoryBoard extends StatelessWidget {
                 card: card,
                 selected: isSelected,
                 serverRevealVisible: true,
-                enabled: enabled && !card.matched && board.turnSeconds > 0 && !board.showingPair,
+                enabled: enabled &&
+                    !card.matched &&
+                    board.turnSeconds > 0 &&
+                    !board.showingPair,
                 onTap: () => onCardTap(card.index),
               );
             },
@@ -1056,7 +1090,8 @@ class _MemoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final faceUp = card.matched || selected || (serverRevealVisible && card.revealed);
+    final faceUp =
+        card.matched || selected || (serverRevealVisible && card.revealed);
     return AnimatedScale(
       scale: selected ? 0.96 : 1,
       duration: const Duration(milliseconds: 120),

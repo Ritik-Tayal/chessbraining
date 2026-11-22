@@ -49,6 +49,7 @@ export interface Match {
   latestBrainRoundResult?: RoundResult;
 }
 export interface Round {
+  pieceSwitch?: PieceSwitchView;
   solutions?: number[];
   roundId?: string;
   matchId?: string;
@@ -105,4 +106,18 @@ export interface MemoryBoard {
     revealed: boolean;
     piece: string | null;
   }[];
+}
+
+export interface PieceSwitchView {
+  serverReceivedAt?: number;
+  serverNow: number;
+  startsAt: number;
+  readyDeadline: number;
+  revision: number;
+  whiteReady: boolean;
+  blackReady: boolean;
+  whiteAcknowledged: number;
+  blackAcknowledged: number;
+  whiteFinished: boolean;
+  blackFinished: boolean;
 }

@@ -18,4 +18,8 @@ public class MatchRealtimeService {
 				"/topic/matches/" + match.matchId(),
 				new MatchEvent("match.state", match));
 	}
+
+	public void publishPieceSwitch(String roundId, Object response) {
+		messagingTemplate.convertAndSend("/topic/piece-switch/" + roundId, response);
+	}
 }
